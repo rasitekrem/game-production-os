@@ -349,8 +349,14 @@ def execute(registry, request, clock=None, now=None):
                     f"{request.adapter_id}.execute() raised {type(exc).__name__}: {redact(str(exc))[0]}",
                     request.adapter_id, request.capability_id)])
 
-    result = _assemble(framework, registry, request, adapter, capability, context, outcome,
-                       diagnostics, probe, root, started_at, started, clock, inputs)
+    try:
+        result = _assemble(framework, registry, request, adapter, capability, context, outcome,
+                           diagnostics, probe, root, started_at, started, clock, inputs)
+    except Exception as exc:  # assembling the result must never strand a lease
+        return _release_and_finish(root, lease, finish, dg.INTERNAL_ERROR, diagnostics + [
+            dg.make("ADAPTER_INTERNAL_ERROR",
+                    f"the foundation could not assemble a result for {request.capability_id}: "
+                    f"{type(exc).__name__}: {redact(str(exc))[0]}", request.adapter_id, request.capability_id)])
     _release(root, lease)
     return result
 
@@ -416,6 +422,10 @@ def _scopes_and_workspace(adapter, capability, request, root):
             return (), None, [dg.make("UNSAFE_ARTIFACT_PATH",
                                       f"{workspace}: tool output never goes into the canonical record area "
                                       f"{tp.RECORDS_DIR}/", adapter_id, cap_id)]
+    elif root is not None and not capability.artifact_kinds:
+        # A capability that declares no artifacts gets no workspace: a READ_ONLY inspection must not
+        # create directories in the project just by running. It works in the project root.
+        return tuple(scopes), root, []
     elif root is not None:
         workspace = tp.runtime_dir(root, "tool-output", adapter_id, request.request_id)
     else:

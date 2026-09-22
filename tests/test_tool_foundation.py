@@ -363,11 +363,20 @@ class D01_Execution(TmpCase):
     def test_read_only_success(self):
         result = self.run_cap(syn.INSPECT, project=self.project())
         self.assertEqual(result.status, tdg.SUCCESS)
+        self.assertEqual(result.artifacts, ())
         self.assertTrue(result.ok)
         self.assertFalse(result.mutation_performed)
         self.assertFalse(result.dry_run)
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(result.exit_code_for_cli, 0)
+
+    def test_a_read_only_capability_creates_nothing_in_the_project(self):
+        """Declaring no artifacts means no workspace: running an inspection leaves the tree untouched."""
+        p = self.project()
+        before = sorted(x.relative_to(p).as_posix() for x in p.rglob("*"))
+        self.assertEqual(self.run_cap(syn.INSPECT, project=p).status, tdg.SUCCESS)
+        self.assertEqual(sorted(x.relative_to(p).as_posix() for x in p.rglob("*")), before)
+        self.assertFalse((p / tpaths.RUNTIME_DIR).exists())
 
     def test_mutating_success_produces_artifact(self):
         result = self.run_cap(syn.TRANSFORM, project=self.project(), allow_mutation=True,

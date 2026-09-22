@@ -46,7 +46,7 @@ CAPABILITIES = (
         id=INSPECT, category="INSPECT",
         description="TEST_ONLY: read something about the project and report it. Changes nothing.",
         operation_class="READ_ONLY", state_model="STATELESS", execution_context="OFFLINE_ANALYSIS",
-        dry_run_supported=True, input_kinds=("target",), artifact_kinds=("TEXT",),
+        dry_run_supported=True, input_kinds=("target",),
         timeout=TimeoutPolicy(default=10.0, maximum=30.0)),
     Capability(
         id=TRANSFORM, category="TRANSFORM",

@@ -10,7 +10,8 @@ does not merge, adopt or edit anything found here; sync refuses and check report
   depending on a user setting, AGENTS.md;
 * instruction configuration (INSTRUCTION_CONFIG_CONFLICT / INSTRUCTION_CONFIG_UNREADABLE): Claude Code
   project settings `claudeMdExcludes` can drop CLAUDE.md files from context; Codex project
-  `.codex/config.toml` can replace AGENTS.md (`model_instructions_file`), cap how much of it is read
+  `.codex/config.toml` can replace AGENTS.md (`model_instructions_file`), change project-root discovery so the
+  generated root AGENTS.md is no longer found (`project_root_markers`), cap how much of it is read
   (`project_doc_max_bytes`), add instruction file names (`project_doc_fallback_filenames`) or disable a
   skill (`[[skills.config]] enabled = false`);
 * skill identity (SKILL_ID_CONFLICT): another project-local skill with a generated GPOS skill id.
@@ -35,6 +36,9 @@ except ImportError:  # pragma: no cover - older interpreters fail closed on any 
 CLAUDE_SETTINGS = (".claude/settings.json", ".claude/settings.local.json")
 CODEX_CONFIG = ".codex/config.toml"
 CODEX_INSTRUCTION_REPLACEMENT_KEYS = ("model_instructions_file", "experimental_instructions_file")
+# Changes where Codex considers the project root (default `.git`), and so which AGENTS.md files a session in a
+# subdirectory discovers. Phase 2B does not re-implement root discovery: any project-local definition conflicts.
+CODEX_ROOT_DISCOVERY_KEYS = ("project_root_markers",)
 
 
 def _walk(root):
@@ -132,6 +136,12 @@ def codex_config_problems(root, root_bytes, generated_skill_ids):
             for where, _ in _codex_values(data, key):
                 out.append(("INSTRUCTION_CONFIG_CONFLICT", rel, f"{rel} sets {where}{key}, which replaces the AGENTS.md "
                                                                 f"instructions; the generated AGENTS.md must stay the entrypoint"))
+        for key in CODEX_ROOT_DISCOVERY_KEYS:
+            for where, _ in _codex_values(data, key):
+                out.append(("INSTRUCTION_CONFIG_CONFLICT", rel, f"{rel} sets {where}{key}, which changes Codex project-root "
+                                                                f"discovery and can hide the generated AGENTS.md from sessions "
+                                                                f"started in a subdirectory (Phase 2B rejects any project-local "
+                                                                f"definition)"))
         for where, value in _codex_values(data, "project_doc_max_bytes"):
             if not isinstance(value, int) or isinstance(value, bool):
                 out.append(("INSTRUCTION_CONFIG_UNREADABLE", rel, f"{rel}: {where}project_doc_max_bytes is not an integer"))

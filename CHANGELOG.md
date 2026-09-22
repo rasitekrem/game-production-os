@@ -25,7 +25,7 @@ Builds on the frozen Phase-1 core (`v1.0.0-alpha.7`) and the frozen Phase-2A val
 - Unmanaged project instruction layers are detected and block sync and check (`INSTRUCTION_LAYER_CONFLICT`): Codex nested or override `AGENTS` files; Claude Code `.claude/CLAUDE.md`, `CLAUDE.local.md`, nested `CLAUDE.md`, `.claude/rules/` and unowned `AGENTS.md`. Generated text no longer claims such layers cannot relax GPOS.
 - Project runtime configuration that changes instruction discovery blocks sync and check (`INSTRUCTION_CONFIG_CONFLICT` / `INSTRUCTION_CONFIG_UNREADABLE`):
   - Claude Code project or local `claudeMdExcludes`;
-  - Codex project `.codex/config.toml` `model_instructions_file`, a `project_doc_max_bytes` below the generated root, `[[skills.config]]` disabling a generated skill;
+  - Codex project `.codex/config.toml` `model_instructions_file`, any `project_root_markers`, a `project_doc_max_bytes` below the generated root, `[[skills.config]]` disabling a generated skill;
   - `project_doc_fallback_filenames` matching unowned files.
 - Project-local skills occupying a generated skill id are rejected (`SKILL_ID_CONFLICT`).
 - Authority tables must belong to a `##` section.

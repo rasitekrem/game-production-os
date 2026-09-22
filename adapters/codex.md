@@ -39,6 +39,7 @@ Skills are invoked by domain intent, or directly with `$gpos-<namespace>-<skill>
 - Because deeper files can override it, any `AGENTS.md` or `AGENTS.override.md` elsewhere in the project that GPOS does not own stops sync and is reported by check (`INSTRUCTION_LAYER_CONFLICT`). This includes a root `AGENTS.override.md` and such files above the project up to the git repository root. They are never edited. Move their content into `.game/` authority first.
 - Project `.codex/config.toml` files (project tree and parents up to the repository root; top level and profiles) are read with `tomllib` and never edited:
   - `model_instructions_file` / `experimental_instructions_file` → `INSTRUCTION_CONFIG_CONFLICT`;
+  - `project_root_markers` (any value; it changes project-root discovery, so a session in a subdirectory may miss the generated `AGENTS.md`) → `INSTRUCTION_CONFIG_CONFLICT`. Codex's full root-discovery algorithm is not re-implemented;
   - `project_doc_max_bytes` below the generated `AGENTS.md` size → `INSTRUCTION_CONFIG_CONFLICT`;
   - `project_doc_fallback_filenames` adds instruction names, and an unowned file with such a name is an `INSTRUCTION_LAYER_CONFLICT`;
   - `[[skills.config]] enabled = false` targeting a generated skill → `INSTRUCTION_CONFIG_CONFLICT`;

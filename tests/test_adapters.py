@@ -1155,6 +1155,29 @@ class Q02_CodexProjectConfig(TmpCase):
             write(p, ".codex/config.toml", toml)
             self.assertBlocked(p)
 
+    def test_project_root_markers_block(self):
+        for i, (rel, toml) in enumerate(((".codex/config.toml", "project_root_markers = []\n"),
+                                         ("src/.codex/config.toml", 'project_root_markers = [".hg"]\n'),
+                                         (".codex/config.toml", '[profiles.mono]\nproject_root_markers = [".git", "BUILD"]\n'))):
+            p = project(self.tmp / str(i))
+            f = write(p, rel, toml)
+            raw = f.read_bytes()
+            r = self.assertBlocked(p, "INSTRUCTION_CONFIG_CONFLICT", rel)
+            self.assertIn(("INSTRUCTION_CONFIG_CONFLICT", rel), {(d.code, d.path) for d in r.diagnostics})
+            self.assertEqual(f.read_bytes(), raw)
+
+    def test_project_root_markers_introduced_after_sync(self):
+        p = self.proj()
+        self.assertEqual(pipeline.sync(p).status, adg.OK)
+        self.assertEqual(pipeline.check(p).status, adg.OK)
+        f = write(p, ".codex/config.toml", 'model = "some-model"\nproject_root_markers = []\n')
+        raw = f.read_bytes()
+        r = pipeline.check(p, "codex")
+        self.assertEqual(r.status, adg.CONFLICT)
+        self.assertEqual({(d.code, d.path) for d in r.diagnostics}, {("INSTRUCTION_CONFIG_CONFLICT", ".codex/config.toml")})
+        self.assertEqual(f.read_bytes(), raw)
+        self.assertEqual(pipeline.check(p, "claude-code").status, adg.OK)  # a Codex setting does not concern Claude
+
     def test_project_doc_max_bytes(self):
         p = self.proj()
         size = self.root_bytes(p)

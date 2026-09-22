@@ -77,6 +77,7 @@ MUTATIONS = [
     ('skill id collisions ignored', 'gpos/adapters/pipeline.py', '            for path, sid in skill_id_collisions(root, backend, [s.agent_id for s in ir.skills])]', '            for path, sid in []]'),
     ('declared skill names ignored', 'gpos/adapters/layers.py', '        hit = ids & {base.name, _skill_name(root / rel)}', '        hit = ids & {base.name}'),
     ('authority table without section accepted', 'gpos/adapters/sources.py', '            if in_table and section is None:', '            if False:'),
+    ('project_root_markers ignored', 'gpos/adapters/layers.py', '        for key in CODEX_ROOT_DISCOVERY_KEYS:', '        for key in ():'),
 ]
 
 

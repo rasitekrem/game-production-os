@@ -133,6 +133,7 @@ Project-local runtime configuration can also change what the agent loads. Sync r
   - Other settings are ignored.
 - **Codex**: every `.codex/config.toml` in the project tree or its parents up to the repository root. Codex loads project config for trusted projects. Files are read with the standard library `tomllib`. At top level and in every `[profiles.<name>]`:
   - `model_instructions_file` (and the older `experimental_instructions_file`) replaces the AGENTS.md instructions: rejected, because the generated `AGENTS.md` must stay the entrypoint.
+  - `project_root_markers` changes where Codex considers the project root (default `.git`). For example `project_root_markers = []` stops the parent search, so a session started in a subdirectory may no longer discover the generated root `AGENTS.md`. Phase 2B does not re-implement Codex's root discovery: any project-local definition, of any value, is rejected.
   - `project_doc_max_bytes` must be at least the byte size of the generated root `AGENTS.md`. This does not protect against user-level instructions consuming the budget.
   - `project_doc_fallback_filenames` adds instruction file names. A file with such a name anywhere Codex could load it, which GPOS does not own, is an `INSTRUCTION_LAYER_CONFLICT`. Configuring names that match no file is allowed.
   - `[[skills.config]]` with `enabled = false` that targets a generated GPOS skill is rejected.

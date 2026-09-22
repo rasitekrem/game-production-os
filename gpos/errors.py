@@ -45,6 +45,7 @@ class UnsupportedGposVersion(GposToolError):
     """
 
     code = "UNSUPPORTED_GPOS_VERSION"
+    status = "INCOMPATIBLE"  # the fourth result class, next to VALID/READY, INVALID and NOT_READY
 
     def __init__(self, message, diagnostic=None):
         super().__init__(message)

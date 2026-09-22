@@ -75,6 +75,10 @@ MUTATIONS = [
      'evidence = [e for e in rs.evidence if _str(e.data.get("evidence_id")) in evidence_ids]',
      'evidence = [e for e in {_str(e.data.get("evidence_id")): e for e in rs.evidence}.values() '
      'if _str(e.data.get("evidence_id")) in evidence_ids]'),
+    ("invalid scope reported as NOT_READY", "gpos/validation/project.py",
+     "        if not self.valid_records:\n            return INVALID", "        if False:\n            return INVALID"),
+    ("NOT_READY mapped to exit 1", "gpos/cli.py", '"NOT_READY": 2,', '"NOT_READY": 1,'),
+    ("INCOMPATIBLE reported as generic ERROR", "gpos/errors.py", '    status = "INCOMPATIBLE"', '    status = "ERROR"'),
     ("scope drops load problems", "gpos/validation/scope.py", "root=rs.root, load_diagnostics=rs.load_diagnostics,", "root=rs.root,"),
     ("duplicate record ids ignored", "gpos/validation/ids.py", "for dup in duplicates([r.data[field] for r in records]):", "for dup in []:"),
     ("decision value binding ignored", "gpos/validation/decisions.py", "                if cv != dv:", "                if False:"),

@@ -140,14 +140,27 @@ def _finish(an):
 
 # ---------------------------------------------------------------- public results
 
+# Result classes (four, mutually exclusive, machine-readable; never inferred from messages):
+#   VALID / READY  records valid; for readiness, the routing is also complete        -> CLI exit 0
+#   INVALID        a record/schema/authority/integrity error in the validated scope  -> CLI exit 1
+#   NOT_READY      records in scope valid, routed production requirements unmet     -> CLI exit 2
+#   INCOMPATIBLE   this validator cannot judge the records (UnsupportedGposVersion)  -> CLI exit 3
+VALID, INVALID, READY, NOT_READY, INCOMPATIBLE = "VALID", "INVALID", "READY", "NOT_READY", "INCOMPATIBLE"
+
+
 @dataclass
 class ValidationResult:
     valid: bool
     diagnostics: list
     summary: dict
 
+    @property
+    def status(self):
+        return VALID if self.valid else INVALID
+
     def to_dict(self):
-        return {"valid": self.valid, "summary": self.summary, "diagnostics": [d.to_dict() for d in self.diagnostics]}
+        return {"status": self.status, "valid": self.valid, "summary": self.summary,
+                "diagnostics": [d.to_dict() for d in self.diagnostics]}
 
 
 @dataclass
@@ -160,8 +173,15 @@ class ReadinessResult:
     summary: dict
     project_has_other_diagnostics: bool = False  # informational; never changes `ready`
 
+    @property
+    def status(self):
+        """READY, INVALID (an error in the routing's scope) or NOT_READY (valid records, unmet requirements)."""
+        if not self.valid_records:
+            return INVALID
+        return READY if self.ready else NOT_READY
+
     def to_dict(self):
-        return {"routing_id": self.routing_id, "valid_records": self.valid_records, "ready": self.ready,
+        return {"status": self.status, "routing_id": self.routing_id, "valid_records": self.valid_records, "ready": self.ready,
                 "blocking_reasons": [d.to_dict() for d in self.blocking_reasons],
                 "project_has_other_diagnostics": self.project_has_other_diagnostics,
                 "summary": self.summary, "diagnostics": [d.to_dict() for d in self.diagnostics]}

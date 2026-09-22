@@ -26,11 +26,13 @@ Builds on the frozen Phase-1 core (`v1.0.0-alpha.7`). No change to gate, evidenc
 - Routed readiness is scoped: project-global authority plus the routing's own dependency records. Errors in unrelated routings no longer block it; `validate` still reports the whole project, and readiness reports them only as `project_has_other_diagnostics`.
 - A project pinned to another GPOS version raises `UnsupportedGposVersion` (`UNSUPPORTED_GPOS_VERSION`, severity `INCOMPATIBLE`, category `COMPATIBILITY`, CLI exit 3); it is no longer reported as invalid records.
 - Timestamps follow the frozen RFC 3339 contract: lower-case `t` / `z` are accepted, as by the Phase-1 oracle and the `jsonschema` cross-check. The stricter behaviour of `rfc3339-validator` called directly is recorded as a known external-checker divergence.
+- Four machine-readable result classes with distinct exit codes: `VALID`/`READY` (0), `INVALID` (1), `NOT_READY` (2), `INCOMPATIBLE` (3). `ReadinessResult.status` and the CLI `verdict` report `INVALID`, never `NOT_READY`, when the routing's scope has errors (fixes `NOT_READY` with exit 1).
 - The `ERROR` / `BLOCKER` split is documented as the normative Phase-2A diagnostic convention. Parity is required on verdicts and frozen rules, not on diagnostic counts.
 
-### Human Review items
+### Normative contract enforced beyond the reference oracle (approved at Human Review)
 
-- Production enforces two §12 texts the reference does not model: a superseded negative cross-review needs a later review by the same reviewer (§12.6); `HUMAN_EVIDENCE` cited by a gate must come from a Human Review participant for that gate (§12.12).
+- §12.6: a superseded negative cross-review needs a later review by the same reviewer.
+- §12.12: `HUMAN_EVIDENCE` cited by a gate must come from a human authorized to review that gate.
 
 ### Maturity
 

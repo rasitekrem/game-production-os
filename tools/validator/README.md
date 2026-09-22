@@ -102,16 +102,20 @@ python3 -m gpos.validator --version
 
 Run from the repository root (or with the repository root on the Python path). There are no mutating commands: no fix, approve, waive, promote or edit.
 
-| Exit | `validate` | `readiness` |
-|---|---|---|
-| 0 | records valid | routing `READY` |
-| 1 | records invalid | records invalid (so `NOT_READY`) |
-| 2 | — | records valid, routing `NOT_READY` |
-| 3 | invocation, tool, compatibility or internal error | invocation, tool, compatibility or internal error |
+Every run ends in exactly one of four result classes. Each has its own exit code and machine-readable `status` / `verdict`; none is inferred from messages, and `ready: false` never hides which class applies:
+
+| Result class | Library | CLI `verdict` | Exit |
+|---|---|---|---|
+| valid / ready | `ValidationResult.status == "VALID"`; `ReadinessResult.status == "READY"` | `VALID` / `READY` | 0 |
+| invalid: a record, schema, authority or integrity error in the validated scope (the whole project for `validate`; the routing's scope for `readiness`) | `status == "INVALID"` (`valid` / `valid_records` false) | `INVALID` | 1 |
+| not ready: records in scope valid, routed production requirements unmet (`readiness` only) | `status == "NOT_READY"` | `NOT_READY` | 2 |
+| incompatible: the project pins another GPOS version | raises `UnsupportedGposVersion` (`status == "INCOMPATIBLE"`) | `INCOMPATIBLE` | 3 |
+
+Invocation, tool and internal errors also exit 3, with verdict `ERROR`. There is no "not ready" with exit 1: a routing whose scope contains an error is `INVALID`.
 
 Exit 3 covers an unknown command or format, a missing argument, a missing bundle, an unknown routing id (`ROUTING_NOT_FOUND`), a project pinned to another GPOS version (`UNSUPPORTED_GPOS_VERSION`; the JSON `error` carries its diagnostic), a registry or schema that cannot be loaded (`FRAMEWORK_LOAD_ERROR`, `UNSUPPORTED_SCHEMA_KEYWORD`) and any validator defect (`INTERNAL_ERROR`). Usage errors are reported as `USAGE_ERROR`. It is never used for a verdict, and no stack trace is printed.
 
-`--format json` prints one deterministic JSON document (sorted keys, no timestamps, no absolute paths). It contains `tool`, `validator_version`, `gpos_version` (the framework this validator enforces), `project_id`, `command`, `verdict` (`VALID`, `INVALID`, `READY`, `NOT_READY` or `ERROR`), `exit_code`, `summary` and `diagnostics`; `readiness` adds `routing_id`, `valid_records` (validity of the routing's scope), `ready`, `blocking_reasons` and the informational `project_has_other_diagnostics`.
+`--format json` prints one deterministic JSON document (sorted keys, no timestamps, no absolute paths). It contains `status`, `tool`, `validator_version`, `gpos_version` (the framework this validator enforces), `project_id`, `command`, `verdict` (`VALID`, `INVALID`, `READY`, `NOT_READY`, `INCOMPATIBLE` or `ERROR`), `exit_code`, `summary` and `diagnostics`; `readiness` adds `routing_id`, `valid_records` (validity of the routing's scope), `ready`, `blocking_reasons` and the informational `project_has_other_diagnostics`.
 
 The text form of `readiness` also lists each required gate with its state: its gate status, `NOT_RUN` when no record exists, `AMBIGUOUS` when several do, or `UNVERIFIED` when the record set could not be checked far enough to link gates.
 
@@ -349,7 +353,7 @@ Differences are classified as follows:
 | B — diagnostic classification (verdict and meaning unchanged) | routing-level demands the reference lists as record-set problems are readiness `BLOCKER`s here (7 authority fixtures; `gpos.diagnostics.REFERENCE_CLASS_BLOCKERS`); diagnostics are grouped by stable code, not counted like reference messages; readiness is judged over the routing scope, where the reference judged every record it was given (no frozen fixture changes verdict); a project pinned to another GPOS version is a compatibility error, not a verdict (fixture `authority/gpos-patch-upgrade-ungoverned.json`: its frozen rule, that a PATCH upgrade needs no decision, is checked at rule level) | allowed |
 | C — known external-checker limitation | the `rfc3339-validator` package, called directly, rejects lower-case `t` / `z`, which RFC 3339 §5.6 and the frozen contract accept. Production, the oracle and the `jsonschema` cross-check (which upper-cases date-times before calling that package) all accept them; the direct behaviour is asserted as a recorded divergence (`A02_Rfc3339`) | recorded |
 
-Production also enforces two requirements whose §12 text the reference does not model. No frozen fixture exercises them, so they change no fixture verdict:
+**NORMATIVE_CONTRACT_ENFORCED_BEYOND_REFERENCE_ORACLE.** Production also enforces two requirements whose §12 text the reference does not fully model. Human Review approved both as enforcement of frozen normative text. They are not semantic divergences, and they must not be weakened for reference parity. No frozen fixture exercises them, so they change no fixture verdict:
 
 | Code | Contract text |
 |---|---|

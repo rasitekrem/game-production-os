@@ -24,7 +24,9 @@ from .validation.project import evaluate_readiness, validate_project, validate_r
 
 EXIT_OK, EXIT_INVALID, EXIT_NOT_READY, EXIT_ERROR = 0, 1, 2, 3
 TOOL = "gpos-validator"
-VERDICTS = ("VALID", "INVALID", "READY", "NOT_READY", "ERROR")
+VERDICTS = ("VALID", "INVALID", "READY", "NOT_READY", "INCOMPATIBLE", "ERROR")
+# verdict -> exit code; one verdict never shares an exit code with another result class
+EXIT_FOR = {"VALID": 0, "READY": 0, "INVALID": 1, "NOT_READY": 2, "INCOMPATIBLE": 3, "ERROR": 3}
 CLI_ERROR_CODES = ("USAGE_ERROR", "INTERNAL_ERROR")
 
 
@@ -77,8 +79,8 @@ def _header(fw_version, project_id):
 def run_validate(args, fw):
     rs = load_project(args.project)
     result = validate_routing(rs, args.routing, fw) if args.routing else validate_project(rs, fw)
-    code = EXIT_OK if result.valid else EXIT_INVALID
-    verdict = "VALID" if result.valid else "INVALID"
+    verdict = result.status
+    code = EXIT_FOR[verdict]
     if args.format == "json":
         return code, _dump({**_envelope("validate", fw.version, rs.project_id, verdict, code), **result.to_dict()})
     lines = [_header(fw.version, rs.project_id)]
@@ -95,19 +97,15 @@ def run_validate(args, fw):
 def run_readiness(args, fw):
     rs = load_project(args.project)
     result = evaluate_readiness(rs, args.routing, fw)
-    if result.ready:
-        code, verdict = EXIT_OK, "READY"
-    elif not result.valid_records:
-        code, verdict = EXIT_INVALID, "NOT_READY"
-    else:
-        code, verdict = EXIT_NOT_READY, "NOT_READY"
+    verdict = result.status  # READY, INVALID or NOT_READY — never "NOT_READY" for invalid records
+    code = EXIT_FOR[verdict]
     if args.format == "json":
         return code, _dump({**_envelope("readiness", fw.version, rs.project_id, verdict, code), **result.to_dict()})
     overview = result.summary["routing"]
     subject = overview.get("subject") or {}
     lines = [_header(fw.version, rs.project_id),
              f"readiness {args.routing}: {verdict.replace('_', ' ')}"
-             + ("" if result.valid_records else " (record set INVALID)"),
+             + ("" if result.valid_records else " (errors in the records this routing depends on; fix them first)"),
              f"workflow {overview.get('workflow')} · subject {subject.get('kind')} {subject.get('ref')}",
              "required gates:"]
     for g in overview["required_gates"]:
@@ -126,15 +124,16 @@ def run_readiness(args, fw):
     return code, "\n".join(lines)
 
 
-def _error(argv_format, code, message, stream, diagnostic=None):
+def _error(argv_format, code, message, stream, diagnostic=None, verdict="ERROR"):
     if argv_format == "json":
         error = {"code": code, "message": message}
         if diagnostic is not None:
             error["diagnostic"] = diagnostic.to_dict()
-        print(_dump({"tool": TOOL, "validator_version": __version__, "verdict": "ERROR", "exit_code": EXIT_ERROR,
+        print(_dump({"tool": TOOL, "validator_version": __version__, "verdict": verdict, "exit_code": EXIT_FOR[verdict],
                      "error": error}), file=stream)
     else:
-        print(f"{TOOL}: error [{code}]: {message}", file=sys.stderr)
+        label = "incompatible" if verdict == "INCOMPATIBLE" else "error"
+        print(f"{TOOL}: {label} [{code}]: {message}", file=sys.stderr)
     return EXIT_ERROR
 
 
@@ -160,6 +159,6 @@ def main(argv=None, stdout=None):
     except UsageError as exc:
         return _error(fmt, "USAGE_ERROR", str(exc), stdout)
     except GposToolError as exc:
-        return _error(fmt, exc.code, str(exc), stdout, getattr(exc, "diagnostic", None))
+        return _error(fmt, exc.code, str(exc), stdout, getattr(exc, "diagnostic", None), getattr(exc, "status", "ERROR"))
     except Exception as exc:  # a validator defect: exit 3, never a PASS/READY/NOT READY verdict
         return _error(fmt, "INTERNAL_ERROR", f"{type(exc).__name__}: {exc}", stdout)

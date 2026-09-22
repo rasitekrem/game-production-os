@@ -62,7 +62,8 @@ BUNDLES = ROOT / "tests" / "fixtures" / "bundles"
 AUTHORITY = sorted((ROOT / "tests" / "fixtures" / "authority").glob("*.json"))
 RECORDS = sorted((ROOT / "tests" / "fixtures" / "records").glob("*.json"))
 
-# Production rules the frozen reference does not model; each is §12 contract text (reported for Human Review):
+# NORMATIVE_CONTRACT_ENFORCED_BEYOND_REFERENCE_ORACLE (approved at Human Review; not semantic divergences,
+# never to be weakened for parity) — §12 contract text the frozen reference does not fully model:
 #   CROSS_REVIEW_SUPERSEDED_WITHOUT_REPLACEMENT §12.6  "a superseded negative cross-review has a later review by the same reviewer"
 #   HUMAN_EVIDENCE_SOURCE_NOT_AUTHORIZED        §12.12 HUMAN_EVIDENCE source is a Human Review participant "for the gate"
 # No fixture triggers them, so they never create a verdict difference on the frozen fixtures.
@@ -1210,6 +1211,7 @@ class U01_UnsupportedGposVersion(unittest.TestCase):
             cfg.write_text(json.dumps(doc))
             for argv in (("validate",), ("readiness", "--routing", "FEAT-DASH")):
                 code, out = run_cli(*argv, "--project", str(tmp / "p"), "--format", "json")
+                self.assertEqual(json.loads(out)["verdict"], "INCOMPATIBLE")
                 err = json.loads(out)["error"]
                 self.assertEqual((code, err["code"], err["diagnostic"]["severity"], err["diagnostic"]["category"]),
                                  (3, "UNSUPPORTED_GPOS_VERSION", "INCOMPATIBLE", "COMPATIBILITY"))
@@ -1287,6 +1289,67 @@ class K01_DiagnosticClassification(unittest.TestCase):
                 self.assertEqual((d.severity, d.category), dg.CODES[d.code][:2], f.name)
                 seen += 1
         self.assertGreater(seen, 50)
+
+
+class K02_FourResultClasses(unittest.TestCase):
+    """VALID/READY, INVALID, NOT_READY and INCOMPATIBLE are distinct in the library and in CLI JSON, each with its
+    own exit code; `ready: false` never hides whether the cause is INVALID or NOT_READY."""
+
+    CASES = [  # (bundle, routing, library status, CLI verdict, exit code)
+        ("multi-routing-scoped", "FEAT-SLIDE", "INVALID", "INVALID", 1),       # integrity error in the requested scope
+        ("gameplay-feature-not-ready", "FEAT-DASH", "NOT_READY", "NOT_READY", 2),  # valid but incomplete
+        ("multi-routing-scoped", "FEAT-DASH", "READY", "READY", 0),            # ready (unrelated routing is invalid)
+        ("invalid-authority", "FEAT-DASH", "INVALID", "INVALID", 1),           # global authority error
+        ("release-missing-primary-coverage", "REL-1.0", "NOT_READY", "NOT_READY", 2),
+    ]
+
+    def test_readiness_classes(self):
+        for name, task, status, verdict, exit_code in self.CASES:
+            r = gpos.evaluate_readiness(bundle(name), task)
+            self.assertEqual(r.status, status, name)
+            self.assertEqual(r.to_dict()["status"], status, name)
+            self.assertEqual((r.valid_records, r.ready), {"INVALID": (False, False), "NOT_READY": (True, False),
+                                                          "READY": (True, True)}[status], name)
+            code, out = run_cli("readiness", "--project", str(BUNDLES / name), "--routing", task, "--format", "json")
+            doc = json.loads(out)
+            self.assertEqual((code, doc["exit_code"], doc["verdict"], doc["status"]), (exit_code, exit_code, verdict, status), name)
+            code, text = run_cli("readiness", "--project", str(BUNDLES / name), "--routing", task)
+            self.assertEqual(code, exit_code, name)
+            self.assertIn(f"readiness {task}: {verdict.replace('_', ' ')}", text, name)
+            if status == "INVALID":
+                self.assertNotIn("NOT READY", text, name)
+
+    def test_incompatible_class(self):
+        rs = bundle("gameplay-feature-ready")
+        m_unsupported_version(rs)
+        with self.assertRaises(UnsupportedGposVersion) as caught:
+            gpos.evaluate_readiness(rs, "FEAT-DASH")
+        self.assertEqual(caught.exception.status, "INCOMPATIBLE")
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            shutil.copytree(BUNDLES / "gameplay-feature-ready", tmp / "p")
+            cfg = tmp / "p" / ".game" / "gpos" / "project-config.json"
+            cfg.write_text(cfg.read_text().replace(f'"{FW.version}"', '"9.9.9"'))
+            for argv in (("validate",), ("readiness", "--routing", "FEAT-DASH")):
+                code, out = run_cli(*argv, "--project", str(tmp / "p"), "--format", "json")
+                self.assertEqual((code, json.loads(out)["verdict"], json.loads(out)["exit_code"]), (3, "INCOMPATIBLE", 3), argv)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_validate_classes_and_exit_table(self):
+        for name, status, exit_code in (("minimal-valid", "VALID", 0), ("invalid-authority", "INVALID", 1),
+                                        ("gameplay-feature-not-ready", "VALID", 0)):
+            self.assertEqual(gpos.validate_project(bundle(name)).status, status, name)
+            code, out = run_cli("validate", "--project", str(BUNDLES / name), "--format", "json")
+            self.assertEqual((code, json.loads(out)["verdict"], json.loads(out)["status"]), (exit_code, status, status), name)
+        self.assertEqual(cli.EXIT_FOR, {"VALID": 0, "READY": 0, "INVALID": 1, "NOT_READY": 2, "INCOMPATIBLE": 3, "ERROR": 3})
+
+    def test_no_not_ready_with_exit_1_anywhere(self):
+        for name, (_, ready) in EXPECTED_BUNDLES.items():
+            for task in ready:
+                code, out = run_cli("readiness", "--project", str(BUNDLES / name), "--routing", task, "--format", "json")
+                self.assertEqual(code, cli.EXIT_FOR[json.loads(out)["verdict"]], f"{name} {task}")
+                self.assertNotEqual((json.loads(out)["verdict"], code), ("NOT_READY", 1), f"{name} {task}")
 
 
 # ---------------------------------------------------------------- E  reference independence
@@ -1487,7 +1550,7 @@ class R03_Cli(unittest.TestCase):
             (("validate", "--project", b("gameplay-feature-not-ready")), 0, "VALID"),
             (("readiness", "--project", b("gameplay-feature-ready"), "--routing", "FEAT-DASH"), 0, "READY"),
             (("readiness", "--project", b("gameplay-feature-not-ready"), "--routing", "FEAT-DASH"), 2, "NOT_READY"),
-            (("readiness", "--project", b("invalid-authority"), "--routing", "FEAT-DASH"), 1, "NOT_READY"),
+            (("readiness", "--project", b("invalid-authority"), "--routing", "FEAT-DASH"), 1, "INVALID"),  # was NOT_READY/1 (defect)
             (("readiness", "--project", b("release-missing-primary-coverage"), "--routing", "REL-1.0"), 2, "NOT_READY"),
             (("readiness", "--project", b("release-multi-platform-ready"), "--routing", "REL-1.0"), 0, "READY"),
             (("validate", "--project", b("gameplay-feature-ready"), "--routing", "FEAT-DASH"), 0, "VALID"),

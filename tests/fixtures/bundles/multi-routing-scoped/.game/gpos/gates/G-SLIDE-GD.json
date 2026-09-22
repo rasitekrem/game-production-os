@@ -1,0 +1,34 @@
+{
+  "applied_conditions": [
+    "REAL_TIME_BEHAVIOUR"
+  ],
+  "assessed_by": {
+    "id": "gameplay-design",
+    "kind": "AGENT"
+  },
+  "blocking": true,
+  "cross_reviews": [
+    {
+      "assessment": "PASS",
+      "reviewed_revision": "rev-slide-2",
+      "reviewer": "level-design"
+    }
+  ],
+  "evidence_refs": [
+    "EV-SLIDE-MOTION"
+  ],
+  "gate": "GAMEPLAY_DESIGN",
+  "gate_id": "G-SLIDE-GD",
+  "owner": "gameplay-design",
+  "recorded_at": "2026-03-01T10:00:00Z",
+  "review_policy": "CROSS_REVIEW_REQUIRED",
+  "routing_ref": "FEAT-SLIDE",
+  "schema_version": "1.0",
+  "scope": {
+    "kind": "FEATURE",
+    "ref": "slide",
+    "revision": "rev-slide-2"
+  },
+  "specialist_assessment": "PASS",
+  "status": "PASS"
+}

@@ -1,0 +1,31 @@
+{
+  "artifacts": [
+    {
+      "description": "synthetic",
+      "media_type": "application/octet-stream",
+      "uri": "evidence/EV-SLIDE-MOTION.bin"
+    }
+  ],
+  "created_at": "2026-03-01T10:00:00Z",
+  "evidence_id": "EV-SLIDE-MOTION",
+  "limitations": [
+    "Synthetic record for validator tests"
+  ],
+  "provenance": {
+    "build_id": "build-rev-slide-1",
+    "capture_context": "DIAGNOSTIC_RUNTIME",
+    "subject_revision": "rev-slide-1"
+  },
+  "schema_version": "1.0",
+  "source": {
+    "id": "gameplay-design",
+    "kind": "AGENT"
+  },
+  "subject": {
+    "kind": "FEATURE",
+    "ref": "slide"
+  },
+  "summary": "Synthetic MOTION_EVIDENCE for slide.",
+  "superseded": false,
+  "type": "MOTION_EVIDENCE"
+}

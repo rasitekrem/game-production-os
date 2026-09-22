@@ -1,0 +1,26 @@
+{
+  "applied_conditions": [],
+  "assessed_by": {
+    "id": "qa-performance",
+    "kind": "AGENT"
+  },
+  "blocking": true,
+  "evidence_refs": [
+    "EV-DASH-TEST"
+  ],
+  "gate": "TECHNICAL",
+  "gate_id": "G-DASH-TECH",
+  "owner": "qa-performance",
+  "recorded_at": "2026-03-01T10:00:00Z",
+  "review_policy": "ROUTINE",
+  "routine_basis": "Bounded work inside the approved routing",
+  "routing_ref": "FEAT-DASH",
+  "schema_version": "1.0",
+  "scope": {
+    "kind": "FEATURE",
+    "ref": "dash",
+    "revision": "rev-dash-3"
+  },
+  "specialist_assessment": "PASS",
+  "status": "PASS"
+}

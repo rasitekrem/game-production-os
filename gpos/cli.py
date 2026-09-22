@@ -8,7 +8,7 @@ Exit codes:
     0  records valid (validate) / routing READY (readiness)
     1  records invalid
     2  records valid but routing NOT READY (readiness only)
-    3  invocation, tool or internal error (never a verdict about records)
+    3  invocation, tool, compatibility (UNSUPPORTED_GPOS_VERSION) or internal error — never a verdict about records
 """
 
 import argparse
@@ -120,13 +120,19 @@ def run_readiness(args, fw):
     if others:
         lines.append("other diagnostics:")
         lines += [_diag_line(d) for d in others]
+    if result.project_has_other_diagnostics:
+        lines.append("note: records outside this routing's scope have diagnostics (they do not affect this verdict); "
+                     "run `validate` for the whole project")
     return code, "\n".join(lines)
 
 
-def _error(argv_format, code, message, stream):
+def _error(argv_format, code, message, stream, diagnostic=None):
     if argv_format == "json":
+        error = {"code": code, "message": message}
+        if diagnostic is not None:
+            error["diagnostic"] = diagnostic.to_dict()
         print(_dump({"tool": TOOL, "validator_version": __version__, "verdict": "ERROR", "exit_code": EXIT_ERROR,
-                     "error": {"code": code, "message": message}}), file=stream)
+                     "error": error}), file=stream)
     else:
         print(f"{TOOL}: error [{code}]: {message}", file=sys.stderr)
     return EXIT_ERROR
@@ -154,6 +160,6 @@ def main(argv=None, stdout=None):
     except UsageError as exc:
         return _error(fmt, "USAGE_ERROR", str(exc), stdout)
     except GposToolError as exc:
-        return _error(fmt, exc.code, str(exc), stdout)
+        return _error(fmt, exc.code, str(exc), stdout, getattr(exc, "diagnostic", None))
     except Exception as exc:  # a validator defect: exit 3, never a PASS/READY/NOT READY verdict
         return _error(fmt, "INTERNAL_ERROR", f"{type(exc).__name__}: {exc}", stdout)

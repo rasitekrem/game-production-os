@@ -2622,7 +2622,7 @@ def validator_vocabulary():
     sys.path.insert(0, str(ROOT))
     from gpos import cli, diagnostics, errors
     from gpos.validation import project
-    words = set(diagnostics.CODES) | set(diagnostics.SEVERITY_ORDER) | {diagnostics.LOAD, diagnostics.RECORD, diagnostics.READINESS}
+    words = set(diagnostics.CODES) | set(diagnostics.SEVERITY_ORDER) | set(diagnostics.CATEGORIES)
     words |= set(cli.VERDICTS) | set(cli.CLI_ERROR_CODES) | set(project.OVERVIEW_STATES)
     pending = [errors.GposToolError]
     while pending:

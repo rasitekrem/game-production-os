@@ -21,11 +21,16 @@ Builds on the frozen Phase-1 core (`v1.0.0-alpha.7`). No change to gate, evidenc
 - Phase-1 boundary tests assert the Phase-2A boundary (code only in `tests/` and `gpos/`; `tools/` documentation only; `adapters/` unchanged).
 - The vocabulary check accepts validator diagnostic codes and verdicts.
 
+### Semantic alignment (Human Review of Phase 2A)
+
+- Routed readiness is scoped: project-global authority plus the routing's own dependency records. Errors in unrelated routings no longer block it; `validate` still reports the whole project, and readiness reports them only as `project_has_other_diagnostics`.
+- A project pinned to another GPOS version raises `UnsupportedGposVersion` (`UNSUPPORTED_GPOS_VERSION`, severity `INCOMPATIBLE`, category `COMPATIBILITY`, CLI exit 3); it is no longer reported as invalid records.
+- Timestamps follow the frozen RFC 3339 contract: lower-case `t` / `z` are accepted, as by the Phase-1 oracle and the `jsonschema` cross-check. The stricter behaviour of `rfc3339-validator` called directly is recorded as a known external-checker divergence.
+- The `ERROR` / `BLOCKER` split is documented as the normative Phase-2A diagnostic convention. Parity is required on verdicts and frozen rules, not on diagnostic counts.
+
 ### Human Review items
 
-- Production-only rules taken from the contract text: superseded negative cross-review needs a later review by the same reviewer (§12.6); `HUMAN_EVIDENCE` cited by a gate must come from a Human Review participant for that gate (§12.12); records pinned to another GPOS version are not validated (§12.7).
-- RFC 3339: production rejects lower-case `t`/`z`, as `rfc3339-validator` does; the Phase-1 oracle accepts them.
-- Readiness scope: production validates the whole project, then one routing; the Phase-1 reference evaluated `[routing]` alone.
+- Production enforces two §12 texts the reference does not model: a superseded negative cross-review needs a later review by the same reviewer (§12.6); `HUMAN_EVIDENCE` cited by a gate must come from a Human Review participant for that gate (§12.12).
 
 ### Maturity
 

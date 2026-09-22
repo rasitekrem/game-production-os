@@ -43,13 +43,14 @@ import gpos  # noqa: E402
 import schema_lite  # noqa: E402  (oracle)
 import validate_framework as vf  # noqa: E402  (oracle)
 from gpos import cli, diagnostics as dg  # noqa: E402
-from gpos.errors import FrameworkLoadError, UnsupportedSchemaKeyword  # noqa: E402
+from gpos.errors import FrameworkLoadError, UnsupportedGposVersion, UnsupportedSchemaKeyword  # noqa: E402
 from gpos.framework import load_framework  # noqa: E402
 from gpos.records import Record, from_records, load_project  # noqa: E402
 from gpos.schema import SchemaValidator, is_rfc3339_datetime  # noqa: E402
-from gpos.validation import authority, project  # noqa: E402
+from gpos.validation import authority, project  # noqa: E402  (authority: rule-level checks)
 from gpos.validation.gates import assess_gate  # noqa: E402
 from gpos.validation.routing import routing_structure  # noqa: E402
+from gpos.validation.scope import routing_scope  # noqa: E402
 
 try:
     import jsonschema  # type: ignore
@@ -61,12 +62,99 @@ BUNDLES = ROOT / "tests" / "fixtures" / "bundles"
 AUTHORITY = sorted((ROOT / "tests" / "fixtures" / "authority").glob("*.json"))
 RECORDS = sorted((ROOT / "tests" / "fixtures" / "records").glob("*.json"))
 
-# Production rules the frozen reference does not model (reported for Human Review):
-#   UNSUPPORTED_GPOS_VERSION                    §12.7  records are validated only against the pinned GPOS version
+# Production rules the frozen reference does not model; each is §12 contract text (reported for Human Review):
 #   CROSS_REVIEW_SUPERSEDED_WITHOUT_REPLACEMENT §12.6  "a superseded negative cross-review has a later review by the same reviewer"
 #   HUMAN_EVIDENCE_SOURCE_NOT_AUTHORIZED        §12.12 HUMAN_EVIDENCE source is a Human Review participant "for the gate"
-PRODUCTION_ONLY = {"UNSUPPORTED_GPOS_VERSION", "CROSS_REVIEW_SUPERSEDED_WITHOUT_REPLACEMENT", "HUMAN_EVIDENCE_SOURCE_NOT_AUTHORIZED"}
-EXPECTED_DIVERGENCE = {"gpos-patch-upgrade-ungoverned.json": {"UNSUPPORTED_GPOS_VERSION"}}
+# No fixture triggers them, so they never create a verdict difference on the frozen fixtures.
+PRODUCTION_ONLY = {"CROSS_REVIEW_SUPERSEDED_WITHOUT_REPLACEMENT", "HUMAN_EVIDENCE_SOURCE_NOT_AUTHORIZED"}
+# Fixtures pinned to a GPOS version other than this validator's: the validator raises UnsupportedGposVersion
+# (a compatibility condition, not a verdict); the frozen rule the fixture exercises is checked at rule level.
+VERSION_FIXTURES = {"gpos-patch-upgrade-ungoverned.json"}
+
+# Frozen semantic-rule parity: every reference problem message maps to exactly one production code.
+# Order matters (first match wins). Diagnostic counts are NOT required to match (review item 4).
+REFERENCE_RULES = [(re.compile(p), c) for p, c in [
+    (r"^duplicate (decision_authorities id|human_review\.reviewers id|project trigger id) ", "DUPLICATE_CONFIG_ID"),
+    (r"^duplicate (decision_id|evidence_id|gate_id|routing task_id) ", "DUPLICATE_RECORD_ID"),
+    (r"^duplicate review-policy override", "REVIEW_OVERRIDE_DUPLICATE"),
+    (r"does not resolve to a HUMAN_REVIEW record", "HUMAN_REVIEW_REF_NOT_FOUND"),
+    (r"does not resolve to a routing record", "ROUTING_REF_NOT_FOUND"),
+    (r"does not resolve to a Human Decision record", "DECISION_REF_NOT_FOUND"),
+    (r"is not ACTIVE \(", "DECISION_NOT_ACTIVE"),
+    (r"has kind .*, expected", "DECISION_KIND_MISMATCH"),
+    (r"who is not authorized for", "UNAUTHORIZED_DECIDER"),
+    (r"subject kind .* is not \[|is not this project", "DECISION_SUBJECT_MISMATCH"),
+    (r"does not match decision", "DECISION_VALUE_MISMATCH"),
+    (r"^lifecycle: decision enters", "LIFECYCLE_TRANSITION_MISMATCH"),
+    (r"^lifecycle: .* is not an allowed transition", "LIFECYCLE_TRANSITION_ILLEGAL"),
+    (r"^lifecycle: .* requires a Golden Cell waiver", "LIFECYCLE_WAIVER_REQUIRED"),
+    (r"^gpos_upgrade: from_version equals", "GPOS_UPGRADE_SAME_VERSION"),
+    (r"requires a GPOS_UPGRADE decision", "GPOS_UPGRADE_DECISION_REQUIRED"),
+    (r"declines TARGET_PRESENTATION_DIFFERS", "CONDITION_DECLINE_NOT_AUTHORIZED"),
+    (r"must apply TARGET_PRESENTATION_DIFFERS", "CONDITION_REQUIRED_BY_PARITY"),
+    (r"more than one applicable review-policy override", "REVIEW_OVERRIDE_AMBIGUOUS"),
+    (r"weaker than the effective", "REVIEW_POLICY_WEAKER_THAN_EFFECTIVE"),
+    (r"is not a project trigger declared", "PROJECT_TRIGGER_UNKNOWN"),
+    (r"is not a listed reviewer or decision authority", "HUMAN_EVIDENCE_SOURCE_UNLISTED"),
+    (r"^[A-Z_]+: \S+ appears more than once in (applied|unapplied)_conditions", "CONDITION_DUPLICATE"),
+    (r"is both applied and unapplied", "CONDITION_APPLIED_AND_DECLINED"),
+    (r"is not a condition of", "CONDITION_NOT_DEFINED"),
+    (r"is not accounted for", "CONDITION_UNACCOUNTED"),
+    (r"appears more than once in (required|omitted)_gates", "ROUTING_GATE_DUPLICATE"),
+    (r"is both required and omitted", "ROUTING_GATE_REQUIRED_AND_OMITTED"),
+    (r"cannot be omitted", "WORKFLOW_GATE_OMITTED"),
+    (r"but is not in required_gates", "WORKFLOW_GATE_MISSING"),
+    (r"must account for", "WORKFLOW_GATE_UNACCOUNTED"),
+    (r"^primary specialist repeated", "ROUTING_PRIMARY_REPEATED"),
+    (r" owner \S+ is not routed$", "ROUTING_OWNER_NOT_ROUTED"),
+    (r"routing omits required evidence|routing requires none of", "ROUTING_EVIDENCE_BELOW_MINIMUM"),
+    (r"which is not valid evidence for", "ROUTING_EVIDENCE_INVALID_FOR_GATE"),
+    (r"needs a cross-reviewer other than", "ROUTING_CROSS_REVIEWER_MISSING"),
+    (r"is HUMAN_REVIEW_REQUIRED but HUMAN is not a reviewer", "ROUTING_HUMAN_REVIEWER_MISSING"),
+    (r"was raised after routing", "GATE_NOT_IN_ROUTING"),
+    (r"gate records; ambiguous", "ROUTED_GATE_AMBIGUOUS"),
+    (r"does not match routing", "ROUTING_GATE_MISMATCH"),
+    (r"not a routed reviewer of", "CROSS_REVIEWER_NOT_ROUTED"),
+    (r"routed but not eligible", "CROSS_REVIEWER_NOT_ELIGIBLE"),
+    (r"PASS needs a current passing cross-review by a routed reviewer", "ROUTED_CROSS_REVIEW_MISSING"),
+    (r"PASS lacks routing-required evidence", "ROUTED_EVIDENCE_MISSING"),
+    (r"PRIMARY target platform is UNDECIDED", "PRIMARY_PLATFORM_UNDECIDED"),
+    (r"has no counting .* for PRIMARY platform", "PRIMARY_PLATFORM_COVERAGE_MISSING"),
+    (r"^unknown evidence", "EVIDENCE_NOT_FOUND"),
+    (r" is superseded$", "EVIDENCE_SUPERSEDED"),
+    (r"not acceptable for", "EVIDENCE_TYPE_NOT_ACCEPTED"),
+    (r"incompatible type/context", "INVALID_EVIDENCE_CONTEXT"),
+    (r"which does not count for", "EVIDENCE_CONTEXT_NOT_COUNTING"),
+    (r"not the gate subject", "EVIDENCE_SUBJECT_MISMATCH"),
+    (r" is stale: ", "STALE_EVIDENCE"),
+    (r"carryover names", "CARRYOVER_REVISION_MISMATCH"),
+    (r"not a declared project target platform", "TARGET_PLATFORM_NOT_DECLARED"),
+    (r"not a declared \S+ reference device", "REFERENCE_DEVICE_MISMATCH"),
+    (r"instrumentation timing impact", "INSTRUMENTATION_TIMING_UNUSABLE"),
+    (r" may not own ", "GATE_OWNER_NOT_PERMITTED"),
+    (r"is not the accountable owner", "ASSESSOR_NOT_OWNER"),
+    (r"cross-reviewed its own gate", "CROSS_REVIEW_SELF"),
+    (r"never reviews discipline quality", "CROSS_REVIEW_BY_NEVER_REVIEWER"),
+    (r"^stale cross-review by", "CROSS_REVIEW_STALE"),
+    (r"PASS has no current passing cross-review by a specialist eligible", "CROSS_REVIEW_ELIGIBLE_MISSING"),
+    (r"^ROUTINE PASS must be", "ROUTINE_PASS_NOT_OWNER"),
+    (r"^PASS rests only on insufficient", "PASS_INSUFFICIENT_EVIDENCE"),
+    (r"^PASS lacks ", "PASS_EVIDENCE_MISSING"),
+    (r"^applicability of .* is not accountable", "APPLICABILITY_NOT_ACCOUNTABLE"),
+    (r"^carryover of .* is not accountable", "CARRYOVER_NOT_ACCOUNTABLE"),
+    (r"is not authorized to assess", "GATE_ASSESSOR_UNAUTHORIZED"),
+    (r"is not authorized to approve evidence reuse", "EVIDENCE_REUSE_APPROVER_UNAUTHORIZED"),
+    (r"is not a PASS for the same scope", "HUMAN_REVIEW_SCOPE_MISMATCH"),
+    (r"is not authorized to review", "HUMAN_REVIEWER_UNAUTHORIZED"),
+]]
+
+
+def reference_rule(message):
+    """The production code enforcing the frozen rule behind one reference problem message."""
+    for pattern, code in REFERENCE_RULES:
+        if pattern.search(message):
+            return code
+    raise AssertionError(f"no production rule for reference problem {message!r}")
 
 
 # ---------------------------------------------------------------- helpers
@@ -83,6 +171,13 @@ def reference_verdict(config, decisions, evidence, gates, routings):
     problems = vf.record_set_problems(config, decisions, evidence, gates, routings)
     ready = {r["task_id"]: vf.routed_scope_ready(config, r, gates, evidence, decisions) for r in routings} if len(routings) == 1 else {}
     return problems, ready
+
+
+def scoped_reference_ready(rs, task):
+    """Reference routed readiness evaluated over the production routing scope (same records production judges)."""
+    sc = routing_scope(rs, task, FW)
+    return vf.routed_scope_ready(sc.config.data, sc.routings[0].data, [r.data for r in sc.gates], [r.data for r in sc.evidence],
+                                 [r.data for r in sc.decisions])
 
 
 def production_flags(an):
@@ -158,6 +253,12 @@ def schema_instances():
     return out
 
 
+# Known external-checker divergence (category C): the rfc3339-validator package, called directly, rejects the
+# lower-case 't' separator and 'z' designator that RFC 3339 §5.6 and the frozen GPOS contract (Phase-1 oracle)
+# accept. `jsonschema` upper-cases date-times before calling it, so the jsonschema cross-check agrees with the
+# contract and needs no exception.
+
+
 class A01_SchemaParity(unittest.TestCase):
     def test_production_matches_oracle_and_jsonschema(self):
         instances = schema_instances()
@@ -188,9 +289,8 @@ class A01_SchemaParity(unittest.TestCase):
 
 class A02_Rfc3339(unittest.TestCase):
     VALID = ["2026-01-01T00:00:00Z", "2026-12-31T23:59:59.999+14:00", "2024-02-29T12:00:00-05:30"]
-    # RFC 3339 §5.6 allows lower-case t/z; rfc3339-validator (the jsonschema checker) rejects them and so does
-    # production (fail-closed). The frozen Phase-1 oracle accepts them: the only known oracle divergence.
-    ORACLE_DIVERGENCE = ["2026-01-01t00:00:00z", "2026-01-01T00:00:00z", "2026-01-01t00:00:00Z"]
+    # RFC 3339 §5.6 and the frozen GPOS contract accept lower-case t/z; rfc3339-validator does not (category C).
+    LOWERCASE = ["2026-01-01t00:00:00z", "2026-01-01T00:00:00z", "2026-01-01t00:00:00Z", "2024-02-29t23:59:59.5+01:00"]
     INVALID = ["garbage", "2026-02-30T00:00:00Z", "2025-02-29T00:00:00Z", "2026-01-01T24:00:00Z", "2026-01-01T12:60:00Z",
                "2026-01-01T12:00:60Z", "2026-01-01T12:00:00+24:00", "2026-01-01T12:00:00", "2026-01-01 12:00:00Z",
                "2026-13-01T00:00:00Z", "2026-01-01T00:00:00+05:60", "", "2026-1-1T00:00:00Z"]
@@ -200,11 +300,28 @@ class A02_Rfc3339(unittest.TestCase):
             from rfc3339_validator import validate_rfc3339  # type: ignore
         except ImportError:  # pragma: no cover
             validate_rfc3339 = None
-        for v in self.VALID + self.INVALID + self.ORACLE_DIVERGENCE:
-            self.assertEqual(is_rfc3339_datetime(v), v in self.VALID, v)
-            self.assertEqual(is_rfc3339_datetime(v), schema_lite.is_rfc3339_datetime(v) and v not in self.ORACLE_DIVERGENCE, v)
+        for v in self.VALID + self.INVALID + self.LOWERCASE:
+            self.assertEqual(is_rfc3339_datetime(v), v not in self.INVALID, v)
+            self.assertEqual(is_rfc3339_datetime(v), schema_lite.is_rfc3339_datetime(v), v)  # frozen oracle: always agree
             if validate_rfc3339 is not None:
-                self.assertEqual(is_rfc3339_datetime(v), bool(validate_rfc3339(v)), v)
+                if v in self.LOWERCASE:  # category C: recorded, not followed
+                    self.assertFalse(validate_rfc3339(v), f"{v}: external checker changed; review the known divergence")
+                else:
+                    self.assertEqual(is_rfc3339_datetime(v), bool(validate_rfc3339(v)), v)
+
+    def test_lowercase_timestamps_in_records(self):
+        """A record with lower-case t/z is valid under the contract: production, the frozen oracle and the jsonschema
+        cross-check agree (only rfc3339-validator called directly disagrees, see test above)."""
+        rs = bundle("gameplay-feature-ready")
+        gate = data(rs, "gate", "G-DASH-TECH")
+        gate["recorded_at"] = "2026-03-01t10:00:00z"
+        self.assertTrue(gpos.validate_project(rs).valid)
+        self.assertTrue(gpos.evaluate_readiness(rs, "FEAT-DASH").ready)
+        self.assertEqual(schema_lite.Validator(vf.SCHEMAS["gate"]).errors(gate), [])
+        if jsonschema is not None:
+            self.assertTrue(vf._reference_validator("gate").is_valid(gate))
+        gate["recorded_at"] = "2026-02-30t10:00:00z"
+        self.assertFalse(gpos.validate_project(rs).valid)
 
     def test_timestamps_are_asserted_in_records(self):
         rs = bundle("gameplay-feature-ready")
@@ -335,28 +452,35 @@ class B01_AuthorityFixtureParity(unittest.TestCase):
             fx = json.loads(f.read_text())
             recs = fixture_records(f)
             ref, _ = reference_verdict(*recs)
-            an = project.analyze(from_records(*recs))
-            if f.name in EXPECTED_DIVERGENCE:
+            if f.name in VERSION_FIXTURES:
                 self.assertEqual(ref, [], f.name)
-                self.assertEqual(error_codes(an), EXPECTED_DIVERGENCE[f.name], f.name)
+                with self.assertRaises(UnsupportedGposVersion, msg=f.name):
+                    project.analyze(from_records(*recs))
+                # the frozen rule itself (a PATCH upgrade needs no GPOS_UPGRADE decision) still holds at rule level
+                self.assertEqual(authority.project_authority(FW, recs[0], {}), [], f.name)
                 continue
+            an = project.analyze(from_records(*recs))
             self.assertEqual(bool(ref), production_flags(an), f"{f.name}: reference {ref} vs production {sorted(all_codes(an))}")
             self.assertEqual(bool(fx["expect_problem"]), production_flags(an), f.name)
             if fx["expect_problem"]:
                 self.assertIn(AUTHORITY_CODES[f.stem], all_codes(an), f"{f.name}: {sorted(all_codes(an))}")
             self.assertFalse(all_codes(an) & PRODUCTION_ONLY, f.name)
 
-    def test_problem_counts_match_reference(self):
-        """One production diagnostic per reference problem (errors plus reference-class blockers)."""
+    def test_every_reference_problem_has_its_frozen_rule(self):
+        """Frozen semantic-rule parity: each reference problem is reported under the production code of the same
+        rule. (Replaces the alpha.8 diagnostic-count test: counts are a grouping choice, not a contract.)"""
+        seen = set()
         for f in AUTHORITY:
-            if f.name in EXPECTED_DIVERGENCE:
+            if f.name in VERSION_FIXTURES:
                 continue
             recs = fixture_records(f)
-            ref = vf.record_set_problems(*recs)
             an = project.analyze(from_records(*recs))
-            n = len([d for d in an.errors if d.severity == dg.ERROR]) + \
-                len([d for v in an.routing_diagnostics.values() for d in v if d.code in dg.REFERENCE_CLASS_BLOCKERS])
-            self.assertEqual(n, len(ref), f"{f.name}: {ref}")
+            produced = {d.code for d in an.errors if d.severity == dg.ERROR} | \
+                {d.code for v in an.routing_diagnostics.values() for d in v if d.code in dg.REFERENCE_CLASS_BLOCKERS}
+            expected = {reference_rule(m) for m in vf.record_set_problems(*recs)}
+            self.assertEqual(produced - PRODUCTION_ONLY, expected, f.name)
+            seen |= expected
+        self.assertGreater(len(seen), 30)
 
     def test_every_expected_problem_has_a_code(self):
         expected = {f.stem for f in AUTHORITY if json.loads(f.read_text())["expect_problem"]}
@@ -373,7 +497,7 @@ class B02_RecordFixtureParity(unittest.TestCase):
             ref_problems, ref_counting = vf.gate_evidence(gate, by_id)
             diags, counting = assess_gate(FW, gate, by_id)
             diags = [d for d in diags if d.code not in PRODUCTION_ONLY]
-            self.assertEqual(len(diags), len(ref_problems), f"{f.name}: {ref_problems} vs {[d.code for d in diags]}")
+            self.assertEqual({d.code for d in diags}, {reference_rule(m) for m in ref_problems}, f"{f.name}: {ref_problems}")
             self.assertEqual([e["evidence_id"] for e in counting], [e["evidence_id"] for e in ref_counting], f.name)
             if fx["expect_problem"]:
                 self.assertIn(RECORD_CODES[f.stem], {d.code for d in diags}, f.name)
@@ -395,48 +519,61 @@ class B02_RecordFixtureParity(unittest.TestCase):
 # ---------------------------------------------------------------- C  readiness parity
 
 EXPECTED_BUNDLES = {
-    # name: (valid, {routing: ready})
+    # name: (whole project valid, {routing: (routing scope valid, ready)})
     "minimal-valid": (True, {}),
-    "gameplay-feature-ready": (True, {"FEAT-DASH": True}),
-    "gameplay-feature-not-ready": (True, {"FEAT-DASH": False}),
-    "golden-cell-ready": (True, {"GC-1": True}),
-    "golden-cell-incomplete": (True, {"GC-1": False}),
-    "release-multi-platform-ready": (True, {"REL-1.0": True}),
-    "release-missing-primary-coverage": (True, {"REL-1.0": False}),
-    "invalid-authority": (False, {"FEAT-DASH": False}),
+    "gameplay-feature-ready": (True, {"FEAT-DASH": (True, True)}),
+    "gameplay-feature-not-ready": (True, {"FEAT-DASH": (True, False)}),
+    "golden-cell-ready": (True, {"GC-1": (True, True)}),
+    "golden-cell-incomplete": (True, {"GC-1": (True, False)}),
+    "release-multi-platform-ready": (True, {"REL-1.0": (True, True)}),
+    "release-missing-primary-coverage": (True, {"REL-1.0": (True, False)}),
+    "invalid-authority": (False, {"FEAT-DASH": (False, False)}),
+    "multi-routing-scoped": (False, {"FEAT-DASH": (True, True), "FEAT-SLIDE": (False, False)}),
 }
+
+# Single-routing authority fixtures where the reference (which judges every record in the fixture) says NOT READY
+# but the routing's scope is clean: the problem lies in records the routing does not depend on (review item 1).
+# Category B: verdict difference caused only by the corrected readiness scope; the frozen rule still fires in
+# whole-project validation, and the reference evaluated over the same scope agrees with production.
+SCOPE_ONLY_READINESS_DIFFERENCES = set()  # none among the frozen fixtures; the mechanism stays asserted
 
 
 class C01_ReadinessParity(unittest.TestCase):
     def test_single_routing_fixtures(self):
-        n = 0
+        n, scope_only = 0, set()
         for f in AUTHORITY:
-            if f.name in EXPECTED_DIVERGENCE:
+            if f.name in VERSION_FIXTURES:
                 continue
             recs = fixture_records(f)
             if len(recs[4]) != 1:
                 continue
             _, ref_ready = reference_verdict(*recs)
-            (task, expected), = ref_ready.items()
-            self.assertEqual(gpos.evaluate_readiness(from_records(*recs), task).ready, expected, f.name)
+            (task, ref_full), = ref_ready.items()
+            rs = from_records(*recs)
+            ready = gpos.evaluate_readiness(rs, task).ready
+            self.assertEqual(ready, scoped_reference_ready(rs, task), f.name)  # same records -> same verdict, always
+            if ready != ref_full:
+                self.assertTrue(ready and not ref_full, f.name)  # scoping only ever removes unrelated blockers
+                self.assertFalse(gpos.validate_project(rs).valid, f.name)  # ...which whole-project validation still reports
+                scope_only.add(f.name)
             n += 1
         self.assertGreaterEqual(n, 25)
+        self.assertEqual(scope_only, SCOPE_ONLY_READINESS_DIFFERENCES)
 
     def test_bundles(self):
         self.assertEqual(sorted(p.name for p in BUNDLES.iterdir()), sorted(EXPECTED_BUNDLES))
         for name, (valid, ready) in EXPECTED_BUNDLES.items():
             rs = bundle(name)
             self.assertEqual(gpos.validate_project(rs).valid, valid, name)
-            ref_problems, ref_ready = reference_verdict(*raw(rs))
-            self.assertEqual(bool(ref_problems), not valid or any(
-                d.code in dg.REFERENCE_CLASS_BLOCKERS for v in project.analyze(rs).routing_diagnostics.values() for d in v), name)
-            for task, expected in ready.items():
+            ref_problems, _ = reference_verdict(*raw(rs))
+            self.assertEqual(bool(ref_problems), production_flags(project.analyze(rs)), name)
+            for task, (scope_valid, expected) in ready.items():
                 result = gpos.evaluate_readiness(rs, task)
-                self.assertEqual(result.ready, expected, name)
-                self.assertEqual(result.valid_records, valid, name)
-                self.assertEqual(ref_ready[task], expected, name)
+                self.assertEqual((result.valid_records, result.ready), (scope_valid, expected), f"{name} {task}")
+                self.assertEqual(scoped_reference_ready(rs, task), expected, f"{name} {task}")
                 self.assertEqual(result.ready, not result.blocking_reasons, name)
-                if not valid:
+                self.assertEqual(result.project_has_other_diagnostics, not valid and scope_valid, f"{name} {task}")
+                if not scope_valid:
                     self.assertIn("RECORD_SET_INVALID", {d.code for d in result.blocking_reasons}, name)
 
     def test_gate_only_scope_ready_is_not_used_as_proof(self):
@@ -741,8 +878,8 @@ def m_gpos_same_version(rs):
     rs.config.data["gpos_upgrade"] = {"from_version": rs.config.data["gpos_version"]}
 
 
-def m_unsupported_version(rs):
-    rs.config.data["gpos_version"] = "1.0.0-alpha.7"
+def m_unsupported_version(rs, version="1.0.0-alpha.7"):
+    rs.config.data["gpos_version"] = version
 
 
 def m_duplicate_routing_entry(rs):
@@ -843,7 +980,6 @@ ADVERSARIAL = [
     ("PRIMARY platform UNDECIDED", _release(m_primary_undecided), "PRIMARY_PLATFORM_UNDECIDED", True, False, True),
     ("Human Review gate missing", _release(m_human_review_gate_missing), "HUMAN_REVIEW_MISSING", True, False, True),
     ("GPOS upgrade to the same version", _feature(m_gpos_same_version), "GPOS_UPGRADE_SAME_VERSION", False, False, True),
-    ("project pins another GPOS version", _feature(m_unsupported_version), "UNSUPPORTED_GPOS_VERSION", False, False, False),
     ("gate routed twice", _feature(m_duplicate_routing_entry), "ROUTING_GATE_DUPLICATE", False, False, True),
     ("gate required and omitted", _feature(m_required_and_omitted), "ROUTING_GATE_REQUIRED_AND_OMITTED", False, False, True),
     ("primary repeated as secondary", _feature(m_primary_repeated), "ROUTING_PRIMARY_REPEATED", False, False, True),
@@ -871,10 +1007,11 @@ class D01_AdversarialRegressions(unittest.TestCase):
                                  {d.code for d in result.blocking_reasons}, name)
             else:
                 self.assertIn(code, all_codes(an), f"{name}: {sorted(all_codes(an))}")
-            if compare:  # the frozen reference agrees on validity and readiness
-                ref_problems, ref_ready = reference_verdict(*raw(rs))
+            if compare:  # the frozen reference agrees on validity, on each rule, and on readiness
+                ref_problems, _ = reference_verdict(*raw(rs))
                 self.assertEqual(bool(ref_problems), production_flags(an), f"{name}: {ref_problems}")
-                self.assertEqual(ref_ready[task], result.ready, name)
+                self.assertTrue({reference_rule(m) for m in ref_problems} <= all_codes(an), f"{name}: {ref_problems}")
+                self.assertEqual(scoped_reference_ready(rs, task), result.ready, name)
 
     def test_direct_gate_rules_behind_the_schema(self):
         """Rules the schema already enforces are still enforced by the domain model (defence in depth)."""
@@ -905,6 +1042,251 @@ class D01_AdversarialRegressions(unittest.TestCase):
         source = Path(__file__).read_text()
         missing = [c for c in dg.CODES if f'"{c}"' not in source]
         self.assertEqual(missing, [])
+
+
+# ---------------------------------------------------------------- S  scoped readiness (review item 1)
+
+def _multi():
+    return bundle("multi-routing-scoped")
+
+
+class S01_ScopedReadiness(unittest.TestCase):
+    def test_a_unrelated_invalid_routing_does_not_block(self):
+        rs = _multi()
+        r = gpos.evaluate_readiness(rs, "FEAT-DASH")
+        self.assertEqual((r.valid_records, r.ready, r.blocking_reasons), (True, True, []))
+        self.assertTrue(r.project_has_other_diagnostics)
+        self.assertFalse([d for d in r.diagnostics if d.record_id in ("FEAT-SLIDE", "G-SLIDE-GD", "EV-SLIDE-MOTION")])
+        self.assertEqual(run_cli("readiness", "--project", str(BUNDLES / "multi-routing-scoped"), "--routing", "FEAT-DASH")[0], 0)
+        self.assertTrue(gpos.validate_routing(rs, "FEAT-DASH").valid)
+
+    def test_b_whole_project_is_still_invalid(self):
+        result = gpos.validate_project(_multi())
+        self.assertFalse(result.valid)
+        self.assertTrue({"WORKFLOW_GATE_MISSING", "STALE_EVIDENCE"} <= {d.code for d in result.diagnostics})
+        self.assertEqual(run_cli("validate", "--project", str(BUNDLES / "multi-routing-scoped"))[0], 1)
+        self.assertEqual(gpos.evaluate_readiness(_multi(), "FEAT-SLIDE").ready, False)
+
+    def test_c_global_authority_still_blocks(self):
+        def fake_lifecycle(rs):
+            rs.config.data["lifecycle_decision_ref"] = "D-NOPE"
+
+        def duplicate_reviewer(rs):
+            rs.config.data["human_review"]["reviewers"].append({"id": "creative-lead"})
+
+        def unauthorized_config_decision(rs):
+            data(rs, "decision", "D-LC-1")["decided_by"]["id"] = "visitor"
+
+        def duplicated_config_decision(rs):  # a second D-LC-1 anywhere makes the config reference ambiguous
+            rs.decisions.append(Record("decision", copy.deepcopy(data(rs, "decision", "D-LC-1"))))
+
+        def weaker_than_global_override(rs):
+            rs.config.data["human_review"]["review_policy_overrides"] = [
+                {"gate": "GAMEPLAY_DESIGN", "review_policy": "HUMAN_REVIEW_REQUIRED", "decision_ref": "D-OVR"}]
+            _add_decision(rs, decision("D-OVR", "REVIEW_POLICY_OVERRIDE",
+                                       value={"gate": "GAMEPLAY_DESIGN", "review_policy": "HUMAN_REVIEW_REQUIRED"}))
+
+        for fn, code in [(fake_lifecycle, "DECISION_REF_NOT_FOUND"), (duplicate_reviewer, "DUPLICATE_CONFIG_ID"),
+                         (unauthorized_config_decision, "UNAUTHORIZED_DECIDER"), (duplicated_config_decision, "DUPLICATE_RECORD_ID"),
+                         (weaker_than_global_override, "REVIEW_POLICY_WEAKER_THAN_EFFECTIVE")]:
+            rs = _multi()
+            fn(rs)
+            r = gpos.evaluate_readiness(rs, "FEAT-DASH")
+            self.assertFalse(r.ready, fn.__name__)
+            self.assertIn(code, {d.code for d in r.diagnostics}, fn.__name__)
+            self.assertIn("RECORD_SET_INVALID", {d.code for d in r.blocking_reasons}, fn.__name__)
+
+    def test_d_records_the_routing_depends_on_still_block(self):
+        def superseded_evidence(rs):
+            data(rs, "evidence", "EV-DASH-TEST").update(superseded=True, superseded_reason="re-run")
+
+        def duplicate_evidence_id_elsewhere(rs):  # the slide evidence re-uses an id the dash gate cites
+            data(rs, "evidence", "EV-SLIDE-MOTION")["evidence_id"] = "EV-DASH-TEST"
+
+        def duplicate_gate_id_elsewhere(rs):
+            data(rs, "gate", "G-SLIDE-GD")["gate_id"] = "G-DASH-TECH"
+
+        def schema_invalid_linked_gate(rs):
+            data(rs, "gate", "G-DASH-TECH")["status"] = "DONE"
+
+        def duplicate_routing_id(rs):
+            data(rs, "routing", "FEAT-SLIDE")["task_id"] = "FEAT-DASH"
+
+        def unparsable_file(rs):  # cannot be attributed to any routing: fail-closed
+            rs.load_diagnostics.append(dg.make("RECORD_INVALID_JSON", "gates/x.json: invalid JSON", record_type="gate",
+                                               file="gates/x.json"))
+
+        for fn, code in [(superseded_evidence, "EVIDENCE_SUPERSEDED"), (duplicate_evidence_id_elsewhere, "DUPLICATE_RECORD_ID"),
+                         (duplicate_gate_id_elsewhere, "DUPLICATE_RECORD_ID"), (schema_invalid_linked_gate, "SCHEMA_INVALID"),
+                         (duplicate_routing_id, "DUPLICATE_RECORD_ID"), (unparsable_file, "RECORD_INVALID_JSON")]:
+            rs = _multi()
+            fn(rs)
+            r = gpos.evaluate_readiness(rs, "FEAT-DASH")
+            self.assertEqual((r.valid_records, r.ready), (False, False), fn.__name__)
+            self.assertIn(code, {d.code for d in r.diagnostics}, fn.__name__)
+
+    def test_unrelated_records_never_change_the_verdict(self):
+        def unrelated_bad_decision(rs):  # schema-invalid, referenced by nothing
+            d = decision("D-ORPHAN", "QUALITY_TARGET", value="NOT-A-TARGET")
+            rs.decisions.append(Record("decision", d))
+
+        def unrelated_gate_to_unknown_routing(rs):
+            g = copy.deepcopy(data(rs, "gate", "G-SLIDE-GD"))
+            g.update(gate_id="G-ORPHAN", routing_ref="TASK-404")
+            rs.gates.append(Record("gate", g))
+
+        def unrelated_unlisted_human_evidence(rs):
+            ev = copy.deepcopy(data(rs, "evidence", "EV-SLIDE-MOTION"))
+            ev.update(evidence_id="EV-ORPHAN", type="HUMAN_EVIDENCE", source={"kind": "HUMAN", "id": "stranger"})
+            ev["provenance"] = {"capture_context": "HUMAN_RECORD", "subject_revision": "rev-slide-2"}
+            rs.evidence.append(Record("evidence", ev))
+
+        for fn in (unrelated_bad_decision, unrelated_gate_to_unknown_routing, unrelated_unlisted_human_evidence):
+            rs = _multi()
+            fn(rs)
+            self.assertFalse(gpos.validate_project(rs).valid, fn.__name__)
+            r = gpos.evaluate_readiness(rs, "FEAT-DASH")
+            self.assertEqual((r.valid_records, r.ready, r.project_has_other_diagnostics), (True, True, True), fn.__name__)
+
+    def test_scope_contents(self):
+        rs = _multi()
+        sc = routing_scope(rs, "FEAT-DASH", FW)
+        self.assertEqual(([r.id for r in sc.routings], sorted(r.id for r in sc.gates), sorted(r.id for r in sc.evidence),
+                          [r.id for r in sc.decisions]),
+                         (["FEAT-DASH"], ["G-DASH-GD", "G-DASH-TECH"], ["EV-DASH-MOTION", "EV-DASH-TEST"], ["D-LC-1"]))
+        self.assertIs(sc.config, rs.config)
+        self.assertEqual(sc.outside_routing_ids, frozenset({"FEAT-SLIDE"}))
+
+    def test_human_review_gate_of_another_routing_is_in_scope(self):
+        """A gate's human_review_ref pulls that HUMAN_REVIEW record into scope even when it is linked elsewhere."""
+        rs = bundle("golden-cell-ready")
+        data(rs, "gate", "G-GC-GD")["human_review_ref"] = "G-GC-HR"
+        sc = routing_scope(rs, "GC-1", FW)
+        self.assertIn("G-GC-HR", {r.id for r in sc.gates})
+        data(rs, "gate", "G-GC-HR")["scope"]["revision"] = "build-6"
+        self.assertFalse(gpos.evaluate_readiness(rs, "GC-1").ready)
+
+
+# ---------------------------------------------------------------- U  unsupported GPOS version (review item 2)
+
+class U01_UnsupportedGposVersion(unittest.TestCase):
+    def test_matching_version_validates_normally(self):
+        rs = bundle("gameplay-feature-ready")
+        self.assertEqual(rs.config.data["gpos_version"], FW.version)
+        self.assertTrue(gpos.validate_project(rs).valid)
+
+    def test_unsupported_version_fails_closed_as_compatibility(self):
+        for version in ("1.0.0-alpha.7", "1.0.1", "2.0.0"):
+            rs = bundle("gameplay-feature-ready")
+            m_unsupported_version(rs, version)
+            for call in (lambda: gpos.validate_project(rs), lambda: gpos.evaluate_readiness(rs, "FEAT-DASH"),
+                         lambda: gpos.validate_routing(rs, "FEAT-DASH"), lambda: project.analyze(rs)):
+                with self.assertRaises(UnsupportedGposVersion) as caught:
+                    call()
+                d = caught.exception.diagnostic
+                self.assertEqual((caught.exception.code, d.code, d.category), ("UNSUPPORTED_GPOS_VERSION",) * 2 + ("COMPATIBILITY",))
+                self.assertEqual(dict(d.to_dict()["details"]), {"project": version, "validator": FW.version})
+                self.assertIsInstance(caught.exception, gpos.GposToolError)
+
+    def test_not_reported_as_malformed_data(self):
+        """Other-version records are never judged against this version's schemas: no SCHEMA_INVALID, no INVALID."""
+        rs = bundle("gameplay-feature-ready")
+        m_unsupported_version(rs)
+        data(rs, "gate", "G-DASH-TECH")["field_from_a_future_version"] = True
+        with self.assertRaises(UnsupportedGposVersion):
+            gpos.validate_project(rs)
+        rs.config.data["gpos_version"] = FW.version
+        self.assertEqual({d.code for d in gpos.validate_project(rs).diagnostics}, {"SCHEMA_INVALID"})
+        del rs.config.data["gpos_version"]  # a missing pin is malformed data, not a compatibility question
+        self.assertIn("SCHEMA_INVALID", {d.code for d in gpos.validate_project(rs).diagnostics})
+
+    def test_cli_uses_the_tool_exit_code(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            shutil.copytree(BUNDLES / "gameplay-feature-ready", tmp / "p")
+            cfg = tmp / "p" / ".game" / "gpos" / "project-config.json"
+            doc = json.loads(cfg.read_text())
+            doc["gpos_version"] = "1.0.0-alpha.7"
+            cfg.write_text(json.dumps(doc))
+            for argv in (("validate",), ("readiness", "--routing", "FEAT-DASH")):
+                code, out = run_cli(*argv, "--project", str(tmp / "p"), "--format", "json")
+                err = json.loads(out)["error"]
+                self.assertEqual((code, err["code"], err["diagnostic"]["severity"], err["diagnostic"]["category"]),
+                                 (3, "UNSUPPORTED_GPOS_VERSION", "INCOMPATIBLE", "COMPATIBILITY"))
+                self.assertNotIn("INVALID", out)
+                self.assertEqual(run_cli(*argv, "--project", str(tmp / "p"))[0], 3)
+        finally:
+            shutil.rmtree(tmp)
+
+
+# ---------------------------------------------------------------- K  diagnostic classification (review item 4)
+
+READINESS_BLOCKERS = {
+    "RECORD_SET_INVALID", "MISSING_REQUIRED_GATE", "HUMAN_REVIEW_MISSING", "GATE_NOT_PASSED", "GATE_NOT_IN_ROUTING",
+    "CROSS_REVIEWER_NOT_ROUTED", "CROSS_REVIEWER_NOT_ELIGIBLE", "ROUTED_CROSS_REVIEW_MISSING", "ROUTED_EVIDENCE_MISSING",
+    "PRIMARY_PLATFORM_COVERAGE_MISSING", "PRIMARY_PLATFORM_UNDECIDED",
+}
+
+
+class K01_DiagnosticClassification(unittest.TestCase):
+    def test_convention_is_frozen_in_the_code_table(self):
+        for code, (severity, category, _, _) in dg.CODES.items():
+            if code in READINESS_BLOCKERS:
+                self.assertEqual((severity, category), (dg.BLOCKER, dg.READINESS), code)
+            elif code == "NON_BLOCKING_GATE_OPEN":
+                self.assertEqual((severity, category), (dg.INFO, dg.READINESS), code)
+            elif code == "UNSUPPORTED_GPOS_VERSION":
+                self.assertEqual((severity, category), (dg.INCOMPATIBLE, dg.COMPATIBILITY), code)
+            else:
+                self.assertEqual(severity, dg.ERROR, code)
+                self.assertIn(category, (dg.LOAD, dg.RECORD), code)
+        self.assertTrue(dg.REFERENCE_CLASS_BLOCKERS < READINESS_BLOCKERS)
+
+    def test_unmet_routed_requirements_are_blockers_not_errors(self):
+        cases = [("gameplay-feature-ready", "FEAT-DASH", m_missing_routed_gate, "MISSING_REQUIRED_GATE"),
+                 ("gameplay-feature-ready", "FEAT-DASH", m_missing_routed_evidence, "ROUTED_EVIDENCE_MISSING"),
+                 ("release-multi-platform-ready", "REL-1.0", m_human_review_gate_missing, "HUMAN_REVIEW_MISSING"),
+                 ("release-multi-platform-ready", "REL-1.0", m_secondary_promoted, "PRIMARY_PLATFORM_COVERAGE_MISSING"),
+                 ("gameplay-feature-ready", "FEAT-DASH", m_not_applicable_does_not_satisfy, "GATE_NOT_PASSED")]
+        for name, task, fn, code in cases:
+            rs = bundle(name)
+            fn(rs)
+            validity = gpos.validate_project(rs)
+            self.assertTrue(validity.valid, code)
+            self.assertNotIn(code, {d.code for d in validity.diagnostics}, code)
+            r = gpos.evaluate_readiness(rs, task)
+            self.assertEqual((r.valid_records, r.ready), (True, False), code)
+            self.assertIn((code, dg.BLOCKER), {(d.code, d.severity) for d in r.blocking_reasons}, code)
+            path = Path(tempfile.mkdtemp())
+            try:  # the CLI maps the same distinction to exit 0 (validate) and exit 2 (readiness)
+                for rec in rs.all_records():
+                    (path / (rec.file or "x")).parent.mkdir(parents=True, exist_ok=True)
+                    (path / rec.file).write_text(json.dumps(rec.data))
+                self.assertEqual(run_cli("validate", "--project", str(path))[0], 0, code)
+                self.assertEqual(run_cli("readiness", "--project", str(path), "--routing", task)[0], 2, code)
+            finally:
+                shutil.rmtree(path)
+
+    def test_integrity_violations_are_errors(self):
+        for name, fn, code in [("gameplay-feature-ready", m_routing_gate_disagreement, "ROUTING_GATE_MISMATCH"),
+                               ("gameplay-feature-ready", m_stale_evidence, "STALE_EVIDENCE"),
+                               ("gameplay-feature-ready", m_fake_decision, "DECISION_REF_NOT_FOUND")]:
+            rs = bundle(name)
+            fn(rs)
+            validity = gpos.validate_project(rs)
+            self.assertFalse(validity.valid)
+            self.assertIn((code, dg.ERROR), {(d.code, d.severity) for d in validity.diagnostics})
+
+    def test_every_emitted_diagnostic_follows_the_table(self):
+        seen = 0
+        for f in AUTHORITY:
+            if f.name in VERSION_FIXTURES:
+                continue
+            an = project.analyze(from_records(*fixture_records(f)))
+            for d in list(an.errors) + [d for v in an.routing_diagnostics.values() for d in v]:
+                self.assertEqual((d.severity, d.category), dg.CODES[d.code][:2], f.name)
+                seen += 1
+        self.assertGreater(seen, 50)
 
 
 # ---------------------------------------------------------------- E  reference independence

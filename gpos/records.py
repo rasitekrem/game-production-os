@@ -58,7 +58,8 @@ class Record:
 class RecordSet:
     """All records of one project, plus any load-time diagnostics."""
 
-    def __init__(self, config=None, decisions=(), routings=(), gates=(), evidence=(), root=None, load_diagnostics=()):
+    def __init__(self, config=None, decisions=(), routings=(), gates=(), evidence=(), root=None, load_diagnostics=(),
+                 outside_routing_ids=()):
         self.config = config  # Record or None
         self.decisions = list(decisions)
         self.routings = list(routings)
@@ -66,6 +67,8 @@ class RecordSet:
         self.evidence = list(evidence)
         self.root = root
         self.load_diagnostics = list(load_diagnostics)
+        # routing ids that exist in the project but outside this (scoped) record set
+        self.outside_routing_ids = frozenset(outside_routing_ids)
 
     def all_records(self):
         head = [self.config] if self.config is not None else []

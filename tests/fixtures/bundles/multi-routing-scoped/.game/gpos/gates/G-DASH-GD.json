@@ -1,0 +1,34 @@
+{
+  "applied_conditions": [
+    "REAL_TIME_BEHAVIOUR"
+  ],
+  "assessed_by": {
+    "id": "gameplay-design",
+    "kind": "AGENT"
+  },
+  "blocking": true,
+  "cross_reviews": [
+    {
+      "assessment": "PASS",
+      "reviewed_revision": "rev-dash-3",
+      "reviewer": "level-design"
+    }
+  ],
+  "evidence_refs": [
+    "EV-DASH-MOTION"
+  ],
+  "gate": "GAMEPLAY_DESIGN",
+  "gate_id": "G-DASH-GD",
+  "owner": "gameplay-design",
+  "recorded_at": "2026-03-01T10:00:00Z",
+  "review_policy": "CROSS_REVIEW_REQUIRED",
+  "routing_ref": "FEAT-DASH",
+  "schema_version": "1.0",
+  "scope": {
+    "kind": "FEATURE",
+    "ref": "dash",
+    "revision": "rev-dash-3"
+  },
+  "specialist_assessment": "PASS",
+  "status": "PASS"
+}

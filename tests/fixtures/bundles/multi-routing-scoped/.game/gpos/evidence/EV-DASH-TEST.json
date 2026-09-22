@@ -1,0 +1,30 @@
+{
+  "artifacts": [
+    {
+      "description": "synthetic",
+      "media_type": "application/octet-stream",
+      "uri": "evidence/EV-DASH-TEST.bin"
+    }
+  ],
+  "created_at": "2026-03-01T10:00:00Z",
+  "evidence_id": "EV-DASH-TEST",
+  "limitations": [
+    "Synthetic record for validator tests"
+  ],
+  "provenance": {
+    "capture_context": "AUTOMATED_TEST",
+    "subject_revision": "rev-dash-3"
+  },
+  "schema_version": "1.0",
+  "source": {
+    "id": "ci-runner",
+    "kind": "CI"
+  },
+  "subject": {
+    "kind": "FEATURE",
+    "ref": "dash"
+  },
+  "summary": "Synthetic TEST_EVIDENCE for dash.",
+  "superseded": false,
+  "type": "TEST_EVIDENCE"
+}

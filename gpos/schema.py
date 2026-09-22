@@ -30,18 +30,20 @@ _SCHEMA_MAP_KEYWORDS = ("properties", "$defs")
 _SCHEMA_LIST_KEYWORDS = ("allOf", "anyOf", "oneOf")
 
 _RFC3339 = re.compile(
-    r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-](\d{2}):(\d{2}))$"
+    r"^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|[+-](\d{2}):(\d{2}))$"
 )
 
 
 def is_rfc3339_datetime(value):
     """True for an RFC 3339 date-time with a real calendar date and valid clock values.
 
-    Upper-case 'T' separator and an explicit offset ('Z' or +hh:mm) are required and a leap
-    second (:60) is rejected: exactly the behaviour of rfc3339-validator, the checker the
-    `jsonschema` cross-check uses. RFC 3339 §5.6 also permits lower-case 't'/'z'; they are
-    rejected here (fail-closed), and the Phase-1 test oracle, which accepts them, differs on
-    that input only (reported for Human Review).
+    The frozen GPOS contract (RFC 3339 §5.6, as the Phase-1 oracle implements it): 'T' or 't'
+    separator, explicit offset 'Z', 'z' or +hh:mm, calendar-valid date, hour <= 23, minute <= 59,
+    second <= 59 (no leap second), offset hour <= 23 and minute <= 59.
+
+    Known external-checker divergence: the rfc3339-validator package, called directly, rejects
+    lower-case 't'/'z'. GPOS follows its contract, not that library. (`jsonschema` upper-cases
+    date-times before calling it, so the jsonschema cross-check agrees with the contract.)
     """
     if not isinstance(value, str):
         return False

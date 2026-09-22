@@ -1,0 +1,65 @@
+{
+  "description": "Add a short-range dash with a cooldown to the player character.",
+  "editor_write_lock": "gameplay-design",
+  "human_review": {
+    "not_required_reason": "Bounded feature inside the approved design pillars.",
+    "required": false
+  },
+  "lifecycle_stage": "PRE_PRODUCTION",
+  "missing_decisions": [],
+  "omitted_gates": [
+    {
+      "gate": "GAME_FEEL_VFX",
+      "reason": "Dash feedback polish is a later task."
+    }
+  ],
+  "out_of_scope": [
+    "Dash VFX"
+  ],
+  "primary_specialist": "gameplay-design",
+  "rationale": "Gameplay feel of a movement verb is owned by gameplay-design; level-design checks traversal impact.",
+  "required_gates": [
+    {
+      "applied_conditions": [
+        "REAL_TIME_BEHAVIOUR"
+      ],
+      "blocking": true,
+      "gate": "GAMEPLAY_DESIGN",
+      "owner": "gameplay-design",
+      "required_evidence": [
+        "MOTION_EVIDENCE"
+      ],
+      "review_policy": "CROSS_REVIEW_REQUIRED"
+    },
+    {
+      "blocking": true,
+      "gate": "TECHNICAL",
+      "owner": "qa-performance",
+      "required_evidence": [
+        "TEST_EVIDENCE"
+      ],
+      "review_policy": "ROUTINE",
+      "routine_basis": "Bounded change inside the movement system; no persisted data",
+      "unapplied_conditions": [
+        {
+          "condition": "PERSISTENCE_AFFECTED",
+          "reason": "The dash stores no saved data."
+        }
+      ]
+    }
+  ],
+  "review_triggers": [],
+  "reviewers": [
+    "level-design"
+  ],
+  "schema_version": "1.0",
+  "secondary_specialists": [
+    "qa-performance"
+  ],
+  "subject": {
+    "kind": "FEATURE",
+    "ref": "dash"
+  },
+  "task_id": "FEAT-DASH",
+  "workflow": "gameplay-feature"
+}

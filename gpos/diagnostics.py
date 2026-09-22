@@ -10,6 +10,10 @@ Severity and category separate two different questions:
   evidence or a routed reviewer is missing, PRIMARY platform coverage is missing.
 * WARNING / INFO                      — reported, never decisive.
 
+* INCOMPATIBLE (category COMPATIBILITY) — the validator cannot judge these records at all
+  (UNSUPPORTED_GPOS_VERSION); raised as a tool error, never part of a result.
+
+This split is the normative Phase-2A diagnostic convention (tools/validator/README.md).
 Every code has one fixed severity, category and rule reference (CODES). The rule
 reference names the frozen contract it enforces, e.g. "GOVERNANCE §12.23".
 """
@@ -17,9 +21,10 @@ reference names the frozen contract it enforces, e.g. "GOVERNANCE §12.23".
 import json
 from dataclasses import dataclass
 
-ERROR, BLOCKER, WARNING, INFO = "ERROR", "BLOCKER", "WARNING", "INFO"
-SEVERITY_ORDER = {ERROR: 0, BLOCKER: 1, WARNING: 2, INFO: 3}
-LOAD, RECORD, READINESS = "LOAD", "RECORD", "READINESS"
+ERROR, BLOCKER, WARNING, INFO, INCOMPATIBLE = "ERROR", "BLOCKER", "WARNING", "INFO", "INCOMPATIBLE"
+SEVERITY_ORDER = {INCOMPATIBLE: 0, ERROR: 1, BLOCKER: 2, WARNING: 3, INFO: 4}
+LOAD, RECORD, READINESS, COMPATIBILITY = "LOAD", "RECORD", "READINESS", "COMPATIBILITY"
+CATEGORIES = (LOAD, RECORD, READINESS, COMPATIBILITY)
 
 
 def _g(*numbers):
@@ -34,7 +39,8 @@ CODES = {
     "RECORD_INVALID_JSON": (ERROR, LOAD, "validator/README bundle layout", "record file is not valid JSON"),
     "RECORD_NOT_OBJECT": (ERROR, LOAD, "validator/README bundle layout", "record file does not contain one JSON object"),
     "UNKNOWN_RECORD_FILE": (ERROR, LOAD, "validator/README bundle layout", "unexpected file or directory in the bundle"),
-    "UNSUPPORTED_GPOS_VERSION": (ERROR, LOAD, _g(7), "project pins a GPOS version this validator does not implement"),
+    # compatibility: carried only by the UnsupportedGposVersion tool error (CLI exit 3), never by a result
+    "UNSUPPORTED_GPOS_VERSION": (INCOMPATIBLE, COMPATIBILITY, _g(7), "project pins a GPOS version this validator does not implement"),
     "SCHEMA_INVALID": (ERROR, RECORD, _g(7, 18), "record does not conform to its GPOS schema"),
     "DUPLICATE_RECORD_ID": (ERROR, RECORD, _g(15), "record id is not unique"),
     "DUPLICATE_CONFIG_ID": (ERROR, RECORD, _g(15), "project-config id is not unique"),

@@ -1,0 +1,43 @@
+{
+  "decision_authorities": [
+    {
+      "id": "creative-lead",
+      "may_decide": [
+        "ALL"
+      ],
+      "role": "Holds creative authority"
+    }
+  ],
+  "enabled_adapters": [],
+  "engine": {
+    "name": "UNDECIDED"
+  },
+  "golden_gameplay_cell": {
+    "required": true
+  },
+  "gpos_version": "1.0.0-alpha.8",
+  "human_review": {
+    "reviewers": [
+      {
+        "id": "creative-lead",
+        "role": "Holds creative authority"
+      }
+    ]
+  },
+  "lifecycle_decision_ref": "D-LC-1",
+  "lifecycle_stage": "PRE_PRODUCTION",
+  "project": {
+    "id": "synthetic-project",
+    "name": "Synthetic Project"
+  },
+  "schema_version": "1.0",
+  "target_platforms": [
+    {
+      "platform": "ANDROID",
+      "reference_devices": [
+        "Pixel-X"
+      ],
+      "tier": "PRIMARY"
+    }
+  ]
+}

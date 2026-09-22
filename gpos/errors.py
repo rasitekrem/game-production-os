@@ -34,3 +34,18 @@ class RoutingNotFound(GposToolError):
     """Readiness was requested for a routing id the record set does not contain."""
 
     code = "ROUTING_NOT_FOUND"
+
+
+class UnsupportedGposVersion(GposToolError):
+    """The project pins a GPOS version this validator does not implement.
+
+    A compatibility condition, not a verdict: the records are neither valid nor invalid
+    under a contract version the validator does not have. `diagnostic` carries the
+    structured UNSUPPORTED_GPOS_VERSION diagnostic.
+    """
+
+    code = "UNSUPPORTED_GPOS_VERSION"
+
+    def __init__(self, message, diagnostic=None):
+        super().__init__(message)
+        self.diagnostic = diagnostic

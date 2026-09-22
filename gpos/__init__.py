@@ -15,7 +15,8 @@ Library use:
 __version__ = "1.0.0-alpha.8"
 
 from .diagnostics import CODES, Diagnostic  # noqa: E402
-from .errors import BundleNotFound, FrameworkLoadError, GposToolError, RoutingNotFound, UnsupportedSchemaKeyword  # noqa: E402
+from .errors import (BundleNotFound, FrameworkLoadError, GposToolError, RoutingNotFound,  # noqa: E402
+                     UnsupportedGposVersion, UnsupportedSchemaKeyword)
 from .framework import load_framework  # noqa: E402
 from .records import RecordSet, from_records, load_project  # noqa: E402
 from .validation.project import (ReadinessResult, ValidationResult, evaluate_readiness,  # noqa: E402
@@ -25,6 +26,6 @@ load_project_record_set = load_project
 
 __all__ = [
     "__version__", "CODES", "Diagnostic", "BundleNotFound", "FrameworkLoadError", "GposToolError", "RoutingNotFound",
-    "UnsupportedSchemaKeyword", "load_framework", "RecordSet", "from_records", "load_project", "load_project_record_set",
+    "UnsupportedGposVersion", "UnsupportedSchemaKeyword", "load_framework", "RecordSet", "from_records", "load_project", "load_project_record_set",
     "ReadinessResult", "ValidationResult", "evaluate_readiness", "validate_project", "validate_routing",
 ]

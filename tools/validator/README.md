@@ -44,7 +44,8 @@ gpos/
     human.py             gate-aware human authority and linked Human Review
     linkage.py           routing <-> gate linkage, routed evidence and reviewers, Release coverage, gate completion
     context.py           read-only indexes for one run
-    project.py           stage orchestration, validate_project / validate_routing / evaluate_readiness
+    scope.py             the records one routing's readiness depends on
+    project.py           compatibility check, stage orchestration, validate_project / validate_routing / evaluate_readiness
   cli.py                 thin CLI
   validator/__main__.py  `python3 -m gpos.validator`
 ```
@@ -78,16 +79,18 @@ import sys; sys.path.insert(0, "path/to/game-production-os")
 from gpos import load_project_record_set, validate_project, validate_routing, evaluate_readiness
 
 rs = load_project_record_set("path/to/project")   # raises BundleNotFound; data problems become diagnostics
-result = validate_project(rs)                       # ValidationResult(valid, diagnostics, summary)
-scoped = validate_routing(rs, "TASK-0001")          # the same validity, diagnostics scoped to one routing
-ready = evaluate_readiness(rs, "TASK-0001")         # ReadinessResult(routing_id, valid_records, ready,
-                                                    #                blocking_reasons, diagnostics, summary)
+result = validate_project(rs)                       # ValidationResult(valid, diagnostics, summary) — whole project
+scoped = validate_routing(rs, "TASK-0001")          # ValidationResult for one routing's scope
+ready = evaluate_readiness(rs, "TASK-0001")         # ReadinessResult(routing_id, valid_records, ready, blocking_reasons,
+                                                    #   diagnostics, summary, project_has_other_diagnostics)
 print(result.to_dict())                             # JSON-serializable
 ```
 
+All three raise `UnsupportedGposVersion` when the project pins a GPOS version other than the one this validator implements (see [GPOS version compatibility](#gpos-version-compatibility)).
+
 In-memory records: `gpos.from_records(config, decisions, evidence, gates, routings)` builds the same record set without files. Results are plain data classes with `to_dict()`; diagnostics are immutable `Diagnostic` values.
 
-Failures of the validator itself raise `GposToolError` subclasses (`FrameworkLoadError`, `UnsupportedSchemaKeyword`, `BundleNotFound`, `RoutingNotFound`). They are never turned into a verdict about records.
+Failures of the validator itself raise `GposToolError` subclasses (`FrameworkLoadError`, `UnsupportedSchemaKeyword`, `BundleNotFound`, `RoutingNotFound`, `UnsupportedGposVersion`). They are never turned into a verdict about records.
 
 ## Command line
 
@@ -104,37 +107,55 @@ Run from the repository root (or with the repository root on the Python path). T
 | 0 | records valid | routing `READY` |
 | 1 | records invalid | records invalid (so `NOT_READY`) |
 | 2 | — | records valid, routing `NOT_READY` |
-| 3 | invocation, tool or internal error | invocation, tool or internal error |
+| 3 | invocation, tool, compatibility or internal error | invocation, tool, compatibility or internal error |
 
-Exit 3 covers an unknown command or format, a missing argument, a missing bundle, an unknown routing id (`ROUTING_NOT_FOUND`), a registry or schema that cannot be loaded (`FRAMEWORK_LOAD_ERROR`, `UNSUPPORTED_SCHEMA_KEYWORD`) and any validator defect (`INTERNAL_ERROR`). Usage errors are reported as `USAGE_ERROR`. It is never used for a verdict, and no stack trace is printed.
+Exit 3 covers an unknown command or format, a missing argument, a missing bundle, an unknown routing id (`ROUTING_NOT_FOUND`), a project pinned to another GPOS version (`UNSUPPORTED_GPOS_VERSION`; the JSON `error` carries its diagnostic), a registry or schema that cannot be loaded (`FRAMEWORK_LOAD_ERROR`, `UNSUPPORTED_SCHEMA_KEYWORD`) and any validator defect (`INTERNAL_ERROR`). Usage errors are reported as `USAGE_ERROR`. It is never used for a verdict, and no stack trace is printed.
 
-`--format json` prints one deterministic JSON document (sorted keys, no timestamps, no absolute paths). It contains `tool`, `validator_version`, `gpos_version` (the framework this validator enforces), `project_id`, `command`, `verdict` (`VALID`, `INVALID`, `READY`, `NOT_READY` or `ERROR`), `exit_code`, `summary` and `diagnostics`; `readiness` adds `routing_id`, `valid_records`, `ready` and `blocking_reasons`.
+`--format json` prints one deterministic JSON document (sorted keys, no timestamps, no absolute paths). It contains `tool`, `validator_version`, `gpos_version` (the framework this validator enforces), `project_id`, `command`, `verdict` (`VALID`, `INVALID`, `READY`, `NOT_READY` or `ERROR`), `exit_code`, `summary` and `diagnostics`; `readiness` adds `routing_id`, `valid_records` (validity of the routing's scope), `ready`, `blocking_reasons` and the informational `project_has_other_diagnostics`.
 
 The text form of `readiness` also lists each required gate with its state: its gate status, `NOT_RUN` when no record exists, `AMBIGUOUS` when several do, or `UNVERIFIED` when the record set could not be checked far enough to link gates.
 
 ## Validation and readiness
 
-**Record validity** (`validate`) asks: are the records well formed, consistent with each other and with project authority? It runs in fixed stages. A later stage runs only on a record set the earlier stages accepted, because cross-record rules are defined over schema-valid records with unique identifiers:
+**Record validity** (`validate`) asks: are the records of the whole project well formed, consistent with each other and with project authority? After the [version compatibility](#gpos-version-compatibility) check it runs in fixed stages. A later stage runs only on a record set the earlier stages accepted, because cross-record rules are defined over schema-valid records with unique identifiers:
 
 1. load — files and JSON;
 2. schema — the five GPOS schemas, with RFC 3339 date-times;
-3. version — the project pins the GPOS version this validator implements;
-4. identifiers — no duplicate record ids or project-config ids;
-5. cross-record rules — decisions, authority, routing, linkage, evidence, reviews, platforms.
+3. identifiers — no duplicate record ids or project-config ids;
+4. cross-record rules — decisions, authority, routing, linkage, evidence, reviews, platforms.
 
 `summary.stages_completed` shows how far a run got.
 
+**Readiness scope.** Readiness of a routing is judged over that routing's scope, not over the whole project. The scope (`gpos/validation/scope.py`) is:
+
+- project-global authority: the project config (reviewers, decision authorities, project triggers, review-policy overrides, presentation parity, target platforms, lifecycle, Golden Cell, GPOS version) and every decision it references;
+- the routing record (every record with its `task_id`);
+- every gate linked to it by `routing_ref`, and every `HUMAN_REVIEW` gate those gates cite;
+- every evidence record those gates cite;
+- every decision the routing or those gates reference (e.g. blocking downgrades);
+- every load problem (an unreadable or unparsable file cannot be attributed to a routing, so it is never assumed unrelated).
+
+A referenced identifier pulls in every record carrying it, so a duplicate anywhere in the project still makes the reference ambiguous and blocks. Problems in other routings, their gates, and evidence or decisions nothing in scope references do not change the verdict. They still make `validate` report the project `INVALID`, and `readiness` reports them only through `project_has_other_diagnostics`. `validate --routing ID` reports the validity of that scope.
+
 **Routed readiness** (`readiness`) asks: may this routed scope be called done? A routing is `READY` only when:
 
-- the whole record set has no `ERROR`;
+- the routing's scope has no `ERROR`;
 - every blocking required gate has exactly one linked gate record, and that record is `PASS` (a missing record is `NOT_RUN`; `NOT_APPLICABLE` never satisfies a gate the routing still requires);
 - every linked gate is listed by the routing;
 - each linked `PASS` has counting evidence of every type the routing requires, and a current passing cross-review by a routed, eligible reviewer where its policy needs one;
 - for `release`, every PRIMARY target platform has counting `DEVICE_EVIDENCE` and `PERFORMANCE_EVIDENCE` on that platform. SECONDARY platforms never block.
 
-Readiness is fail-closed. Any `ERROR` anywhere in the record set blocks every routing (`RECORD_SET_INVALID`), because authority, decisions and evidence are shared. The gate-only notion "every existing blocking gate is PASS" is never used as proof: it cannot see a missing gate.
+Readiness is fail-closed within its scope. Any `ERROR` in the scope blocks the routing (`RECORD_SET_INVALID`), and global authority problems block every routing. The gate-only notion "every existing blocking gate is PASS" is never used as proof: it cannot see a missing gate.
 
 The Golden Cell and Release rules are routing rules. `golden-gameplay-cell` and `release` routings must account for all 12 gates (required, or omitted with a reason). Their mandatory triggers force `HUMAN_REVIEW_REQUIRED` on subjective gates, and the gates they require must all exist and pass.
+
+## GPOS version compatibility
+
+A validator implements exactly one GPOS contract version: the one in its repository's VERSION file, with that version's registry and schemas. It loads nothing over the network and does not validate across versions.
+
+If the project config pins another `gpos_version`, the records are not judged at all. This is checked before load, schema and cross-record findings, because other-version records measured against this version's schemas could be reported as malformed when they are not. The library raises `UnsupportedGposVersion` (a `GposToolError`), carrying an `UNSUPPORTED_GPOS_VERSION` diagnostic of severity `INCOMPATIBLE` and category `COMPATIBILITY`. No `ValidationResult` or `ReadinessResult` is produced, so the condition can never read as "invalid records". The CLI exits 3 (tool/compatibility), not 1. A missing or non-string `gpos_version` is malformed data and is reported by the schema.
+
+To validate such a project, use the validator of the pinned GPOS version, or migrate the project through a `GPOS_UPGRADE` decision.
 
 ## Read-only guarantee
 
@@ -147,8 +168,8 @@ Every finding is a `Diagnostic`:
 | Field | Meaning |
 |---|---|
 | `code` | stable identifier (table below) |
-| `severity` | `ERROR` (records invalid), `BLOCKER` (routing not ready), `WARNING`, `INFO` |
-| `category` | `LOAD`, `RECORD` or `READINESS` |
+| `severity` | `ERROR` (records invalid), `BLOCKER` (routing not ready), `WARNING`, `INFO`, `INCOMPATIBLE` (validator cannot judge the records) |
+| `category` | `LOAD`, `RECORD`, `READINESS` or `COMPATIBILITY` |
 | `message` | human-readable explanation |
 | `record_type`, `record_id` | the record the finding is about (project-config, decision, routing, gate, evidence) |
 | `path` | JSON Pointer inside that record |
@@ -156,6 +177,17 @@ Every finding is a `Diagnostic`:
 | `related` | other ids, gates, platforms or files involved |
 | `rule` | the frozen contract enforced, e.g. `GOVERNANCE §12.23` |
 | `details` | structured extras (missing evidence types, platform, schema keyword…) |
+
+### Diagnostic convention (normative for Phase 2A)
+
+| Class | Severity / category | Meaning | Effect |
+|---|---|---|---|
+| Record integrity | `ERROR` / `LOAD` or `RECORD` | a record is unreadable, schema-invalid, has an ambiguous id, contradicts another record or project authority, or claims a status its own evidence and reviews do not support under the registry rules | project `INVALID` (exit 1); blocks readiness of every routing whose scope contains it |
+| Routed readiness | `BLOCKER` / `READINESS` | the records are valid, but the routing has not reached the bar it sets: `MISSING_REQUIRED_GATE`, `HUMAN_REVIEW_MISSING`, `GATE_NOT_PASSED`, `GATE_NOT_IN_ROUTING`, `ROUTED_EVIDENCE_MISSING`, `ROUTED_CROSS_REVIEW_MISSING`, `CROSS_REVIEWER_NOT_ROUTED`, `CROSS_REVIEWER_NOT_ELIGIBLE`, `PRIMARY_PLATFORM_COVERAGE_MISSING`, `PRIMARY_PLATFORM_UNDECIDED`; plus `RECORD_SET_INVALID` when the scope has errors | routing `NOT_READY` (exit 2 if the scope is valid); never makes records invalid |
+| Information | `INFO` / `READINESS` | `NON_BLOCKING_GATE_OPEN` | none |
+| Compatibility | `INCOMPATIBLE` / `COMPATIBILITY` | `UNSUPPORTED_GPOS_VERSION` | raised as a tool error, exit 3; never part of a result |
+
+Each code belongs to exactly one class. The class is fixed in `gpos.diagnostics.CODES` and asserted by `K01_DiagnosticClassification`, so the same finding is always classified the same way.
 
 Diagnostics are sorted by severity, record type, record id, file, code, path and message, and exact duplicates are removed. Each code has exactly one severity.
 
@@ -166,7 +198,7 @@ Diagnostics are sorted by severity, record type, record id, file, code, path and
 | `RECORD_INVALID_JSON` | ERROR | validator/README bundle layout | record file is not valid JSON |
 | `RECORD_NOT_OBJECT` | ERROR | validator/README bundle layout | record file does not contain one JSON object |
 | `UNKNOWN_RECORD_FILE` | ERROR | validator/README bundle layout | unexpected file or directory in the bundle |
-| `UNSUPPORTED_GPOS_VERSION` | ERROR | GOVERNANCE §12.7 | project pins a GPOS version this validator does not implement |
+| `UNSUPPORTED_GPOS_VERSION` | INCOMPATIBLE | GOVERNANCE §12.7 | project pins a GPOS version this validator does not implement |
 | `SCHEMA_INVALID` | ERROR | GOVERNANCE §12.7/18 | record does not conform to its GPOS schema |
 | `DUPLICATE_RECORD_ID` | ERROR | GOVERNANCE §12.15 | record id is not unique |
 | `DUPLICATE_CONFIG_ID` | ERROR | GOVERNANCE §12.15 | project-config id is not unique |
@@ -260,7 +292,7 @@ Every GOVERNANCE §12 requirement, the codes that enforce it, and the tests that
 | 4 | Human Review verdict valid (human, `PASS`, same scope and revision, disclosed) | schema (`disagreements_disclosed`), `HUMAN_REVIEW_SCOPE_MISMATCH` | `B01_AuthorityFixtureParity`, `D01_AdversarialRegressions` |
 | 5 | reviewer is not owner; assessment consistent with policy; assessor is owner or human | schema, `CROSS_REVIEW_SELF`, `ASSESSOR_NOT_OWNER`, `GATE_OWNER_NOT_PERMITTED`, `CROSS_REVIEW_ELIGIBLE_MISSING` | `test_direct_gate_rules_behind_the_schema`, `D01_AdversarialRegressions` |
 | 6 | superseded evidence never counts; a superseded negative review has a later review by the same reviewer | `EVIDENCE_SUPERSEDED`, `CROSS_REVIEW_SUPERSEDED_WITHOUT_REPLACEMENT` | `B02_RecordFixtureParity`, `D01_AdversarialRegressions` |
-| 7 | records conform to the registry and schemas of the pinned version | `SCHEMA_INVALID`, `UNSUPPORTED_GPOS_VERSION` | `A01_SchemaParity`, `L01_Loading`, `D01_AdversarialRegressions` |
+| 7 | records conform to the registry and schemas of the pinned version | `SCHEMA_INVALID`, `UNSUPPORTED_GPOS_VERSION` | `A01_SchemaParity`, `L01_Loading`, `U01_UnsupportedGposVersion` |
 | 8 | decision references resolve to an `ACTIVE` decision of an allowed kind for the right subject | `DECISION_REF_NOT_FOUND`, `DECISION_NOT_ACTIVE`, `DECISION_KIND_MISMATCH`, `DECISION_SUBJECT_MISMATCH` | `B01_AuthorityFixtureParity`, `D01_AdversarialRegressions` |
 | 9 | lifecycle stage backed by an allowed transition decision (waiver where required) | schema, `LIFECYCLE_TRANSITION_MISMATCH`, `LIFECYCLE_TRANSITION_ILLEGAL`, `LIFECYCLE_WAIVER_REQUIRED` | `B01_AuthorityFixtureParity`, `D01_AdversarialRegressions` |
 | 10 | presentation parity backed by a matching decision; declines consistent with it | `DECISION_VALUE_MISMATCH`, `CONDITION_DECLINE_NOT_AUTHORIZED` | `B01_AuthorityFixtureParity`, `D01_AdversarialRegressions` |
@@ -272,7 +304,7 @@ Every GOVERNANCE §12 requirement, the codes that enforce it, and the tests that
 | 16 | carryover approved by the owner or an authorized human | `CARRYOVER_NOT_ACCOUNTABLE`, `EVIDENCE_REUSE_APPROVER_UNAUTHORIZED` | `B02_RecordFixtureParity`, `D01_AdversarialRegressions` |
 | 17 | reviewer gate permissions for verdicts, evidence and carryover | `GATE_ASSESSOR_UNAUTHORIZED`, `HUMAN_REVIEWER_UNAUTHORIZED`, `EVIDENCE_REUSE_APPROVER_UNAUTHORIZED`, `HUMAN_EVIDENCE_SOURCE_NOT_AUTHORIZED` | `B01_AuthorityFixtureParity`, `D01_AdversarialRegressions` |
 | 18 | timestamps parsed as RFC 3339 | schema (`format`), `SCHEMA_INVALID` | `A02_Rfc3339` |
-| 19 | exactly one gate record per required gate; missing is `NOT_RUN` | `MISSING_REQUIRED_GATE`, `HUMAN_REVIEW_MISSING`, `ROUTED_GATE_AMBIGUOUS`, `GATE_NOT_PASSED`, `ROUTING_REF_NOT_FOUND`, `NON_BLOCKING_GATE_OPEN` | `C01_ReadinessParity`, `D01_AdversarialRegressions` |
+| 19 | exactly one gate record per required gate; missing is `NOT_RUN` | `MISSING_REQUIRED_GATE`, `HUMAN_REVIEW_MISSING`, `ROUTED_GATE_AMBIGUOUS`, `GATE_NOT_PASSED`, `ROUTING_REF_NOT_FOUND`, `NON_BLOCKING_GATE_OPEN` | `C01_ReadinessParity`, `S01_ScopedReadiness`, `K01_DiagnosticClassification` |
 | 20 | routing and gate metadata agree | `ROUTING_GATE_MISMATCH` | `B01_AuthorityFixtureParity`, `D01_AdversarialRegressions` |
 | 21 | gate `applied_conditions` equal routing's | `ROUTING_GATE_MISMATCH` | `B01_AuthorityFixtureParity` |
 | 22 | required/omitted sets non-conflicting; unlisted linked gate blocks | `ROUTING_GATE_DUPLICATE`, `ROUTING_GATE_REQUIRED_AND_OMITTED`, `GATE_NOT_IN_ROUTING` | `B01_AuthorityFixtureParity`, `D01_AdversarialRegressions` |
@@ -303,25 +335,26 @@ Load, readiness-aggregate and routing-structure codes not named above (`PROJECT_
 
 ## Relation to the Phase-1 reference model
 
-The functions under "reference implementation of cross-record rules" in `tests/validate_framework.py` are the frozen executable specification. The production package re-implements them as structured rules. It does not import or call them, and a test checks this (`E01_NoReferenceImport`). The reference stays the regression oracle:
+The functions under "reference implementation of cross-record rules" in `tests/validate_framework.py` are the frozen executable specification. The production package re-implements them as structured rules. It does not import or call them, and a test checks this (`E01_NoReferenceImport`). The reference stays the regression oracle. Parity is required on verdicts and on frozen semantic rules, not on diagnostic counts:
 
-- every authority fixture: the reference reports problems exactly when production reports an `ERROR` or a reference-class `BLOCKER`, with the same number of findings;
-- every record fixture: the same number of findings and the same counting evidence;
-- every single-routing fixture and every bundle: the same readiness verdict.
+- **verdict parity**, on every authority fixture: the reference reports problems exactly when production reports an `ERROR` or a reference-class `BLOCKER` (`B01_AuthorityFixtureParity`);
+- **rule parity**, on every authority and record fixture: every reference problem maps to the production code of the same frozen rule, and production reports no other rule (`test_every_reference_problem_has_its_frozen_rule`, `B02_RecordFixtureParity`); counting evidence is identical;
+- **readiness parity**, on every single-routing fixture and every bundle: production readiness equals reference `routed_scope_ready` over the same scope, and on the frozen fixtures also over the reference's full record list (`C01_ReadinessParity`).
 
-Production has more structure than the reference in two ways, and the difference never changes a verdict:
+Differences are classified as follows:
 
-- **Severity.** The reference returns one flat problem list. Production separates `ERROR` (record validity) from readiness `BLOCKER`s. Routing-level demands on top of valid records are `BLOCKER`s: an unlisted linked gate, routed evidence or reviewers missing, PRIMARY coverage missing. Their codes are listed in `gpos.diagnostics.REFERENCE_CLASS_BLOCKERS`; parity counts them as reference problems.
-- **Scope.** The reference evaluates readiness over `[routing]`. Production validates the whole project and then evaluates one routing. With a single routing the two are identical. With several routings, production does not report another routing's gates as unresolved, but any `ERROR` anywhere still blocks readiness (fail-closed).
+| Class | Differences | Status |
+|---|---|---|
+| A — true semantic divergence from a frozen rule | none | must stay zero |
+| B — diagnostic classification (verdict and meaning unchanged) | routing-level demands the reference lists as record-set problems are readiness `BLOCKER`s here (7 authority fixtures; `gpos.diagnostics.REFERENCE_CLASS_BLOCKERS`); diagnostics are grouped by stable code, not counted like reference messages; readiness is judged over the routing scope, where the reference judged every record it was given (no frozen fixture changes verdict); a project pinned to another GPOS version is a compatibility error, not a verdict (fixture `authority/gpos-patch-upgrade-ungoverned.json`: its frozen rule, that a PATCH upgrade needs no decision, is checked at rule level) | allowed |
+| C — known external-checker limitation | the `rfc3339-validator` package, called directly, rejects lower-case `t` / `z`, which RFC 3339 §5.6 and the frozen contract accept. Production, the oracle and the `jsonschema` cross-check (which upper-cases date-times before calling that package) all accept them; the direct behaviour is asserted as a recorded divergence (`A02_Rfc3339`) | recorded |
 
-Production enforces four things the reference does not model. Each follows the text of the frozen contract and is reported for Human Review:
+Production also enforces two requirements whose §12 text the reference does not model. No frozen fixture exercises them, so they change no fixture verdict:
 
 | Code | Contract text |
 |---|---|
-| `UNSUPPORTED_GPOS_VERSION` | §12.7 "conform to the GPOS registry and schemas of the pinned version": the validator has only its own version's schemas, so another pinned version is not validated (fail-closed) |
 | `CROSS_REVIEW_SUPERSEDED_WITHOUT_REPLACEMENT` | §12.6 "a superseded negative cross-review has a later review by the same reviewer" |
 | `HUMAN_EVIDENCE_SOURCE_NOT_AUTHORIZED` | §12.12 "a listed Human Review participant for the gate" (the reference checks this only through a linked `HUMAN_REVIEW` record) |
-| RFC 3339 case | lower-case `t`/`z` are rejected, as by `rfc3339-validator` (the `jsonschema` cross-check); the Phase-1 oracle accepts them |
 
 ## Known limitations
 
@@ -334,8 +367,9 @@ These are documented, not solved, in Phase 2A:
 - **Asset licensing and source provenance** are not modelled.
 - **Hardware matrices.** Coverage is per PRIMARY platform and declared reference devices; selected-device matrices and hardware catalogues are not modelled.
 - **Future specialist domains** (narrative, localization, accessibility, networking, economy / live operations) have no gates yet.
-- **One GPOS version per validator.** Records pinned to another version are reported (`UNSUPPORTED_GPOS_VERSION`), not migrated.
-- **Staged reporting.** Cross-record findings appear only after load, schema, version and identifier problems are fixed.
+- **One GPOS version per validator.** Records pinned to another version are refused with a compatibility error (`UNSUPPORTED_GPOS_VERSION`, exit 3), neither validated nor migrated. There is no multi-version validation and no schema download.
+- **Staged reporting.** Cross-record findings appear only after load, schema and identifier problems are fixed.
+- **Unattributable load problems.** An unreadable or unparsable file blocks the readiness of every routing, because its content (and so its routing) is unknown.
 
 ## Tests
 
@@ -346,4 +380,4 @@ python3 tests/generate_bundles.py            # regenerate the synthetic bundles 
 python3 tests/mutate_production.py           # bounded mutation harness for gpos/ (slow; copies the repo to a temp dir)
 ```
 
-Synthetic bundles in `tests/fixtures/bundles/` (generic data, no real project): `minimal-valid/`, `gameplay-feature-ready/`, `gameplay-feature-not-ready/`, `golden-cell-ready/`, `golden-cell-incomplete/`, `release-multi-platform-ready/`, `release-missing-primary-coverage/`, `invalid-authority/`.
+Synthetic bundles in `tests/fixtures/bundles/` (generic data, no real project): `minimal-valid/`, `gameplay-feature-ready/`, `gameplay-feature-not-ready/`, `golden-cell-ready/`, `golden-cell-incomplete/`, `release-multi-platform-ready/`, `release-missing-primary-coverage/`, `invalid-authority/`, `multi-routing-scoped/` (a READY routing next to an invalid one).

@@ -241,6 +241,19 @@ def main():
     write_bundle("release-multi-platform-ready", *from_authority_fixture("tests/fixtures/authority/release-two-primary-covered.json"))
     write_bundle("release-missing-primary-coverage",
                  *from_authority_fixture("tests/fixtures/authority/release-two-primary-only-android.json"))
+    # a second, broken routing next to the ready one: FEAT-SLIDE drops the always-required TECHNICAL gate and its
+    # gameplay gate cites stale evidence. FEAT-DASH does not depend on any of it (scoped readiness).
+    slide = copy.deepcopy(feature_routing())
+    slide.update(task_id="FEAT-SLIDE", subject={"kind": "FEATURE", "ref": "slide"}, description="Add a slide move.")
+    slide["required_gates"] = slide["required_gates"][:1]
+    slide_subject = {"kind": "FEATURE", "ref": "slide"}
+    slide_ev = evidence("EV-SLIDE-MOTION", "MOTION_EVIDENCE", slide_subject, "rev-slide-1", "DIAGNOSTIC_RUNTIME",
+                        source=("AGENT", "gameplay-design"))
+    slide_gate = gate("G-SLIDE-GD", "GAMEPLAY_DESIGN", "gameplay-design", slide_subject, "rev-slide-2", "FEAT-SLIDE",
+                      ["EV-SLIDE-MOTION"], policy="CROSS_REVIEW_REQUIRED", applied_conditions=["REAL_TIME_BEHAVIOUR"],
+                      cross_reviews=[{"reviewer": "level-design", "assessment": "PASS", "reviewed_revision": "rev-slide-2"}])
+    write_bundle("multi-routing-scoped", FEATURE_CONFIG, [LIFECYCLE], [feature_routing(), slide], [GD_PASS, TECH_PASS, slide_gate],
+                 FEATURE_EVIDENCE + [slide_ev])
     bad = copy.deepcopy(LIFECYCLE)
     bad["decided_by"] = {"kind": "HUMAN", "id": "visiting-producer"}  # not a listed decision authority
     write_bundle("invalid-authority", FEATURE_CONFIG, [bad], [feature_routing()], [GD_PASS, TECH_PASS], FEATURE_EVIDENCE)

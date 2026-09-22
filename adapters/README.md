@@ -122,7 +122,35 @@ A generated file therefore cannot promise that such a layer will not relax GPOS.
 - the project tree (all directories except `.git`);
 - when the project lies in a git repository, the directories above it up to the repository root.
 
-Such a file is never edited or deleted. Move its legitimate content into project authority (`.game/`), or wait for a future explicit adoption or overlay mechanism. Generated `AGENTS.md` and `CLAUDE.md` files that GPOS owns (listed in a manifest) do not conflict. User-level and organization-level configuration (`~/.claude`, `~/.codex`, managed settings) remains a documented trust boundary and is never read.
+Such a file is never edited or deleted. Move its legitimate content into project authority (`.game/`), or wait for a future explicit adoption or overlay mechanism. Generated `AGENTS.md` and `CLAUDE.md` files that GPOS owns (listed in a manifest) do not conflict.
+
+### Project instruction configuration
+
+Project-local runtime configuration can also change what the agent loads. Sync refuses and check reports it (`INSTRUCTION_CONFIG_CONFLICT`). Configuration that cannot be parsed fails closed (`INSTRUCTION_CONFIG_UNREADABLE`). Both are exit 4, and the configuration file is never modified.
+
+- **Claude Code**: `.claude/settings.json` and `.claude/settings.local.json` (in any project directory or parent up to the repository root).
+  - `claudeMdExcludes` can drop CLAUDE.md and rules files from context. Its patterns are globs matched against absolute paths and merge across settings layers. Rather than re-implement that matching, Phase 2B conservatively rejects any non-empty project or local `claudeMdExcludes`.
+  - Other settings are ignored.
+- **Codex**: every `.codex/config.toml` in the project tree or its parents up to the repository root. Codex loads project config for trusted projects. Files are read with the standard library `tomllib`. At top level and in every `[profiles.<name>]`:
+  - `model_instructions_file` (and the older `experimental_instructions_file`) replaces the AGENTS.md instructions: rejected, because the generated `AGENTS.md` must stay the entrypoint.
+  - `project_doc_max_bytes` must be at least the byte size of the generated root `AGENTS.md`. This does not protect against user-level instructions consuming the budget.
+  - `project_doc_fallback_filenames` adds instruction file names. A file with such a name anywhere Codex could load it, which GPOS does not own, is an `INSTRUCTION_LAYER_CONFLICT`. Configuring names that match no file is allowed.
+  - `[[skills.config]]` with `enabled = false` that targets a generated GPOS skill is rejected.
+  - Other keys are not instruction discovery and are ignored. This is not a general Codex configuration policy engine.
+
+### Skill identity inside the project
+
+A project-local skill that occupies a generated GPOS skill id is reported (`SKILL_ID_CONFLICT`, exit 4) and never edited. That means a skill directory of that name, or a `SKILL.md` declaring that name, in any `.claude/skills/` (Claude Code) or `.agents/skills/` (Codex) directory of the project, nested ones included, other than the exact GPOS-owned path. A nested copy would give the runtime two skills with one GPOS identity. Human skills with other names remain allowed.
+
+### Trust boundary
+
+GPOS guarantees project-local adapter consistency, not control of the user's whole agent installation. The following are never inspected:
+- Claude Code user instructions, enterprise instructions and user or managed settings (`~/.claude`, managed policy);
+- Codex user, admin and profile configuration (`$CODEX_HOME`, `~/.codex`, `/etc/codex`);
+- skills in user or global locations;
+- directories above the repository root.
+
+Anything configured there can still add to, override or exclude instructions.
 
 ## Project-scoped skill ids
 
@@ -228,6 +256,8 @@ A file is GPOS-owned only when the adapter's manifest lists it. The managed area
 | `GENERATED_STALE` | sources unchanged but the generator would now produce different files |
 | `PATH_ESCAPE` | the manifest names a path outside the managed area |
 | `INSTRUCTION_LAYER_CONFLICT` | an unmanaged project instruction file exists (class CONFLICT) |
+| `INSTRUCTION_CONFIG_CONFLICT` / `INSTRUCTION_CONFIG_UNREADABLE` | project agent configuration can exclude, replace, truncate or disable generated instructions, or cannot be read (class CONFLICT) |
+| `SKILL_ID_CONFLICT` | another project-local skill occupies a generated skill id (class CONFLICT) |
 
 ## Manifest and provenance
 
@@ -254,7 +284,7 @@ If an agent cannot express GPOS meaning in its format, stop and escalate. Do not
 
 ## Known limitations (Phase 2B)
 
-- Agent behaviour is not benchmarked, and no agent is run: files are rendered, validated and synced only.
+- `RUNTIME_NOT_YET_SMOKE_TESTED`: Phase 2B renders, validates and syncs files and runs no agent. Loading the generated files in a real Claude Code or Codex session (Codex was not installed) is part of the real-agent pilot before production use. Agent behaviour is not benchmarked.
 - There is no adoption of an existing human-written entry file, and no global installation of skills.
 - Human authentication is out of scope ([HUMAN-AUTHORITY.md §7](../core/HUMAN-AUTHORITY.md#7-authenticity-of-human-evidence-trust-boundary)).
 - There are no engine, DCC, MCP, FFmpeg, device or repository-hosting adapters, no task orchestration or subagent spawning, and no project bootstrap.

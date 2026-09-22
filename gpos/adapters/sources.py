@@ -145,6 +145,9 @@ def parse_authority_document(text, placeholders, statuses=("PROPOSED", "LOCKED")
         if is_header:
             in_table = cells == AUTHORITY_HEADER
             has_tables |= in_table
+            if in_table and section is None:
+                problems.append(f"line {n}: authority table before any `## ` section; every authority row needs a section")
+                in_table = False
             if not in_table and "Value" in cells and any(c.startswith("Status") for c in cells):
                 problems.append(f"line {n}: table header {cells} looks like an authority table but is not {AUTHORITY_HEADER}")
             continue

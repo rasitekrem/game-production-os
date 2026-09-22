@@ -33,6 +33,7 @@ time only; nothing here needs the network):
 import json
 
 from .content import AgentFormat
+from .diagnostics import RUNTIME_NOT_YET_SMOKE_TESTED
 
 MANIFEST_ROOT = ".game/gpos-generated"
 ADAPTER_LAYER_VERSION = "1"
@@ -83,6 +84,7 @@ class ClaudeCodeBackend(Backend):
         "documented_target": "Claude Code project instructions (CLAUDE.md) and project skills (.claude/skills/<name>/SKILL.md), "
                              "per code.claude.com/docs/en/memory and /skills, consulted 2026-09-22",
         "locally_verified": "Claude Code 2.1.220 installed at implementation time; files rendered, not executed",
+        "runtime_status": RUNTIME_NOT_YET_SMOKE_TESTED,
         "required_capabilities": ["project CLAUDE.md loaded at session start",
                                   "project skills in .claude/skills with name/description front matter, body loaded on use"],
         "entrypoints": ["CLAUDE.md"],
@@ -116,6 +118,7 @@ class CodexBackend(Backend):
         "documented_target": "Codex AGENTS.md project instructions and repository skills (.agents/skills/<name>/SKILL.md), "
                              "per developers.openai.com/codex (redirected to learn.chatgpt.com), consulted 2026-09-22",
         "locally_verified": "Codex not installed at implementation time; not verified by execution",
+        "runtime_status": RUNTIME_NOT_YET_SMOKE_TESTED,
         "required_capabilities": ["AGENTS.md read from the git root down to the working directory",
                                   "repository skills in .agents/skills with name/description front matter, body loaded on use"],
         "entrypoints": ["AGENTS.md"],

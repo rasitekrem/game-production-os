@@ -13,6 +13,10 @@ import json
 from dataclasses import dataclass
 
 OK, INVALID, DRIFT, ERROR, CONFLICT = "OK", "INVALID", "DRIFT", "ERROR", "CONFLICT"
+# Documented runtime status of a backend (recorded in its compatibility declaration and manifest): Phase 2B renders,
+# validates and syncs files but runs no agent; live-session smoke tests belong to the real-agent pilot.
+RUNTIME_NOT_YET_SMOKE_TESTED = "RUNTIME_NOT_YET_SMOKE_TESTED"
+RUNTIME_STATUSES = (RUNTIME_NOT_YET_SMOKE_TESTED,)
 EXIT_FOR = {OK: 0, INVALID: 1, DRIFT: 2, ERROR: 3, CONFLICT: 4}
 _RANK = {ERROR: 0, CONFLICT: 1, INVALID: 2, DRIFT: 3, "WARNING": 4, "INFO": 5}
 
@@ -50,6 +54,9 @@ CODES = {
     "UNSAFE_PATH": (CONFLICT, "a target path is a symlink or resolves outside the project"),
     "MANIFEST_UNTRUSTED": (CONFLICT, "the existing manifest is malformed or edited; sync cannot establish ownership"),
     "INSTRUCTION_LAYER_CONFLICT": (CONFLICT, "a project instruction file GPOS does not own can add to or override the generated instructions"),
+    "INSTRUCTION_CONFIG_CONFLICT": (CONFLICT, "project agent configuration can exclude, replace, truncate or disable generated instructions"),
+    "INSTRUCTION_CONFIG_UNREADABLE": (CONFLICT, "project agent configuration that affects instruction discovery cannot be read (fail closed)"),
+    "SKILL_ID_CONFLICT": (CONFLICT, "another project-local skill occupies a generated GPOS skill id"),
     # informational
     "FILE_WRITTEN": ("INFO", "a managed file was created or updated"),
     "FILE_REMOVED": ("INFO", "a stale managed file was removed"),

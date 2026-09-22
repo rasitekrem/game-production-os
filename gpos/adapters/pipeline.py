@@ -23,7 +23,8 @@ from . import diagnostics as dg
 from .backends import BACKENDS
 from .compiler import compile_ir, project_root_of
 from .errors import AdapterError
-from .layers import owned_entrypoints, unmanaged_instruction_layers
+from .layers import (claude_settings_problems, codex_config_problems, owned_entrypoints, skill_id_collisions,
+                     unmanaged_instruction_layers)
 from .manifest import parse_manifest
 from .paths import is_managed, is_safe_relative, managed_files_on_disk, unsafe_on_disk
 from .render import render_bundle
@@ -144,18 +145,32 @@ def _manifest_or_none(root, backend):
         return None
 
 
-def _layer_conflicts(root, backend, owned):
-    return [dg.make("INSTRUCTION_LAYER_CONFLICT", f"{path} is a {backend.agent_name} instruction file GPOS does not own; the "
+def _layer_conflicts(root, bundle, owned):
+    """Runtime-discovery conflicts for one backend: project instruction configuration, unmanaged instruction
+    layers (including configured fallback names) and generated-skill id collisions. Read-only."""
+    backend, ir = bundle.backend, bundle.ir
+    out, extra_names = [], ()
+    if backend.id == "claude-code":
+        problems = claude_settings_problems(root)
+    else:
+        root_bytes = len(bundle.by_path()[backend.entrypoint].data)
+        problems, extra_names = codex_config_problems(root, root_bytes, [s.agent_id for s in ir.skills])
+    out += [dg.make(code, message, backend.id, path) for code, path, message in problems]
+    out += [dg.make("INSTRUCTION_LAYER_CONFLICT", f"{path} is a {backend.agent_name} instruction file GPOS does not own; the "
                     f"runtime can let it add to or override the generated instructions. Move its content into project "
                     f"authority (.game/) or remove it; GPOS never edits it", backend.id, path)
-            for path in unmanaged_instruction_layers(root, backend, owned)]
+            for path in unmanaged_instruction_layers(root, backend, owned, extra_names)]
+    out += [dg.make("SKILL_ID_CONFLICT", f"{path} is a project skill with the generated GPOS skill id {sid}; the runtime could "
+                    f"offer both. Rename or move it; GPOS never edits it", backend.id, path)
+            for path, sid in skill_id_collisions(root, backend, [s.agent_id for s in ir.skills])]
+    return out
 
 
 def plan_sync(root, bundle, repair=False, owned_entry_files=()):
     """(writes {path: bytes}, deletes [path], diagnostics). Nothing is touched."""
     backend = bundle.backend
     diags, writes, deletes = [], {}, []
-    diags += _layer_conflicts(root, backend, set(owned_entry_files) | {backend.entrypoint})
+    diags += _layer_conflicts(root, bundle, set(owned_entry_files) | {backend.entrypoint})
     old = _old_manifest(root, backend)
     old_files = {}
     if old is not None:
@@ -349,7 +364,7 @@ def check_agent(root, ir, bundle):
         m = parse_manifest(raw)
     except ValueError as exc:
         return [d("MANIFEST_INVALID", f"{backend.manifest_path}: {exc}", backend.manifest_path)]
-    out = _layer_conflicts(root, backend, owned_entrypoints(root, BACKENDS.values(), _manifest_or_none))
+    out = _layer_conflicts(root, bundle, owned_entrypoints(root, BACKENDS.values(), _manifest_or_none))
     if m["adapter"].get("id") != a or m["adapter"].get("format") != backend.format_id:
         out.append(d("ADAPTER_FORMAT_MISMATCH", f"manifest adapter {m['adapter']} is not {a} {backend.format_id}",
                      backend.manifest_path))

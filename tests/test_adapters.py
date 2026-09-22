@@ -702,8 +702,9 @@ class J01_Boundaries(unittest.TestCase):
         self.assertEqual(sorted(backends.BACKENDS), sorted(REG["adapter_ids"]))
         for b in backends.BACKENDS.values():
             for key in ("target_agent", "documented_target", "required_capabilities", "entrypoints", "skill_discovery",
-                        "known_limitations", "locally_verified"):
+                        "known_limitations", "locally_verified", "runtime_status"):
                 self.assertIn(key, b.compatibility, b.id)
+            self.assertEqual(b.compatibility["runtime_status"], adg.RUNTIME_NOT_YET_SMOKE_TESTED)
 
 
 # ---------------------------------------------------------------- K  CLI
@@ -1087,6 +1088,165 @@ class P01_CanonicalSource(TmpCase):
         finally:
             content.ROOT_PLACEMENT.clear()
             content.ROOT_PLACEMENT.update(placement)
+
+
+# ---------------------------------------------------------------- Q  runtime discovery hardening (final)
+
+def write(p, rel, text):
+    f = p / rel
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(text)
+    return f
+
+
+class Q01_ClaudeProjectSettings(TmpCase):
+    def test_claude_md_excludes_blocks_sync_and_check_without_touching_settings(self):
+        for i, (rel, settings) in enumerate(((".claude/settings.local.json", {"claudeMdExcludes": ["**/CLAUDE.md"]}),
+                                             (".claude/settings.json", {"claudeMdExcludes": ["/abs/project/CLAUDE.md"]}),
+                                             ("src/.claude/settings.json", {"claudeMdExcludes": ["**/other/**"]}))):
+            p = project(self.tmp / str(i))
+            f = write(p, rel, json.dumps(settings))
+            before = tree(p)
+            r = pipeline.sync(p, "claude-code")
+            self.assertEqual(r.status, adg.CONFLICT, rel)
+            self.assertIn(("INSTRUCTION_CONFIG_CONFLICT", rel), {(d.code, d.path) for d in r.diagnostics})
+            self.assertEqual(tree(p), before)
+            self.assertEqual(json.loads(f.read_text()), settings)
+
+    def test_check_reports_settings_added_after_sync(self):
+        p = self.proj()
+        self.assertEqual(pipeline.sync(p).status, adg.OK)
+        write(p, ".claude/settings.local.json", json.dumps({"claudeMdExcludes": ["**/CLAUDE.md"]}))
+        r = pipeline.check(p, "claude-code")
+        self.assertEqual(r.status, adg.CONFLICT)
+        self.assertIn("INSTRUCTION_CONFIG_CONFLICT", codes(r))
+        self.assertEqual(pipeline.check(p, "codex").status, adg.OK)  # a Claude setting does not concern Codex
+
+    def test_harmless_settings_and_malformed_settings(self):
+        p = self.proj()
+        write(p, ".claude/settings.json", json.dumps({"permissions": {"allow": ["Bash(npm run test)"]}, "claudeMdExcludes": []}))
+        self.assertEqual(pipeline.sync(p).status, adg.OK)
+        self.assertEqual(pipeline.check(p).status, adg.OK)
+        write(p, ".claude/settings.local.json", "{ not json")
+        r = pipeline.check(p, "claude-code")
+        self.assertEqual((r.status, codes(r)), (adg.CONFLICT, {"INSTRUCTION_CONFIG_UNREADABLE"}))
+
+
+class Q02_CodexProjectConfig(TmpCase):
+    def root_bytes(self, p):
+        return len(render_bundle(compile_ir(p), CODEX).by_path()["AGENTS.md"].data)
+
+    def assertBlocked(self, p, code="INSTRUCTION_CONFIG_CONFLICT", path=".codex/config.toml"):
+        cfg = p / path
+        before, content_ = tree(p), cfg.read_text() if cfg.exists() else None
+        r = pipeline.sync(p, "codex")
+        self.assertEqual(r.status, adg.CONFLICT, [d.message for d in r.diagnostics])
+        self.assertIn(code, codes(r))
+        self.assertEqual(tree(p), before)
+        if content_ is not None:
+            self.assertEqual(cfg.read_text(), content_)
+        return r
+
+    def test_model_instructions_file_blocks(self):
+        for i, toml in enumerate(('model_instructions_file = "docs/agent.md"\n',
+                                  '[profiles.fast]\nmodel_instructions_file = "docs/agent.md"\n',
+                                  'experimental_instructions_file = "docs/agent.md"\n')):
+            p = project(self.tmp / str(i))
+            write(p, ".codex/config.toml", toml)
+            self.assertBlocked(p)
+
+    def test_project_doc_max_bytes(self):
+        p = self.proj()
+        size = self.root_bytes(p)
+        write(p, ".codex/config.toml", f"project_doc_max_bytes = {size - 1}\n")
+        self.assertBlocked(p)
+        write(p, ".codex/config.toml", f"project_doc_max_bytes = {size}\n")
+        self.assertEqual(pipeline.sync(p, "codex").status, adg.OK)
+        self.assertEqual(pipeline.check(p, "codex").status, adg.OK)
+        write(p, ".codex/config.toml", f'[profiles.small]\nproject_doc_max_bytes = 1024\n')
+        self.assertIn("INSTRUCTION_CONFIG_CONFLICT", codes(pipeline.check(p, "codex")))
+
+    def test_fallback_filenames(self):
+        p = self.proj()
+        write(p, ".codex/config.toml", 'project_doc_fallback_filenames = ["TEAM.md", "README.agent.md"]\n')
+        self.assertEqual(pipeline.sync(p, "codex").status, adg.OK)  # configured, but nothing matches: allowed
+        write(p, "src/TEAM.md", "team rules\n")
+        r = pipeline.check(p, "codex")
+        self.assertIn(("INSTRUCTION_LAYER_CONFLICT", "src/TEAM.md"), {(d.code, d.path) for d in r.diagnostics})
+        q = project(self.tmp / "q")
+        write(q, ".codex/config.toml", 'project_doc_fallback_filenames = ["TEAM.md"]\n')
+        write(q, "src/TEAM.md", "team rules\n")
+        self.assertBlocked(q, "INSTRUCTION_LAYER_CONFLICT")
+
+    def test_malformed_config_fails_closed(self):
+        for i, toml in enumerate(("model_instructions_file = \n", "project_doc_max_bytes = \"big\"\n",
+                                  "project_doc_fallback_filenames = \"TEAM.md\"\n",
+                                  "project_doc_fallback_filenames = [\"a/b.md\"]\n")):
+            p = project(self.tmp / str(i))
+            write(p, "tools/.codex/config.toml", toml)
+            self.assertBlocked(p, "INSTRUCTION_CONFIG_UNREADABLE", "tools/.codex/config.toml")
+
+    def test_skill_disabled_by_project_config(self):
+        p = self.proj()
+        write(p, ".codex/config.toml", f'[[skills.config]]\npath = ".agents/skills/{SK("character-animation")}/SKILL.md"\nenabled = false\n')
+        self.assertBlocked(p)
+        write(p, ".codex/config.toml", '[[skills.config]]\npath = ".agents/skills/my-tool/SKILL.md"\nenabled = false\n')
+        self.assertEqual(pipeline.sync(p, "codex").status, adg.OK)
+
+    def test_unrelated_codex_config_is_allowed(self):
+        p = self.proj()
+        write(p, ".codex/config.toml", 'model = "some-model"\napproval_policy = "on-request"\n')
+        self.assertEqual(pipeline.sync(p, "codex").status, adg.OK)
+        self.assertEqual(pipeline.check(p, "codex").status, adg.OK)
+
+
+class Q03_SkillIdCollisions(TmpCase):
+    def collide(self, p, rel, text=None):
+        f = write(p, rel, text or "---\nname: my-copy\ndescription: a human copy\n---\nbody\n")
+        return f, f.read_text()
+
+    def test_nested_duplicate_ids_block_and_stay_untouched(self):
+        cases = [("codex", f"src/.agents/skills/{SK('game-director')}/SKILL.md", None),
+                 ("codex", ".agents/skills/director-copy/SKILL.md", f"---\nname: {SK('game-director')}\ndescription: x\n---\n"),
+                 ("claude-code", f"src/.claude/skills/{SK('game-director')}/SKILL.md", None),
+                 ("claude-code", f"tools/deep/.claude/skills/{SK('qa-performance')}/SKILL.md", None)]
+        for i, (agent, rel, text) in enumerate(cases):
+            p = project(self.tmp / str(i))
+            f, original = self.collide(p, rel, text)
+            before = tree(p)
+            r = pipeline.sync(p, agent)
+            self.assertEqual(r.status, adg.CONFLICT, rel)
+            self.assertIn(("SKILL_ID_CONFLICT", rel), {(d.code, d.path) for d in r.diagnostics}, rel)
+            self.assertEqual(tree(p), before)
+            self.assertEqual(f.read_text(), original)
+
+    def test_check_reports_collision_after_sync(self):
+        p = self.proj()
+        self.assertEqual(pipeline.sync(p).status, adg.OK)
+        self.collide(p, f"src/.agents/skills/{SK('game-director')}/SKILL.md")
+        r = pipeline.check(p)
+        self.assertEqual(r.status, adg.CONFLICT)
+        self.assertEqual({d.agent for d in r.diagnostics if d.code == "SKILL_ID_CONFLICT"}, {"codex"})
+
+    def test_unrelated_project_skills_are_allowed(self):
+        p = self.proj()
+        self.collide(p, ".claude/skills/my-helper/SKILL.md", "---\nname: my-helper\ndescription: mine\n---\n")
+        self.collide(p, "src/.agents/skills/game-director/SKILL.md", "---\nname: game-director\ndescription: an unscoped name\n---\n")
+        self.assertEqual(pipeline.sync(p).status, adg.OK)
+        self.assertEqual(pipeline.check(p).status, adg.OK)
+
+
+class Q04_AuthorityTableNeedsSection(TmpCase):
+    def test_table_before_any_section_fails(self):
+        p = self.proj()
+        f = p / ".game" / "ANIMATION.md"
+        text = f.read_text()
+        first_h2 = text.index("\n## ")
+        table = "\n\n| Item | Value | Status · decision ref |\n|---|---|---|\n| Orphan | `UNDECIDED` | `PROPOSED` |\n"
+        f.write_text(text[:first_h2] + table + text[first_h2:])
+        r = pipeline.render(p)
+        self.assertEqual((r.status, codes(r)), (adg.INVALID, {"AUTHORITY_DOCUMENT_INVALID"}))
+        self.assertIn("before any", r.diagnostics[0].message)
 
 
 # ---------------------------------------------------------------- L  snapshots (layout, manifest, concise root)

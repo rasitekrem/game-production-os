@@ -2637,6 +2637,7 @@ def validator_vocabulary():
     # Phase 2B: adapter diagnostic codes, result classes and source kinds
     from gpos.adapters import diagnostics as adapter_diagnostics, sources as adapter_sources
     words |= set(adapter_diagnostics.CODES) | set(adapter_diagnostics.EXIT_FOR) | set(adapter_sources.SOURCE_KINDS)
+    words |= set(adapter_diagnostics.RUNTIME_STATUSES)
     return words
 
 

@@ -23,6 +23,13 @@ Builds on the frozen Phase-1 core (`v1.0.0-alpha.7`) and the frozen Phase-2A val
 - Project Locked Authority is bound to its Human Decision. A `LOCK` decision's structured `value.locks` must target the exact row and current value, or the document's canonical hash (registry `project_lock_binding`). An authorized decider, `ACTIVE` status and this project as subject are also required; otherwise generation fails closed (`AUTHORITY_LOCK_UNVERIFIED`). A read-only `authority` command prints the exact bindings.
 - Strict authority-document parsing: malformed, duplicate or near-miss authority rows and metadata fail (`AUTHORITY_DOCUMENT_INVALID`) instead of being skipped.
 - Unmanaged project instruction layers are detected and block sync and check (`INSTRUCTION_LAYER_CONFLICT`): Codex nested or override `AGENTS` files; Claude Code `.claude/CLAUDE.md`, `CLAUDE.local.md`, nested `CLAUDE.md`, `.claude/rules/` and unowned `AGENTS.md`. Generated text no longer claims such layers cannot relax GPOS.
+- Project runtime configuration that changes instruction discovery blocks sync and check (`INSTRUCTION_CONFIG_CONFLICT` / `INSTRUCTION_CONFIG_UNREADABLE`):
+  - Claude Code project or local `claudeMdExcludes`;
+  - Codex project `.codex/config.toml` `model_instructions_file`, a `project_doc_max_bytes` below the generated root, `[[skills.config]]` disabling a generated skill;
+  - `project_doc_fallback_filenames` matching unowned files.
+- Project-local skills occupying a generated skill id are rejected (`SKILL_ID_CONFLICT`).
+- Authority tables must belong to a `##` section.
+- The user-level, admin and global agent configuration trust boundary is documented.
 - Project-scoped generated skill ids, `gpos-<namespace>-<skill>`: deterministic, 64 characters at most. Manifests map them to the logical ids.
 - The rules generated instructions state come from registry `agent_operating_contract`: statements with verbatim-quoted frozen sources, whose documents are hashed as sources. `content.py` is a renderer and authors no rule.
 

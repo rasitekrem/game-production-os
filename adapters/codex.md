@@ -37,11 +37,18 @@ Skills are invoked by domain intent, or directly with `$gpos-<namespace>-<skill>
 - A human-written root `AGENTS.md` is never overwritten or adopted: sync stops with `UNOWNED_ENTRYPOINT`.
 - Only the project-root `AGENTS.md` is generated.
 - Because deeper files can override it, any `AGENTS.md` or `AGENTS.override.md` elsewhere in the project that GPOS does not own stops sync and is reported by check (`INSTRUCTION_LAYER_CONFLICT`). This includes a root `AGENTS.override.md` and such files above the project up to the git repository root. They are never edited. Move their content into `.game/` authority first.
-- User-level Codex instructions and configured fallback file names are outside the project and are not inspected: a documented trust boundary.
+- Project `.codex/config.toml` files (project tree and parents up to the repository root; top level and profiles) are read with `tomllib` and never edited:
+  - `model_instructions_file` / `experimental_instructions_file` → `INSTRUCTION_CONFIG_CONFLICT`;
+  - `project_doc_max_bytes` below the generated `AGENTS.md` size → `INSTRUCTION_CONFIG_CONFLICT`;
+  - `project_doc_fallback_filenames` adds instruction names, and an unowned file with such a name is an `INSTRUCTION_LAYER_CONFLICT`;
+  - `[[skills.config]] enabled = false` targeting a generated skill → `INSTRUCTION_CONFIG_CONFLICT`;
+  - malformed configuration → `INSTRUCTION_CONFIG_UNREADABLE`.
+- A project skill (root or nested `.agents/skills/`) with a generated GPOS skill id, by directory or declared `name`, is a `SKILL_ID_CONFLICT`.
+- `$CODEX_HOME` / `~/.codex`, admin (`/etc/codex`) and user-level instructions, configuration and skills are outside the project and are not inspected: a documented trust boundary. GPOS guarantees project-local consistency only.
 - Nothing is written to `~/.codex`, `~/.agents` or `$CODEX_HOME`, and no skills are installed globally. `agents/openai.yaml` is not generated.
 
 ## Limitations
 
-- Codex has not been verified by execution (it was not installed).
+- `RUNTIME_NOT_YET_SMOKE_TESTED`: Codex was not installed, and Phase 2B runs no agent. Loading the generated files in a live Codex session belongs to the real-agent pilot before production use.
 - `AGENTS.md` discovery starts at the git root. For a project outside a git repository, only the working directory is assumed.
 - A project that already has a human-written `AGENTS.md` must move or merge it by hand before syncing.

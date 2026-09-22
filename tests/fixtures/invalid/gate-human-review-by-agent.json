@@ -1,0 +1,20 @@
+{
+  "description": "An agent cannot decide HUMAN_REVIEW.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/gate": "HUMAN_REVIEW",
+    "/owner": "HUMAN",
+    "/status": "PASS",
+    "/review_policy": "HUMAN_REVIEW_REQUIRED",
+    "/evidence_refs": [
+      "EV-0002"
+    ]
+  },
+  "remove": [
+    "/required_changes",
+    "/applied_conditions"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "const"
+}

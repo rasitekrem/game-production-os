@@ -1,0 +1,33 @@
+{
+  "description": "Evidence for another task must not prove TASK-0001 just because revisions match.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/status": "PASS",
+      "/specialist_assessment": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "camera-composition",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ]
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/subject": {
+          "kind": "TASK",
+          "ref": "TOTALLY-OTHER-TASK"
+        }
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "not the gate subject"
+}

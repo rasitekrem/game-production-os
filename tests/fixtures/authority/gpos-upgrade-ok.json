@@ -1,0 +1,33 @@
+{
+  "description": "alpha.3 -> alpha.4 backed by a matching GPOS_UPGRADE decision.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/gpos_upgrade": {
+        "from_version": "1.0.0-alpha.3",
+        "decision_ref": "D-0024"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0024",
+        "/kind": "GPOS_UPGRADE",
+        "/affects": [
+          "project-config"
+        ],
+        "/upgrade": {
+          "from_version": "1.0.0-alpha.3",
+          "to_version": "1.0.0-alpha.7"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": null
+}

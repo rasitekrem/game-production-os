@@ -1,0 +1,20 @@
+{
+  "description": "REVIEW_POLICY_OVERRIDE with gate, policy and scope.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/kind": "REVIEW_POLICY_OVERRIDE",
+    "/value": {
+      "gate": "ANIMATION",
+      "review_policy": "HUMAN_REVIEW_REQUIRED",
+      "scope": {
+        "kind": "ASSET",
+        "ref": "player-character"
+      }
+    }
+  },
+  "remove": [
+    "/transition"
+  ],
+  "expect": "valid"
+}

@@ -1,0 +1,16 @@
+{
+  "description": "A ROUTINE PASS cannot contradict the owner's own assessment.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/review_policy": "ROUTINE",
+    "/routine_basis": "x",
+    "/specialist_assessment": "CHANGES_REQUIRED"
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "const"
+}

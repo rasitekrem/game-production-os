@@ -1,0 +1,33 @@
+{
+  "description": "A BUILD capture does not silently prove a TASK gate.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/status": "PASS",
+      "/specialist_assessment": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "camera-composition",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ]
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/subject": {
+          "kind": "BUILD",
+          "ref": "build-0042"
+        }
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "not the gate subject"
+}

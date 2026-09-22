@@ -1,0 +1,18 @@
+{
+  "description": "When routing requires cross-review under HUMAN_REVIEW_REQUIRED, a passing cross-review is needed.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/review_policy": "HUMAN_REVIEW_REQUIRED",
+    "/cross_review_required": true,
+    "/human_review_ref": "GATE-0002",
+    "/specialist_assessment": "PASS",
+    "/cross_reviews": []
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "contains"
+}

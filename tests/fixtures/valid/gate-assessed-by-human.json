@@ -1,0 +1,17 @@
+{
+  "description": "A human may be the accountable assessor of any gate.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/assessed_by": {
+      "kind": "HUMAN",
+      "id": "creative-lead"
+    },
+    "/recorded_by": {
+      "kind": "AGENT",
+      "id": "game-director"
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "decision_id": "D-0001",
+  "kind": "LIFECYCLE_TRANSITION",
+  "subject": {
+    "kind": "PROJECT",
+    "ref": "example-project"
+  },
+  "decided_by": {
+    "kind": "HUMAN",
+    "id": "creative-lead"
+  },
+  "decided_at": "2026-01-02T09:00:00Z",
+  "decision": {
+    "verbatim": "Concept is locked. Move to pre-production.",
+    "source_uri": ".game/reviews/HR-0001.md"
+  },
+  "transition": {
+    "from": "CONCEPT",
+    "to": "PRE_PRODUCTION"
+  },
+  "affects": [
+    ".game/PROJECT.md",
+    "project-config:/lifecycle_stage"
+  ],
+  "transcribed_by": {
+    "kind": "AGENT",
+    "id": "game-director"
+  },
+  "status": "ACTIVE"
+}

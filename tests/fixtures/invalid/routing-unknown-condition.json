@@ -1,0 +1,13 @@
+{
+  "description": "Conditions come from the registry vocabulary.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/required_gates/0/applied_conditions": [
+      "IT_IS_IMPORTANT"
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

@@ -1,0 +1,11 @@
+{
+  "description": "There is no generic developer specialist.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/primary_specialist": "game-developer"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

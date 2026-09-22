@@ -1,0 +1,11 @@
+{
+  "description": "game-engineering implements but never owns TECHNICAL; qa-performance verifies.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/required_gates/1/owner": "game-engineering"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

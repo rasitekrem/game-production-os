@@ -1,0 +1,288 @@
+{
+  "description": "ANDROID and WINDOWS (both PRIMARY) have counting device and performance evidence; IOS is SECONDARY.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/target_platforms": [
+        {
+          "platform": "ANDROID",
+          "tier": "PRIMARY",
+          "reference_devices": [
+            "Pixel-X"
+          ]
+        },
+        {
+          "platform": "WINDOWS",
+          "tier": "PRIMARY"
+        },
+        {
+          "platform": "IOS",
+          "tier": "SECONDARY",
+          "reference_devices": [
+            "Phone-Y"
+          ]
+        }
+      ]
+    },
+    "remove": []
+  },
+  "decisions": [],
+  "routing": "tests/fixtures/valid/routing-release-all-gates.json",
+  "gates": [
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {
+        "/gate_id": "G-TECH",
+        "/gate": "TECHNICAL",
+        "/owner": "qa-performance",
+        "/assessed_by": {
+          "kind": "AGENT",
+          "id": "qa-performance"
+        },
+        "/status": "PASS",
+        "/review_policy": "ROUTINE",
+        "/routine_basis": "release",
+        "/specialist_assessment": "PASS",
+        "/routing_ref": "REL-1.0",
+        "/scope": {
+          "kind": "RELEASE",
+          "ref": "rel-1.0",
+          "revision": "build-100"
+        },
+        "/evidence_refs": [
+          "T1"
+        ],
+        "/applied_conditions": []
+      },
+      "remove": [
+        "/required_changes",
+        "/cross_reviews"
+      ]
+    },
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {
+        "/gate_id": "G-PERF",
+        "/gate": "PERFORMANCE",
+        "/owner": "qa-performance",
+        "/assessed_by": {
+          "kind": "AGENT",
+          "id": "qa-performance"
+        },
+        "/status": "PASS",
+        "/review_policy": "ROUTINE",
+        "/routine_basis": "release",
+        "/specialist_assessment": "PASS",
+        "/routing_ref": "REL-1.0",
+        "/scope": {
+          "kind": "RELEASE",
+          "ref": "rel-1.0",
+          "revision": "build-100"
+        },
+        "/evidence_refs": [
+          "PERF-A",
+          "PERF-W",
+          "DEV-A",
+          "DEV-W"
+        ],
+        "/applied_conditions": [
+          "TARGET_PLATFORM_PERFORMANCE_CLAIM"
+        ]
+      },
+      "remove": [
+        "/required_changes",
+        "/cross_reviews"
+      ]
+    },
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {
+        "/gate_id": "G-DEV",
+        "/gate": "DEVICE",
+        "/owner": "qa-performance",
+        "/assessed_by": {
+          "kind": "AGENT",
+          "id": "qa-performance"
+        },
+        "/status": "PASS",
+        "/review_policy": "ROUTINE",
+        "/routine_basis": "release",
+        "/specialist_assessment": "PASS",
+        "/routing_ref": "REL-1.0",
+        "/scope": {
+          "kind": "RELEASE",
+          "ref": "rel-1.0",
+          "revision": "build-100"
+        },
+        "/evidence_refs": [
+          "DEV-A",
+          "DEV-W"
+        ],
+        "/applied_conditions": []
+      },
+      "remove": [
+        "/required_changes",
+        "/cross_reviews"
+      ]
+    },
+    {
+      "base": "examples/example-gate-record.json",
+      "remove": [
+        "/required_changes",
+        "/cross_reviews",
+        "/specialist_assessment",
+        "/applied_conditions"
+      ],
+      "set": {
+        "/gate_id": "G-HR",
+        "/gate": "HUMAN_REVIEW",
+        "/owner": "HUMAN",
+        "/assessed_by": {
+          "kind": "HUMAN",
+          "id": "creative-lead"
+        },
+        "/recorded_by": {
+          "kind": "AGENT",
+          "id": "game-director"
+        },
+        "/status": "PASS",
+        "/review_policy": "HUMAN_REVIEW_REQUIRED",
+        "/routing_ref": "REL-1.0",
+        "/scope": {
+          "kind": "RELEASE",
+          "ref": "rel-1.0",
+          "revision": "build-100"
+        },
+        "/evidence_refs": [
+          "H1"
+        ]
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "T1",
+        "/type": "TEST_EVIDENCE",
+        "/subject": {
+          "kind": "RELEASE",
+          "ref": "rel-1.0"
+        },
+        "/provenance": {
+          "capture_context": "AUTOMATED_TEST",
+          "subject_revision": "build-100",
+          "build_id": "build-100"
+        }
+      },
+      "remove": []
+    },
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "H1",
+        "/type": "HUMAN_EVIDENCE",
+        "/subject": {
+          "kind": "RELEASE",
+          "ref": "rel-1.0"
+        },
+        "/source": {
+          "kind": "HUMAN",
+          "id": "creative-lead"
+        },
+        "/provenance": {
+          "capture_context": "HUMAN_RECORD",
+          "subject_revision": "build-100"
+        }
+      },
+      "remove": []
+    },
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "DEV-A",
+        "/type": "DEVICE_EVIDENCE",
+        "/subject": {
+          "kind": "RELEASE",
+          "ref": "rel-1.0"
+        },
+        "/provenance": {
+          "capture_context": "TARGET_RUNTIME",
+          "subject_revision": "build-100",
+          "build_id": "build-100",
+          "target_platform": "ANDROID",
+          "device": "Pixel-X"
+        }
+      },
+      "remove": []
+    },
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "PERF-A",
+        "/type": "PERFORMANCE_EVIDENCE",
+        "/subject": {
+          "kind": "RELEASE",
+          "ref": "rel-1.0"
+        },
+        "/provenance": {
+          "capture_context": "PERFORMANCE_RUNTIME",
+          "subject_revision": "build-100",
+          "build_id": "build-100",
+          "target_platform": "ANDROID",
+          "device": "Pixel-X",
+          "instrumentation": {
+            "present": true,
+            "description": "Sampling profiler",
+            "timing_impact": "NEGLIGIBLE"
+          }
+        }
+      },
+      "remove": []
+    },
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "DEV-W",
+        "/type": "DEVICE_EVIDENCE",
+        "/subject": {
+          "kind": "RELEASE",
+          "ref": "rel-1.0"
+        },
+        "/provenance": {
+          "capture_context": "TARGET_RUNTIME",
+          "subject_revision": "build-100",
+          "build_id": "build-100",
+          "target_platform": "WINDOWS",
+          "device": "Reference-PC-1"
+        }
+      },
+      "remove": []
+    },
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "PERF-W",
+        "/type": "PERFORMANCE_EVIDENCE",
+        "/subject": {
+          "kind": "RELEASE",
+          "ref": "rel-1.0"
+        },
+        "/provenance": {
+          "capture_context": "PERFORMANCE_RUNTIME",
+          "subject_revision": "build-100",
+          "build_id": "build-100",
+          "target_platform": "WINDOWS",
+          "device": "Reference-PC-1",
+          "instrumentation": {
+            "present": true,
+            "description": "Sampling profiler",
+            "timing_impact": "NEGLIGIBLE"
+          }
+        }
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": null
+}

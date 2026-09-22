@@ -1,0 +1,25 @@
+{
+  "description": "The same reviewer listed twice with different gate lists.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/human_review/reviewers": [
+        {
+          "id": "reviewer-a",
+          "gates": [
+            "ANIMATION"
+          ]
+        },
+        {
+          "id": "reviewer-a",
+          "gates": [
+            "UI_UX"
+          ]
+        }
+      ]
+    },
+    "remove": []
+  },
+  "decisions": [],
+  "expect_problem": "duplicate human_review.reviewers id"
+}

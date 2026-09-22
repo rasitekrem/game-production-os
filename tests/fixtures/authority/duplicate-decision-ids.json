@@ -1,0 +1,39 @@
+{
+  "description": "Two decision records share D-0001; lookup must refuse, not pick one.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/lifecycle_stage": "PRE_PRODUCTION",
+      "/lifecycle_decision_ref": "D-0001"
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0001",
+        "/kind": "LIFECYCLE_TRANSITION",
+        "/affects": [
+          "project-config"
+        ]
+      },
+      "remove": []
+    },
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0001",
+        "/kind": "QUALITY_TARGET",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": "PROTOTYPE"
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": "duplicate decision_id"
+}

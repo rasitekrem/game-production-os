@@ -1,0 +1,13 @@
+{
+  "description": "A blocking downgrade names the gate it applies to.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/kind": "BLOCKING_DOWNGRADE"
+  },
+  "remove": [
+    "/transition"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

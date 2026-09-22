@@ -1,0 +1,39 @@
+{
+  "description": "A real-time claim needs motion evidence.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/gate": "GAMEPLAY_DESIGN",
+      "/owner": "gameplay-design",
+      "/status": "PASS",
+      "/applied_conditions": [
+        "REAL_TIME_BEHAVIOUR"
+      ],
+      "/cross_reviews": [
+        {
+          "reviewer": "level-design",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ],
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "gameplay-design"
+      },
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/type": "RUNTIME_EVIDENCE"
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "MOTION_EVIDENCE"
+}

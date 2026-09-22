@@ -1,0 +1,44 @@
+{
+  "description": "With a mandatory trigger, subjective gates must be HUMAN_REVIEW_REQUIRED.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/workflow": "character-production",
+    "/review_triggers": [
+      "CANONICAL_CREATIVE_ASSET"
+    ],
+    "/human_review": {
+      "required": true,
+      "timing": "After cross-review",
+      "primary_question": "Does this look and feel like the intended game?"
+    },
+    "/reviewers": [
+      "camera-composition",
+      "HUMAN"
+    ],
+    "/required_gates": [
+      {
+        "gate": "VISUAL_ART",
+        "owner": "art-direction",
+        "blocking": true,
+        "review_policy": "CROSS_REVIEW_REQUIRED",
+        "required_evidence": [
+          "VISUAL_EVIDENCE"
+        ]
+      },
+      {
+        "gate": "HUMAN_REVIEW",
+        "owner": "HUMAN",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "HUMAN_EVIDENCE"
+        ]
+      }
+    ],
+    "/omitted_gates": []
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "const"
+}

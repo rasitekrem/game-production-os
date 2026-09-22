@@ -1,0 +1,14 @@
+{
+  "description": "HUMAN_RECORD context is only for HUMAN_EVIDENCE.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/provenance": {
+      "capture_context": "HUMAN_RECORD",
+      "subject_revision": "r"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

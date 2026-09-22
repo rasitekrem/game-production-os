@@ -1,0 +1,14 @@
+{
+  "description": "Golden Cell cannot be EXITED without the accepting Human Decision.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/golden_gameplay_cell": {
+      "required": true,
+      "status": "EXITED"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

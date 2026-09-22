@@ -1,0 +1,14 @@
+{
+  "description": "A presentation-parity decision is YES or NO.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/kind": "PRESENTATION_PARITY",
+    "/value": "MAYBE"
+  },
+  "remove": [
+    "/transition"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

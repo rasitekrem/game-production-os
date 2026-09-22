@@ -1,0 +1,11 @@
+{
+  "description": "A superseded decision names its successor.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/status": "SUPERSEDED"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

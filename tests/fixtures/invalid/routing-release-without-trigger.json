@@ -1,0 +1,11 @@
+{
+  "description": "Release routing must carry the RELEASE trigger.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/workflow": "release"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "contains"
+}

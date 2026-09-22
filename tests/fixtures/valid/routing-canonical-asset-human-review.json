@@ -1,0 +1,89 @@
+{
+  "description": "A canonical creative asset triggers Human Review on its subjective gates.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/workflow": "character-production",
+    "/primary_specialist": "art-direction",
+    "/secondary_specialists": [
+      "technical-art",
+      "qa-performance"
+    ],
+    "/reviewers": [
+      "environment-art",
+      "HUMAN"
+    ],
+    "/review_triggers": [
+      "CANONICAL_CREATIVE_ASSET"
+    ],
+    "/human_review": {
+      "required": true,
+      "timing": "After cross-review",
+      "primary_question": "Does this look and feel like the intended game?"
+    },
+    "/required_gates": [
+      {
+        "gate": "VISUAL_ART",
+        "owner": "art-direction",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "VISUAL_EVIDENCE"
+        ],
+        "applied_conditions": [
+          "TARGET_PRESENTATION_DIFFERS"
+        ],
+        "unapplied_conditions": [
+          {
+            "condition": "ANIMATED_PRESENTATION",
+            "reason": "Not part of this task's claim (animated presentation does not hold)."
+          }
+        ]
+      },
+      {
+        "gate": "TECHNICAL",
+        "owner": "technical-art",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "routine_basis": "Import to project conventions",
+        "required_evidence": [
+          "RUNTIME_EVIDENCE"
+        ],
+        "unapplied_conditions": [
+          {
+            "condition": "PERSISTENCE_AFFECTED",
+            "reason": "Not part of this task's claim (persistence affected does not hold)."
+          }
+        ]
+      },
+      {
+        "gate": "PERFORMANCE",
+        "owner": "qa-performance",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "routine_basis": "Measure against locked character budget",
+        "required_evidence": [
+          "PERFORMANCE_EVIDENCE"
+        ],
+        "unapplied_conditions": [
+          {
+            "condition": "TARGET_PLATFORM_PERFORMANCE_CLAIM",
+            "reason": "Not part of this task's claim (target platform performance claim does not hold)."
+          }
+        ]
+      },
+      {
+        "gate": "HUMAN_REVIEW",
+        "owner": "HUMAN",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "HUMAN_EVIDENCE"
+        ]
+      }
+    ],
+    "/omitted_gates": []
+  },
+  "remove": [],
+  "expect": "valid"
+}

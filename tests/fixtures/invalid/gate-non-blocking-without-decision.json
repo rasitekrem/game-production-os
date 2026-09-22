@@ -1,0 +1,11 @@
+{
+  "description": "A relevant gate cannot be made non-blocking without a decision reference.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/blocking": false
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

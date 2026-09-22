@@ -1,0 +1,85 @@
+{
+  "description": "A project-wide and a scoped ANIMATION override both apply to TASK-0001: ambiguous.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/presentation": {
+        "target_presentation_differs_from_editor": "NO",
+        "decision_ref": "D-0004"
+      },
+      "/human_review/review_policy_overrides": [
+        {
+          "gate": "ANIMATION",
+          "review_policy": "HUMAN_REVIEW_REQUIRED",
+          "decision_ref": "D-0021"
+        },
+        {
+          "gate": "ANIMATION",
+          "review_policy": "CROSS_REVIEW_REQUIRED",
+          "decision_ref": "D-0025",
+          "scope": {
+            "kind": "TASK",
+            "ref": "TASK-0001"
+          }
+        }
+      ]
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0021",
+        "/kind": "REVIEW_POLICY_OVERRIDE",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": {
+          "gate": "ANIMATION",
+          "review_policy": "HUMAN_REVIEW_REQUIRED"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    },
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0025",
+        "/kind": "REVIEW_POLICY_OVERRIDE",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": {
+          "gate": "ANIMATION",
+          "review_policy": "CROSS_REVIEW_REQUIRED",
+          "scope": {
+            "kind": "TASK",
+            "ref": "TASK-0001"
+          }
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    },
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0004",
+        "/kind": "PRESENTATION_PARITY",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": "NO"
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "routing": "tests/fixtures/valid/routing-example-animation.json",
+  "expect_problem": "more than one applicable review-policy override"
+}

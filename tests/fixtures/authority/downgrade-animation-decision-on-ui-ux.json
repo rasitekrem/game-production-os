@@ -1,0 +1,63 @@
+{
+  "description": "A decision accepting an ANIMATION issue cannot downgrade a UI_UX gate.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {},
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0030",
+        "/kind": "KNOWN_ISSUE_ACCEPTANCE",
+        "/affects": [
+          "gate"
+        ],
+        "/value": {
+          "gate": "ANIMATION"
+        },
+        "/subject": {
+          "kind": "TASK",
+          "ref": "TASK-0001"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {
+        "/gate": "UI_UX",
+        "/owner": "ui-ux",
+        "/assessed_by": {
+          "kind": "AGENT",
+          "id": "ui-ux"
+        },
+        "/blocking": false,
+        "/blocking_downgrade_ref": "D-0030",
+        "/cross_reviews": [
+          {
+            "reviewer": "art-direction",
+            "assessment": "CHANGES_REQUIRED",
+            "reviewed_revision": "rev-example-0002"
+          }
+        ]
+      },
+      "remove": [
+        "/routing_ref"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": "does not match"
+}

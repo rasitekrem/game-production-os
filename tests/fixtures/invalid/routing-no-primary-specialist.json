@@ -1,0 +1,11 @@
+{
+  "description": "Routing requires a primary specialist.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {},
+  "remove": [
+    "/primary_specialist"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

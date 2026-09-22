@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "task_id": "TASK-0001",
+  "subject": {
+    "kind": "TASK",
+    "ref": "TASK-0001"
+  },
+  "description": "Player character shows visible foot sliding and popping during 90-degree and 180-degree turns at run speed.",
+  "workflow": "animation-production",
+  "lifecycle_stage": "PRE_PRODUCTION",
+  "primary_specialist": "character-animation",
+  "secondary_specialists": [
+    "technical-art",
+    "qa-performance"
+  ],
+  "reviewers": [
+    "camera-composition",
+    "game-feel-vfx"
+  ],
+  "required_gates": [
+    {
+      "gate": "ANIMATION",
+      "owner": "character-animation",
+      "blocking": true,
+      "review_policy": "CROSS_REVIEW_REQUIRED",
+      "applied_conditions": [],
+      "unapplied_conditions": [
+        {
+          "condition": "TARGET_PRESENTATION_DIFFERS",
+          "reason": "Project records that the development environment represents target presentation for character motion."
+        }
+      ],
+      "required_evidence": [
+        "MOTION_EVIDENCE"
+      ],
+      "notes": "Gameplay-camera recording of idle, start, run, 45/90/180-degree turns, stop and settle, before and after. Numerical foot-slide diagnostics are supplementary only."
+    },
+    {
+      "gate": "TECHNICAL",
+      "owner": "qa-performance",
+      "blocking": true,
+      "review_policy": "ROUTINE",
+      "routine_basis": "Bounded fix inside the existing animation state setup; no persisted data or public behaviour changes.",
+      "required_evidence": [
+        "RUNTIME_EVIDENCE"
+      ],
+      "notes": "Clip and blend setup load without errors in a running build; automated tests if the project has animation-state tests.",
+      "unapplied_conditions": [
+        {
+          "condition": "PERSISTENCE_AFFECTED",
+          "reason": "The fix touches no saved or persisted data."
+        }
+      ]
+    }
+  ],
+  "omitted_gates": [
+    {
+      "gate": "CAMERA_COMPOSITION",
+      "reason": "Camera configuration is not changed by this task; camera-composition cross-reviews how motion reads through the existing camera. Becomes relevant if framing changes are proposed."
+    },
+    {
+      "gate": "PERFORMANCE",
+      "reason": "No new clips or runtime systems expected; re-evaluate if blend setup grows."
+    }
+  ],
+  "review_triggers": [],
+  "human_review": {
+    "required": false,
+    "not_required_reason": "Corrective work inside the approved locomotion baseline in ANIMATION.md; no baseline, canonical asset or authority change. Cross-review by camera-composition closes ANIMATION."
+  },
+  "missing_decisions": [],
+  "editor_write_lock": "character-animation",
+  "out_of_scope": [
+    "Changing gameplay movement speed or turn rate",
+    "Rig or skin rebuild unless technical-art finds a rig cause"
+  ],
+  "rationale": "Success depends on motion quality judged from the gameplay camera, so character-animation is primary; technical-art owns rig and blend setup causes. The fix stays inside the approved locomotion baseline, so the proportional policy is cross-review, not Human Review."
+}

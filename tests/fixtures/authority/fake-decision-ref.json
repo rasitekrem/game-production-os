@@ -1,0 +1,19 @@
+{
+  "description": "A well-formed but non-existent decision id is not authority.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/lifecycle_stage": "PRE_PRODUCTION",
+      "/lifecycle_decision_ref": "D-9999"
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": "does not resolve"
+}

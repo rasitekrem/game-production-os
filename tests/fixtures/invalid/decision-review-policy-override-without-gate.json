@@ -1,0 +1,16 @@
+{
+  "description": "A REVIEW_POLICY_OVERRIDE names its gate and policy.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/kind": "REVIEW_POLICY_OVERRIDE",
+    "/value": {
+      "review_policy": "ROUTINE"
+    }
+  },
+  "remove": [
+    "/transition"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

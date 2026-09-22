@@ -1,0 +1,11 @@
+{
+  "description": "Routing requires a rationale.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {},
+  "remove": [
+    "/rationale"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

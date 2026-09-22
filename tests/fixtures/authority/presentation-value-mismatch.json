@@ -1,0 +1,27 @@
+{
+  "description": "Config says NO but the decision said YES.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/presentation": {
+        "target_presentation_differs_from_editor": "NO",
+        "decision_ref": "D-0004"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0004",
+        "/kind": "PRESENTATION_PARITY",
+        "/value": "YES"
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": "value"
+}

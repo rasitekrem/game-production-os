@@ -1,0 +1,16 @@
+{
+  "description": "A cross-review records the revision it reviewed.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/cross_reviews": [
+      {
+        "reviewer": "camera-composition",
+        "assessment": "PASS"
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

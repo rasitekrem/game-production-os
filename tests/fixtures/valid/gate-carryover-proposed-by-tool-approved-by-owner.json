@@ -1,0 +1,25 @@
+{
+  "description": "A tool may propose; the owner approves.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/scope/revision": "rev-example-0003",
+    "/evidence_carryover": [
+      {
+        "evidence_ref": "EV-0001",
+        "evidence_revision": "rev-example-0002",
+        "justification": "Only localisation strings changed.",
+        "proposed_by": {
+          "kind": "TOOL",
+          "id": "diff-analyzer"
+        },
+        "assessed_by": {
+          "kind": "AGENT",
+          "id": "character-animation"
+        }
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "valid"
+}

@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "evidence_id": "EV-0001",
+  "type": "MOTION_EVIDENCE",
+  "summary": "Gameplay-camera recording of run-speed turns at 45, 90 and 180 degrees, including start, stop and settle, after the turn-blend correction.",
+  "subject": {
+    "kind": "TASK",
+    "ref": "TASK-0001"
+  },
+  "source": {
+    "kind": "AGENT",
+    "id": "character-animation"
+  },
+  "created_at": "2026-01-01T12:00:00Z",
+  "provenance": {
+    "capture_context": "DIAGNOSTIC_RUNTIME",
+    "subject_revision": "rev-example-0002",
+    "build_revision": "rev-example-0002",
+    "build_id": "build-example-0002",
+    "artifact_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "tool_version": "example-engine x.y"
+  },
+  "artifacts": [
+    {
+      "uri": "evidence/TASK-0001/turns-after.mp4",
+      "media_type": "video/mp4",
+      "description": "60 fps capture, gameplay camera"
+    }
+  ],
+  "limitations": [
+    "Development build on development hardware, not the target runtime",
+    "Placeholder environment lighting",
+    "No audio"
+  ],
+  "supersedes": [
+    "EV-0000"
+  ],
+  "superseded": false
+}

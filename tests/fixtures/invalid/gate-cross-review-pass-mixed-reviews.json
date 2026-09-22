@@ -1,0 +1,26 @@
+{
+  "description": "An unresolved negative cross-review blocks PASS even when another reviewer passed it.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/specialist_assessment": "PASS",
+    "/cross_reviews": [
+      {
+        "reviewer": "camera-composition",
+        "assessment": "PASS",
+        "reviewed_revision": "rev-example-0002"
+      },
+      {
+        "reviewer": "game-feel-vfx",
+        "assessment": "FAIL",
+        "reviewed_revision": "rev-example-0002"
+      }
+    ]
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "not"
+}

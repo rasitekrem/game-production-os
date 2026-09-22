@@ -1,0 +1,11 @@
+{
+  "description": "cross_review_required cannot be false under CROSS_REVIEW_REQUIRED.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/required_gates/0/cross_review_required": false
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "not"
+}

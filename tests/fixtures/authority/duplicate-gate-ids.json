@@ -1,0 +1,36 @@
+{
+  "description": "Two gate records share GATE-0001.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {},
+    "remove": []
+  },
+  "decisions": [],
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "gates": [
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {},
+      "remove": [
+        "/routing_ref"
+      ]
+    },
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {
+        "/status": "NOT_RUN"
+      },
+      "remove": [
+        "/required_changes",
+        "/routing_ref"
+      ]
+    }
+  ],
+  "expect_problem": "duplicate gate_id"
+}

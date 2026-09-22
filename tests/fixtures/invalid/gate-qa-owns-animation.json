@@ -1,0 +1,11 @@
+{
+  "description": "qa-performance cannot own a subjective gate.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/owner": "qa-performance"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

@@ -1,0 +1,67 @@
+{
+  "description": "A run whose instrumentation materially affects timing cannot prove performance.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/gate": "PERFORMANCE",
+      "/owner": "qa-performance",
+      "/status": "PASS",
+      "/review_policy": "ROUTINE",
+      "/routine_basis": "Measurement against locked budget",
+      "/evidence_refs": [
+        "EV-P",
+        "EV-D"
+      ],
+      "/applied_conditions": [
+        "TARGET_PLATFORM_PERFORMANCE_CLAIM"
+      ],
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "qa-performance"
+      },
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes",
+      "/required_changes",
+      "/cross_reviews"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "EV-P",
+        "/type": "PERFORMANCE_EVIDENCE",
+        "/provenance": {
+          "capture_context": "PERFORMANCE_RUNTIME",
+          "subject_revision": "rev-example-0002",
+          "build_id": "b2",
+          "target_platform": "ANDROID",
+          "device": "Example device",
+          "instrumentation": {
+            "present": true,
+            "timing_impact": "MATERIAL"
+          }
+        }
+      },
+      "remove": []
+    },
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "EV-D",
+        "/type": "DEVICE_EVIDENCE",
+        "/provenance": {
+          "capture_context": "TARGET_RUNTIME",
+          "subject_revision": "rev-example-0002",
+          "build_id": "b2",
+          "target_platform": "ANDROID",
+          "device": "Example device"
+        }
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "instrumentation"
+}

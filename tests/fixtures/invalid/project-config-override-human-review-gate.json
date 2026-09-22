@@ -1,0 +1,17 @@
+{
+  "description": "HUMAN_REVIEW itself cannot be overridden.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/human_review/review_policy_overrides": [
+      {
+        "gate": "HUMAN_REVIEW",
+        "review_policy": "ROUTINE",
+        "decision_ref": "D-0009"
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

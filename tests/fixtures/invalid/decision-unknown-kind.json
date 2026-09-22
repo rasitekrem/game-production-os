@@ -1,0 +1,11 @@
+{
+  "description": "Decision kinds come from the registry.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/kind": "VIBES"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

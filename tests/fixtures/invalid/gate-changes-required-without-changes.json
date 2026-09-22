@@ -1,0 +1,11 @@
+{
+  "description": "CHANGES_REQUIRED must list concrete changes.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {},
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

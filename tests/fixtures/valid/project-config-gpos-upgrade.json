@@ -1,0 +1,13 @@
+{
+  "description": "Upgraded project citing its GPOS_UPGRADE decision.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/gpos_upgrade": {
+      "from_version": "1.0.0-alpha.3",
+      "decision_ref": "D-0024"
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

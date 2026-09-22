@@ -1,0 +1,17 @@
+{
+  "description": "DEVICE_EVIDENCE on a named target device in TARGET_RUNTIME.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "DEVICE_EVIDENCE",
+    "/provenance": {
+      "capture_context": "TARGET_RUNTIME",
+      "subject_revision": "rev-example-0002",
+      "build_id": "build-example-0002",
+      "target_platform": "ANDROID",
+      "device": "Example device, OS x"
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

@@ -1,0 +1,13 @@
+{
+  "description": "Project triggers are structured with an id.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/human_review/additional_mandatory_triggers": [
+      "boss fights"
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "type"
+}

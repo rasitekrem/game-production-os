@@ -1,0 +1,22 @@
+{
+  "description": "Performance capture declares instrumentation and its timing impact.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "PERFORMANCE_EVIDENCE",
+    "/provenance": {
+      "capture_context": "PERFORMANCE_RUNTIME",
+      "subject_revision": "rev-example-0002",
+      "build_id": "build-example-0002",
+      "target_platform": "ANDROID",
+      "device": "Example device, OS x",
+      "instrumentation": {
+        "present": true,
+        "description": "Sampling profiler, 1 kHz",
+        "timing_impact": "NEGLIGIBLE"
+      }
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

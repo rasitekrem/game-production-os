@@ -1,0 +1,11 @@
+{
+  "description": "created_at must be a real calendar date-time.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/created_at": "2026-02-30T12:00:00Z"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "format"
+}

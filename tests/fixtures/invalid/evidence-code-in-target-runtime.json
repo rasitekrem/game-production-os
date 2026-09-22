@@ -1,0 +1,11 @@
+{
+  "description": "CODE_EVIDENCE is not captured from a running game.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "CODE_EVIDENCE"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

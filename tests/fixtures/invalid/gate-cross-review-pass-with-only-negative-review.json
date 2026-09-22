@@ -1,0 +1,13 @@
+{
+  "description": "A CHANGES_REQUIRED cross-review does not allow PASS.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS"
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "contains"
+}

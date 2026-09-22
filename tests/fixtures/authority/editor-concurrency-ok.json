@@ -1,0 +1,32 @@
+{
+  "description": "Multi-writer backed by a matching decision.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/editor_concurrency": {
+        "single_writer": false,
+        "decision_ref": "D-0023"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0023",
+        "/kind": "EDITOR_CONCURRENCY",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": {
+          "single_writer": false
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": null
+}

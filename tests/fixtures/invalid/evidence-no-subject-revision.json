@@ -1,0 +1,11 @@
+{
+  "description": "Evidence must name the exact subject revision it captured.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {},
+  "remove": [
+    "/provenance/subject_revision"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

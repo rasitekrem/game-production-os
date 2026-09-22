@@ -1,0 +1,11 @@
+{
+  "description": "Every gate record declares its review policy.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {},
+  "remove": [
+    "/review_policy"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

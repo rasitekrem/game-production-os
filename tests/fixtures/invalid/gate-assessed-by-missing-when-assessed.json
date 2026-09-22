@@ -1,0 +1,11 @@
+{
+  "description": "An assessed status needs an accountable assessor.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {},
+  "remove": [
+    "/assessed_by"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

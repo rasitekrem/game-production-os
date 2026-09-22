@@ -1,0 +1,14 @@
+{
+  "description": "Only a human makes a Human Decision.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/decided_by": {
+      "kind": "AGENT",
+      "id": "game-director"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "const"
+}

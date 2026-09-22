@@ -1,0 +1,16 @@
+{
+  "description": "Review-policy overrides need a Human Decision reference.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/human_review/review_policy_overrides": [
+      {
+        "gate": "ANIMATION",
+        "review_policy": "ROUTINE"
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

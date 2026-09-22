@@ -1,0 +1,31 @@
+{
+  "description": "Routine technical work routes without Human Review when it states why.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/workflow": "runtime-system",
+    "/primary_specialist": "qa-performance",
+    "/secondary_specialists": [],
+    "/reviewers": [
+      "gameplay-design"
+    ],
+    "/required_gates": [
+      {
+        "gate": "TECHNICAL",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "routine_basis": "Bug fix restoring specified behaviour",
+        "applied_conditions": [
+          "PERSISTENCE_AFFECTED"
+        ],
+        "required_evidence": [
+          "TEST_EVIDENCE",
+          "PERSISTENCE_EVIDENCE"
+        ]
+      }
+    ],
+    "/omitted_gates": []
+  },
+  "remove": [],
+  "expect": "valid"
+}

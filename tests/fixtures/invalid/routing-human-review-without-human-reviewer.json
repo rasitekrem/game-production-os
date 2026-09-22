@@ -1,0 +1,24 @@
+{
+  "description": "Mandatory Human Review must list HUMAN as reviewer.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/human_review": {
+      "required": true,
+      "timing": "After cross-review",
+      "primary_question": "Does this look and feel like the intended game?"
+    },
+    "/required_gates/1": {
+      "gate": "HUMAN_REVIEW",
+      "owner": "HUMAN",
+      "blocking": true,
+      "review_policy": "HUMAN_REVIEW_REQUIRED",
+      "required_evidence": [
+        "HUMAN_EVIDENCE"
+      ]
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "contains"
+}

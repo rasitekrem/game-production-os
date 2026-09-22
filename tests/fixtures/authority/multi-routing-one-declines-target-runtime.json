@@ -1,0 +1,14 @@
+{
+  "description": "With several routings, each is still checked against presentation parity.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {},
+    "remove": []
+  },
+  "decisions": [],
+  "routings": [
+    "tests/fixtures/valid/routing-task-0002-runtime.json",
+    "tests/fixtures/valid/routing-example-animation.json"
+  ],
+  "expect_problem": "declines TARGET_PRESENTATION_DIFFERS"
+}

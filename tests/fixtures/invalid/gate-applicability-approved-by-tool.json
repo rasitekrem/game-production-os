@@ -1,0 +1,24 @@
+{
+  "description": "A tool cannot approve cross-subject evidence reuse.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/evidence_applicability": [
+      {
+        "evidence_ref": "EV-0001",
+        "evidence_subject": {
+          "kind": "BUILD",
+          "ref": "build-0042"
+        },
+        "justification": "x",
+        "assessed_by": {
+          "kind": "TOOL",
+          "id": "bot"
+        }
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

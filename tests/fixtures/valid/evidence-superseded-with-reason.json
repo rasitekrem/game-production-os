@@ -1,0 +1,11 @@
+{
+  "description": "Superseded evidence with a reason and no replacement yet.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/superseded": true,
+    "/superseded_reason": "Blend setup changed after capture."
+  },
+  "remove": [],
+  "expect": "valid"
+}

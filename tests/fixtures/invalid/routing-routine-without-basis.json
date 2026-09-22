@@ -1,0 +1,11 @@
+{
+  "description": "ROUTINE routing must name its basis.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {},
+  "remove": [
+    "/required_gates/1/routine_basis"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

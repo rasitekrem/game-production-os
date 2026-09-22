@@ -1,0 +1,11 @@
+{
+  "description": "A lifecycle transition decision states from and to.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {},
+  "remove": [
+    "/transition"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

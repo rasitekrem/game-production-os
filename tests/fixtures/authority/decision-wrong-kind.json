@@ -1,0 +1,24 @@
+{
+  "description": "A lifecycle reference must resolve to a LIFECYCLE_TRANSITION decision.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/lifecycle_stage": "PRE_PRODUCTION",
+      "/lifecycle_decision_ref": "D-0001"
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/kind": "QUALITY_TARGET",
+        "/value": "PROTOTYPE"
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": "kind"
+}

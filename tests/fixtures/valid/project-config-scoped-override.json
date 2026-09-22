@@ -1,0 +1,20 @@
+{
+  "description": "A scoped override.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/human_review/review_policy_overrides": [
+      {
+        "gate": "ANIMATION",
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "decision_ref": "D-0021",
+        "scope": {
+          "kind": "TASK",
+          "ref": "TASK-0001"
+        }
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "valid"
+}

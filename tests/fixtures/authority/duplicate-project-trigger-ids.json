@@ -1,0 +1,21 @@
+{
+  "description": "Project trigger ids are unique.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/human_review/additional_mandatory_triggers": [
+        {
+          "id": "boss-fight-feel",
+          "description": "a"
+        },
+        {
+          "id": "boss-fight-feel",
+          "description": "b"
+        }
+      ]
+    },
+    "remove": []
+  },
+  "decisions": [],
+  "expect_problem": "duplicate project trigger id"
+}

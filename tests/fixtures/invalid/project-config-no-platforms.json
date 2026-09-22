@@ -1,0 +1,11 @@
+{
+  "description": "At least one target platform (possibly UNDECIDED).",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/target_platforms": []
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "minItems"
+}

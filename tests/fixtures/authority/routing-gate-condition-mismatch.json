@@ -1,0 +1,53 @@
+{
+  "description": "The gate applied a condition its routing entry did not.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/presentation": {
+        "target_presentation_differs_from_editor": "NO",
+        "decision_ref": "D-0004"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0004",
+        "/kind": "PRESENTATION_PARITY",
+        "/affects": [
+          "gate"
+        ],
+        "/value": "NO",
+        "/subject": {
+          "kind": "PROJECT",
+          "ref": "example-project"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "routing": "tests/fixtures/valid/routing-example-animation.json",
+  "gates": [
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {
+        "/applied_conditions": [
+          "TARGET_PRESENTATION_DIFFERS"
+        ]
+      },
+      "remove": []
+    }
+  ],
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": "applied_conditions"
+}

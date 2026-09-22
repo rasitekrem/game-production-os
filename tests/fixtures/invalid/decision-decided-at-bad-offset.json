@@ -1,0 +1,11 @@
+{
+  "description": "UTC offset must be a valid clock offset.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/decided_at": "2026-01-02T09:00:00+24:00"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "format"
+}

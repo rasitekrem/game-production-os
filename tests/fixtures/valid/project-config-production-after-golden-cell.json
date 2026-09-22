@@ -1,0 +1,16 @@
+{
+  "description": "PRODUCTION after the Golden Cell exited.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/lifecycle_stage": "PRODUCTION",
+    "/golden_gameplay_cell": {
+      "required": true,
+      "status": "EXITED",
+      "exit_decision_ref": "D-0012"
+    },
+    "/lifecycle_decision_ref": "D-0013"
+  },
+  "remove": [],
+  "expect": "valid"
+}

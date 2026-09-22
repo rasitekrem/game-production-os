@@ -1,0 +1,11 @@
+{
+  "description": "recorded_at must be an RFC 3339 date-time.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/recorded_at": "garbage"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "format"
+}

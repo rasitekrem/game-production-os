@@ -1,0 +1,22 @@
+{
+  "description": "NOT_APPLICABLE with a reason.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/gate": "AUDIO",
+    "/owner": "audio-design",
+    "/status": "NOT_APPLICABLE",
+    "/not_applicable_reason": "Task changes no audible behaviour.",
+    "/evidence_refs": [],
+    "/assessed_by": {
+      "kind": "AGENT",
+      "id": "audio-design"
+    }
+  },
+  "remove": [
+    "/required_changes",
+    "/specialist_assessment",
+    "/cross_reviews"
+  ],
+  "expect": "valid"
+}

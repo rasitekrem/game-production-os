@@ -1,0 +1,51 @@
+{
+  "description": "A downgrade bound to this gate and scope authorizes it.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {},
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0030",
+        "/kind": "KNOWN_ISSUE_ACCEPTANCE",
+        "/affects": [
+          "gate"
+        ],
+        "/value": {
+          "gate": "ANIMATION"
+        },
+        "/subject": {
+          "kind": "TASK",
+          "ref": "TASK-0001",
+          "revision": "rev-example-0002"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {
+        "/blocking": false,
+        "/blocking_downgrade_ref": "D-0030"
+      },
+      "remove": [
+        "/routing_ref"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": null
+}

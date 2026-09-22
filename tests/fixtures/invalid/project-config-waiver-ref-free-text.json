@@ -1,0 +1,18 @@
+{
+  "description": "A Golden Cell waiver must reference a Human Decision, not free text.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/golden_gameplay_cell": {
+      "required": false,
+      "status": "WAIVED",
+      "waiver": {
+        "decision_ref": "approved in chat",
+        "reason": "prototype"
+      }
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "pattern"
+}

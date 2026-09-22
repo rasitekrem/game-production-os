@@ -1,0 +1,11 @@
+{
+  "description": "A HUMAN_REVIEW_REQUIRED gate forces human_review.required.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/required_gates/0/review_policy": "HUMAN_REVIEW_REQUIRED"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "const"
+}

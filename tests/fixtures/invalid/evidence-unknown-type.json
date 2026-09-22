@@ -1,0 +1,11 @@
+{
+  "description": "Unknown evidence type is rejected.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "SCREENSHOT_EVIDENCE"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

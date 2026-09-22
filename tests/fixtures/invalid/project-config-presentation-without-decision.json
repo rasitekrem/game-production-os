@@ -1,0 +1,13 @@
+{
+  "description": "A decided presentation-parity value needs a Human Decision; otherwise it stays UNDECIDED.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/presentation": {
+      "target_presentation_differs_from_editor": "NO"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

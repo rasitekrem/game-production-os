@@ -1,0 +1,16 @@
+{
+  "description": "GPOS_UPGRADE decision with versions.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/kind": "GPOS_UPGRADE",
+    "/upgrade": {
+      "from_version": "1.0.0-alpha.3",
+      "to_version": "1.0.0-alpha.7"
+    }
+  },
+  "remove": [
+    "/transition"
+  ],
+  "expect": "valid"
+}

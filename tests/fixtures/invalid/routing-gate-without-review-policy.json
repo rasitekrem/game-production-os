@@ -1,0 +1,11 @@
+{
+  "description": "Every routed gate declares a review policy.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {},
+  "remove": [
+    "/required_gates/0/review_policy"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

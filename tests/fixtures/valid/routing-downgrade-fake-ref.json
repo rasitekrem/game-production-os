@@ -1,0 +1,11 @@
+{
+  "description": "Schema-valid routing whose downgrade reference points at no decision.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/required_gates/1/blocking": false,
+    "/required_gates/1/blocking_downgrade_ref": "D-NOPE"
+  },
+  "remove": [],
+  "expect": "valid"
+}

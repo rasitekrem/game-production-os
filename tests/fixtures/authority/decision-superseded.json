@@ -1,0 +1,22 @@
+{
+  "description": "A superseded decision no longer backs anything.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/lifecycle_stage": "PRE_PRODUCTION",
+      "/lifecycle_decision_ref": "D-0001"
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/status": "SUPERSEDED",
+        "/superseded_by": "D-0002"
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "not ACTIVE"
+}

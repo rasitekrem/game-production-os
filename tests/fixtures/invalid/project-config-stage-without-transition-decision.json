@@ -1,0 +1,11 @@
+{
+  "description": "A project past CONCEPT must reference the Human Decision that entered its stage.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/lifecycle_stage": "PRE_PRODUCTION"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

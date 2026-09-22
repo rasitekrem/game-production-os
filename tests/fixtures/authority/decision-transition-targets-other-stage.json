@@ -1,0 +1,19 @@
+{
+  "description": "The transition must enter the claimed stage.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/lifecycle_stage": "GOLDEN_CELL",
+      "/lifecycle_decision_ref": "D-0001"
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": "enters PRE_PRODUCTION"
+}

@@ -1,0 +1,27 @@
+{
+  "description": "HUMAN_EVIDENCE must come from a listed reviewer or decision authority.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {},
+    "remove": []
+  },
+  "decisions": [],
+  "expect_problem": "not a listed",
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/type": "HUMAN_EVIDENCE",
+        "/source": {
+          "kind": "HUMAN",
+          "id": "random-visitor"
+        },
+        "/provenance": {
+          "capture_context": "HUMAN_RECORD",
+          "subject_revision": "rev-example-0002"
+        }
+      },
+      "remove": []
+    }
+  ]
+}

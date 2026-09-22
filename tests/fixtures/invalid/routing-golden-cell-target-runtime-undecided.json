@@ -1,0 +1,49 @@
+{
+  "description": "Golden Cell routing must explicitly apply or decline TARGET_PRESENTATION_DIFFERS for camera, game feel and UI.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/workflow": "golden-gameplay-cell",
+    "/primary_specialist": "game-director",
+    "/secondary_specialists": [
+      "game-feel-vfx",
+      "camera-composition",
+      "ui-ux"
+    ],
+    "/reviewers": [
+      "level-design",
+      "HUMAN"
+    ],
+    "/required_gates": [
+      {
+        "gate": "GAME_FEEL_VFX",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "MOTION_EVIDENCE"
+        ]
+      },
+      {
+        "gate": "HUMAN_REVIEW",
+        "owner": "HUMAN",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "HUMAN_EVIDENCE"
+        ]
+      }
+    ],
+    "/review_triggers": [
+      "GOLDEN_CELL_EXIT"
+    ],
+    "/human_review": {
+      "required": true,
+      "timing": "After cross-review",
+      "primary_question": "Does this look and feel like the intended game?"
+    },
+    "/omitted_gates": []
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "anyOf"
+}

@@ -1,0 +1,16 @@
+{
+  "description": "ROUTINE: the specialist closes its own domain gate with evidence when routing allows it.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/review_policy": "ROUTINE",
+    "/routine_basis": "TASK-0001 routing: bounded blend tweak inside approved ANIMATION.md baseline",
+    "/specialist_assessment": "PASS"
+  },
+  "remove": [
+    "/required_changes",
+    "/cross_reviews"
+  ],
+  "expect": "valid"
+}

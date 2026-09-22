@@ -1,0 +1,17 @@
+{
+  "description": "Under HUMAN_REVIEW_REQUIRED, a failing owner assessment must be disclosed.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/review_policy": "HUMAN_REVIEW_REQUIRED",
+    "/human_review_ref": "GATE-0002",
+    "/specialist_assessment": "FAIL",
+    "/cross_reviews": []
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

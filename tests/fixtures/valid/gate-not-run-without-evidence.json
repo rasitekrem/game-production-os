@@ -1,0 +1,15 @@
+{
+  "description": "NOT_RUN is a legal default and needs no evidence (and implies nothing).",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "NOT_RUN",
+    "/evidence_refs": []
+  },
+  "remove": [
+    "/required_changes",
+    "/specialist_assessment",
+    "/cross_reviews"
+  ],
+  "expect": "valid"
+}

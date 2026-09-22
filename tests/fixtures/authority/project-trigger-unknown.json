@@ -1,0 +1,11 @@
+{
+  "description": "Routing references a project trigger the project never declared.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {},
+    "remove": []
+  },
+  "decisions": [],
+  "routing": "tests/fixtures/valid/routing-camera-project-trigger.json",
+  "expect_problem": "not a project trigger"
+}

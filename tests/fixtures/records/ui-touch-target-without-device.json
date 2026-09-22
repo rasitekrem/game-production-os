@@ -1,0 +1,39 @@
+{
+  "description": "UI for a touch target needs device evidence.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/gate": "UI_UX",
+      "/owner": "ui-ux",
+      "/status": "PASS",
+      "/applied_conditions": [
+        "TOUCH_OR_MOBILE_TARGET"
+      ],
+      "/cross_reviews": [
+        {
+          "reviewer": "art-direction",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ],
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "ui-ux"
+      },
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/type": "VISUAL_EVIDENCE"
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "DEVICE_EVIDENCE"
+}

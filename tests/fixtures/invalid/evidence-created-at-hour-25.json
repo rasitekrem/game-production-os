@@ -1,0 +1,11 @@
+{
+  "description": "Clock values must be in range (hour 25).",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/created_at": "2026-01-01T25:00:00Z"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "format"
+}

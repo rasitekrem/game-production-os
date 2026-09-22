@@ -1,0 +1,16 @@
+{
+  "description": "RELEASED cannot be claimed without a transition decision.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/lifecycle_stage": "RELEASED",
+    "/golden_gameplay_cell": {
+      "required": true,
+      "status": "EXITED",
+      "exit_decision_ref": "D-0012"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

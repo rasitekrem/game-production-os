@@ -1,0 +1,15 @@
+{
+  "description": "A stable PATCH upgrade (1.0.0 -> 1.0.1) needs no GPOS_UPGRADE decision.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/gpos_version": "1.0.1",
+      "/gpos_upgrade": {
+        "from_version": "1.0.0"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [],
+  "expect_problem": null
+}

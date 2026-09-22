@@ -1,0 +1,13 @@
+{
+  "description": "A GPOS_UPGRADE decision states from and to versions.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/kind": "GPOS_UPGRADE"
+  },
+  "remove": [
+    "/transition"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

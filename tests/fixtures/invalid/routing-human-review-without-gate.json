@@ -1,0 +1,19 @@
+{
+  "description": "Mandatory Human Review must appear as a HUMAN_REVIEW gate.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/human_review": {
+      "required": true,
+      "timing": "After cross-review",
+      "primary_question": "Does this look and feel like the intended game?"
+    },
+    "/reviewers": [
+      "camera-composition",
+      "HUMAN"
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "contains"
+}

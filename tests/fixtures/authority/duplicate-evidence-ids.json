@@ -1,0 +1,24 @@
+{
+  "description": "Two evidence records share EV-0001.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {},
+    "remove": []
+  },
+  "decisions": [],
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    },
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/type": "VISUAL_EVIDENCE"
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "duplicate evidence_id"
+}

@@ -1,0 +1,13 @@
+{
+  "description": "A decision needs the human's words or a link to them.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/decision": {
+      "summary": "Agreed to move on."
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "anyOf"
+}

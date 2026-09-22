@@ -1,0 +1,8 @@
+{
+  "description": "The example routing, unchanged (ANIMATION + TECHNICAL for TASK-0001).",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {},
+  "remove": [],
+  "expect": "valid"
+}

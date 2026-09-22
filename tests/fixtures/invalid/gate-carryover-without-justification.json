@@ -1,0 +1,20 @@
+{
+  "description": "Carrying evidence across revisions requires a justification.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/evidence_carryover": [
+      {
+        "evidence_ref": "EV-0001",
+        "evidence_revision": "rev-example-0001",
+        "assessed_by": {
+          "kind": "AGENT",
+          "id": "character-animation"
+        }
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

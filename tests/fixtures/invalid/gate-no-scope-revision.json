@@ -1,0 +1,11 @@
+{
+  "description": "A gate status applies to an exact subject revision.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {},
+  "remove": [
+    "/scope/revision"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

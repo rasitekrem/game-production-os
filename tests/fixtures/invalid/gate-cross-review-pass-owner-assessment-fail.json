@@ -1,0 +1,21 @@
+{
+  "description": "CROSS_REVIEW_REQUIRED cannot PASS while the owner's assessment is FAIL.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/specialist_assessment": "FAIL",
+    "/cross_reviews": [
+      {
+        "reviewer": "camera-composition",
+        "assessment": "PASS",
+        "reviewed_revision": "rev-example-0002"
+      }
+    ]
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "const"
+}

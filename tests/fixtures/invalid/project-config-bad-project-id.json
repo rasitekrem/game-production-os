@@ -1,0 +1,11 @@
+{
+  "description": "Project id must be lowercase-hyphenated.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/project/id": "Example Project"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "pattern"
+}

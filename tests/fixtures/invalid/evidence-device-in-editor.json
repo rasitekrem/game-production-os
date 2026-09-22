@@ -1,0 +1,18 @@
+{
+  "description": "DEVICE_EVIDENCE cannot be captured in the editor.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "DEVICE_EVIDENCE",
+    "/provenance": {
+      "capture_context": "EDITOR",
+      "subject_revision": "r",
+      "tool_version": "t",
+      "device": "d",
+      "target_platform": "p"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

@@ -1,0 +1,11 @@
+{
+  "description": "Routing may decline TARGET_PRESENTATION_DIFFERS only when parity is decided NO.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {},
+    "remove": []
+  },
+  "decisions": [],
+  "expect_problem": "TARGET_PRESENTATION_DIFFERS",
+  "routing": "tests/fixtures/valid/routing-golden-cell.json"
+}

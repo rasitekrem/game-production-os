@@ -1,0 +1,15 @@
+{
+  "description": "Offline analysis cannot be in-game AUDIO_EVIDENCE.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "AUDIO_EVIDENCE",
+    "/provenance": {
+      "capture_context": "OFFLINE_ANALYSIS",
+      "subject_revision": "rev-example-0002"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

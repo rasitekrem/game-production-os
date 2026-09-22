@@ -1,0 +1,20 @@
+{
+  "description": "A ROUTINE PASS is the owning specialist's own assessment, not a human's.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/review_policy": "ROUTINE",
+    "/routine_basis": "x",
+    "/specialist_assessment": "PASS",
+    "/assessed_by": {
+      "kind": "HUMAN",
+      "id": "creative-lead"
+    }
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "const"
+}

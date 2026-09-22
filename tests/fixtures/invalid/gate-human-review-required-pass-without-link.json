@@ -1,0 +1,14 @@
+{
+  "description": "HUMAN_REVIEW_REQUIRED cannot PASS without a linked Human Review.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/review_policy": "HUMAN_REVIEW_REQUIRED"
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

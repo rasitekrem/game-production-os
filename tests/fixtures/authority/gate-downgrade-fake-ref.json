@@ -1,0 +1,29 @@
+{
+  "description": "A gate's blocking_downgrade_ref must resolve to a real decision.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {},
+    "remove": []
+  },
+  "decisions": [],
+  "gates": [
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {
+        "/blocking": false,
+        "/blocking_downgrade_ref": "D-DOES-NOT-EXIST"
+      },
+      "remove": [
+        "/routing_ref"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": "does not resolve"
+}

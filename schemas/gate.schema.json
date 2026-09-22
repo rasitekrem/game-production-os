@@ -1,0 +1,2539 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-production-os.local/schemas/gate.schema.json",
+  "title": "GPOS Gate Record",
+  "description": "One quality-gate status for one scope at one subject revision. See core/QUALITY-GATES.md. Per-gate owner and review-policy rules mirror core/registry.json. Cross-record rules (evidence type, context and revision per gate; linked HUMAN_REVIEW existence and verdict; reviewer differs from owner; superseded evidence) are a Phase-2 tooling requirement; the reference implementation lives in tests/validate_framework.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "gate_id",
+    "gate",
+    "scope",
+    "status",
+    "owner",
+    "blocking",
+    "review_policy",
+    "evidence_refs",
+    "recorded_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "gate_id": {
+      "$ref": "#/$defs/id"
+    },
+    "gate": {
+      "$ref": "#/$defs/gate"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "ref",
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "TASK",
+            "FEATURE",
+            "ASSET",
+            "SPACE",
+            "GOLDEN_CELL",
+            "BUILD",
+            "RELEASE",
+            "MILESTONE",
+            "PROJECT",
+            "DECISION"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact subject revision (commit, build, asset version) this status applies to. Evidence must match it or be carried over explicitly."
+        }
+      }
+    },
+    "routing_ref": {
+      "$ref": "#/$defs/id",
+      "description": "task_id of the routing record this gate is the result of. Required for gates of a routed task; the gate must agree with its routing entry."
+    },
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "owner": {
+      "description": "Accountable owner: one of the gate's permitted owners, or HUMAN for HUMAN_REVIEW. game-director and game-engineering never own a gate.",
+      "enum": [
+        "gameplay-design",
+        "level-design",
+        "character-animation",
+        "camera-composition",
+        "art-direction",
+        "environment-art",
+        "technical-art",
+        "game-feel-vfx",
+        "ui-ux",
+        "audio-design",
+        "qa-performance",
+        "HUMAN"
+      ]
+    },
+    "assessed_by": {
+      "$ref": "#/$defs/assessor",
+      "description": "Accountable assessor of the status: the owning specialist (AGENT with id = owner) or a human. Automated evidence producers (CI, tools, devices) are evidence sources, never assessors. Required unless status is NOT_RUN."
+    },
+    "recorded_by": {
+      "$ref": "#/$defs/actor",
+      "description": "Who wrote this record, e.g. an agent transcribing a human verdict. Not an assessor."
+    },
+    "blocking": {
+      "type": "boolean"
+    },
+    "blocking_downgrade_ref": {
+      "type": "string",
+      "pattern": "^D-[A-Za-z0-9._-]+$",
+      "description": "Reference to a Human Decision record (schemas/decision.schema.json). A matching pattern is not authority; Phase-2 tooling must resolve it (core/GOVERNANCE.md \u00a712)."
+    },
+    "review_policy": {
+      "$ref": "#/$defs/review_policy"
+    },
+    "cross_review_required": {
+      "type": "boolean",
+      "description": "Implied true under CROSS_REVIEW_REQUIRED. Under HUMAN_REVIEW_REQUIRED, true only when routing or the workflow requires specialist cross-review."
+    },
+    "routine_basis": {
+      "type": "string",
+      "minLength": 1,
+      "description": "For ROUTINE: the routing record and approved authority the bounded work stays inside."
+    },
+    "human_review_ref": {
+      "$ref": "#/$defs/id",
+      "description": "gate_id of the HUMAN_REVIEW record that accepted this scope."
+    },
+    "disagreements_disclosed": {
+      "const": true,
+      "description": "Under HUMAN_REVIEW_REQUIRED: the linked review packet exposed every unresolved negative cross-review and a non-PASS specialist assessment."
+    },
+    "specialist_assessment": {
+      "description": "Owner's evidence-backed recommendation while the gate awaits review. Not a status.",
+      "enum": [
+        "PASS",
+        "FAIL",
+        "CHANGES_REQUIRED"
+      ]
+    },
+    "cross_reviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reviewer",
+          "assessment",
+          "reviewed_revision"
+        ],
+        "properties": {
+          "reviewer": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/skill"
+              },
+              {
+                "not": {
+                  "const": "game-director"
+                }
+              }
+            ],
+            "description": "A specialist reviewer; game-director never reviews discipline quality. Only reviewers eligible for the gate owner (registry cross_review_eligibility) can contribute to PASS."
+          },
+          "assessment": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "CHANGES_REQUIRED"
+            ]
+          },
+          "notes": {
+            "type": "string"
+          },
+          "superseded": {
+            "type": "boolean",
+            "description": "True when a later review by the same reviewer replaces this one. Only a superseded negative review counts as resolved."
+          },
+          "reviewed_revision": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Subject revision reviewed. An active (non-superseded) review counts only when it equals scope.revision."
+          }
+        }
+      }
+    },
+    "applied_conditions": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "PERSISTENCE_AFFECTED",
+          "REAL_TIME_BEHAVIOUR",
+          "CAMERA_MOTION_CLAIM",
+          "ANIMATED_PRESENTATION",
+          "TARGET_PRESENTATION_DIFFERS",
+          "TOUCH_OR_MOBILE_TARGET",
+          "FEEDBACK_INCLUDES_SOUND",
+          "TARGET_OUTPUT_MATTERS",
+          "TARGET_PLATFORM_PERFORMANCE_CLAIM"
+        ]
+      },
+      "uniqueItems": true,
+      "description": "Conditional-evidence conditions that apply to this claim (from routing)."
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/id"
+      },
+      "uniqueItems": true
+    },
+    "evidence_carryover": {
+      "type": "array",
+      "description": "Evidence from an earlier subject revision that is claimed to remain valid. Each entry must justify why the later change cannot affect the claim. Approval is accountable: owner or authorized human only.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evidence_ref",
+          "evidence_revision",
+          "justification",
+          "assessed_by"
+        ],
+        "properties": {
+          "evidence_ref": {
+            "$ref": "#/$defs/id"
+          },
+          "evidence_revision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "justification": {
+            "type": "string",
+            "minLength": 1
+          },
+          "assessed_by": {
+            "$ref": "#/$defs/assessor",
+            "description": "Accountable carryover assessor: the gate owner (AGENT with id = owner) or an authorized human. CI, tools and devices may propose, never approve."
+          },
+          "proposed_by": {
+            "$ref": "#/$defs/actor",
+            "description": "Optional: who proposed the carryover (may be a tool)."
+          }
+        }
+      }
+    },
+    "evidence_applicability": {
+      "type": "array",
+      "description": "Evidence whose subject differs from the gate scope, explicitly mapped with justification and approved by the gate owner or an authorized human. Never inferred from matching revisions.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evidence_ref",
+          "evidence_subject",
+          "justification",
+          "assessed_by"
+        ],
+        "properties": {
+          "evidence_ref": {
+            "$ref": "#/$defs/id"
+          },
+          "evidence_subject": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "ref"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "TASK",
+                  "FEATURE",
+                  "ASSET",
+                  "SPACE",
+                  "GOLDEN_CELL",
+                  "BUILD",
+                  "RELEASE",
+                  "MILESTONE",
+                  "PROJECT",
+                  "DECISION"
+                ]
+              },
+              "ref": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "justification": {
+            "type": "string",
+            "minLength": 1
+          },
+          "proposed_by": {
+            "$ref": "#/$defs/actor"
+          },
+          "assessed_by": {
+            "$ref": "#/$defs/assessor"
+          }
+        }
+      }
+    },
+    "not_applicable_reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "required_changes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "notes": {
+      "type": "string"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time",
+      "minLength": 1
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Adapter- or project-specific data. Must not redefine any field above."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "evidence_refs": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "NOT_APPLICABLE"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "not_applicable_reason"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "CHANGES_REQUIRED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "required_changes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "FAIL"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "notes"
+        ],
+        "properties": {
+          "notes": {
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "review_policy": {
+            "const": "ROUTINE"
+          }
+        },
+        "required": [
+          "review_policy"
+        ]
+      },
+      "then": {
+        "required": [
+          "routine_basis"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS"
+          },
+          "review_policy": {
+            "const": "HUMAN_REVIEW_REQUIRED"
+          },
+          "gate": {
+            "not": {
+              "const": "HUMAN_REVIEW"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "review_policy",
+          "gate"
+        ]
+      },
+      "then": {
+        "required": [
+          "human_review_ref"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "HUMAN_REVIEW"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "review_policy": {
+            "const": "HUMAN_REVIEW_REQUIRED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "blocking": {
+            "const": false
+          },
+          "status": {
+            "not": {
+              "const": "NOT_APPLICABLE"
+            }
+          }
+        },
+        "required": [
+          "blocking",
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "blocking_downgrade_ref"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "TECHNICAL"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "qa-performance",
+              "technical-art"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "GAMEPLAY_DESIGN"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "gameplay-design"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "LEVEL_DESIGN"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "level-design"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "ANIMATION"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "character-animation"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "CAMERA_COMPOSITION"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "camera-composition"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "VISUAL_ART"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "art-direction",
+              "environment-art"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "GAME_FEEL_VFX"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "game-feel-vfx"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "UI_UX"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "ui-ux"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "AUDIO"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "audio-design"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "PERFORMANCE"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "qa-performance",
+              "technical-art"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "DEVICE"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "qa-performance"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "HUMAN_REVIEW"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "owner": {
+            "enum": [
+              "HUMAN"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "TECHNICAL"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "items": {
+              "enum": [
+                "PERSISTENCE_AFFECTED"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "GAMEPLAY_DESIGN"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "items": {
+              "enum": [
+                "REAL_TIME_BEHAVIOUR"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "LEVEL_DESIGN"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "items": {
+              "enum": [
+                "REAL_TIME_BEHAVIOUR"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "ANIMATION"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "items": {
+              "enum": [
+                "TARGET_PRESENTATION_DIFFERS"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "CAMERA_COMPOSITION"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "items": {
+              "enum": [
+                "CAMERA_MOTION_CLAIM",
+                "TARGET_PRESENTATION_DIFFERS"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "VISUAL_ART"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "items": {
+              "enum": [
+                "ANIMATED_PRESENTATION",
+                "TARGET_PRESENTATION_DIFFERS"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "GAME_FEEL_VFX"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "items": {
+              "enum": [
+                "FEEDBACK_INCLUDES_SOUND",
+                "TARGET_PRESENTATION_DIFFERS"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "UI_UX"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "items": {
+              "enum": [
+                "TOUCH_OR_MOBILE_TARGET",
+                "ANIMATED_PRESENTATION",
+                "TARGET_PRESENTATION_DIFFERS"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "AUDIO"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "items": {
+              "enum": [
+                "TARGET_OUTPUT_MATTERS"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "PERFORMANCE"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "items": {
+              "enum": [
+                "TARGET_PLATFORM_PERFORMANCE_CLAIM"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "DEVICE"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "const": "HUMAN_REVIEW"
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "applied_conditions": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "not": {
+              "const": "NOT_RUN"
+            }
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "assessed_by"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS"
+          },
+          "review_policy": {
+            "const": "CROSS_REVIEW_REQUIRED"
+          }
+        },
+        "required": [
+          "status",
+          "review_policy"
+        ]
+      },
+      "then": {
+        "required": [
+          "specialist_assessment",
+          "cross_reviews"
+        ],
+        "properties": {
+          "specialist_assessment": {
+            "const": "PASS"
+          },
+          "cross_reviews": {
+            "contains": {
+              "properties": {
+                "assessment": {
+                  "const": "PASS"
+                }
+              },
+              "required": [
+                "assessment"
+              ]
+            },
+            "not": {
+              "contains": {
+                "properties": {
+                  "assessment": {
+                    "enum": [
+                      "FAIL",
+                      "CHANGES_REQUIRED"
+                    ]
+                  }
+                },
+                "required": [
+                  "assessment"
+                ],
+                "not": {
+                  "properties": {
+                    "superseded": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "superseded"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS"
+          },
+          "review_policy": {
+            "const": "HUMAN_REVIEW_REQUIRED"
+          },
+          "cross_review_required": {
+            "const": true
+          }
+        },
+        "required": [
+          "status",
+          "review_policy",
+          "cross_review_required"
+        ]
+      },
+      "then": {
+        "required": [
+          "cross_reviews"
+        ],
+        "properties": {
+          "cross_reviews": {
+            "contains": {
+              "properties": {
+                "assessment": {
+                  "const": "PASS"
+                }
+              },
+              "required": [
+                "assessment"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS"
+          },
+          "review_policy": {
+            "const": "HUMAN_REVIEW_REQUIRED"
+          },
+          "cross_reviews": {
+            "contains": {
+              "properties": {
+                "assessment": {
+                  "enum": [
+                    "FAIL",
+                    "CHANGES_REQUIRED"
+                  ]
+                }
+              },
+              "required": [
+                "assessment"
+              ],
+              "not": {
+                "properties": {
+                  "superseded": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "superseded"
+                ]
+              }
+            }
+          }
+        },
+        "required": [
+          "status",
+          "review_policy",
+          "cross_reviews"
+        ]
+      },
+      "then": {
+        "required": [
+          "disagreements_disclosed"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS"
+          },
+          "review_policy": {
+            "const": "HUMAN_REVIEW_REQUIRED"
+          },
+          "specialist_assessment": {
+            "enum": [
+              "FAIL",
+              "CHANGES_REQUIRED"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "review_policy",
+          "specialist_assessment"
+        ]
+      },
+      "then": {
+        "required": [
+          "disagreements_disclosed"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS"
+          },
+          "review_policy": {
+            "const": "ROUTINE"
+          }
+        },
+        "required": [
+          "status",
+          "review_policy"
+        ]
+      },
+      "then": {
+        "required": [
+          "specialist_assessment",
+          "assessed_by"
+        ],
+        "properties": {
+          "specialist_assessment": {
+            "const": "PASS"
+          },
+          "assessed_by": {
+            "properties": {
+              "kind": {
+                "const": "AGENT"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "review_policy": {
+            "const": "CROSS_REVIEW_REQUIRED"
+          },
+          "cross_review_required": {
+            "const": false
+          }
+        },
+        "required": [
+          "review_policy",
+          "cross_review_required"
+        ]
+      },
+      "then": {
+        "not": {}
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "gameplay-design"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "HUMAN"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "AGENT"
+                  },
+                  "id": {
+                    "const": "gameplay-design"
+                  }
+                }
+              }
+            ]
+          },
+          "cross_reviews": {
+            "items": {
+              "properties": {
+                "reviewer": {
+                  "not": {
+                    "const": "gameplay-design"
+                  }
+                }
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "gameplay-design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "gameplay-design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "level-design"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "HUMAN"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "AGENT"
+                  },
+                  "id": {
+                    "const": "level-design"
+                  }
+                }
+              }
+            ]
+          },
+          "cross_reviews": {
+            "items": {
+              "properties": {
+                "reviewer": {
+                  "not": {
+                    "const": "level-design"
+                  }
+                }
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "level-design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "level-design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "character-animation"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "HUMAN"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "AGENT"
+                  },
+                  "id": {
+                    "const": "character-animation"
+                  }
+                }
+              }
+            ]
+          },
+          "cross_reviews": {
+            "items": {
+              "properties": {
+                "reviewer": {
+                  "not": {
+                    "const": "character-animation"
+                  }
+                }
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "character-animation"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "character-animation"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "camera-composition"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "HUMAN"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "AGENT"
+                  },
+                  "id": {
+                    "const": "camera-composition"
+                  }
+                }
+              }
+            ]
+          },
+          "cross_reviews": {
+            "items": {
+              "properties": {
+                "reviewer": {
+                  "not": {
+                    "const": "camera-composition"
+                  }
+                }
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "camera-composition"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "camera-composition"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "art-direction"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "HUMAN"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "AGENT"
+                  },
+                  "id": {
+                    "const": "art-direction"
+                  }
+                }
+              }
+            ]
+          },
+          "cross_reviews": {
+            "items": {
+              "properties": {
+                "reviewer": {
+                  "not": {
+                    "const": "art-direction"
+                  }
+                }
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "art-direction"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "art-direction"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "environment-art"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "HUMAN"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "AGENT"
+                  },
+                  "id": {
+                    "const": "environment-art"
+                  }
+                }
+              }
+            ]
+          },
+          "cross_reviews": {
+            "items": {
+              "properties": {
+                "reviewer": {
+                  "not": {
+                    "const": "environment-art"
+                  }
+                }
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "environment-art"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "environment-art"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "technical-art"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "HUMAN"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "AGENT"
+                  },
+                  "id": {
+                    "const": "technical-art"
+                  }
+                }
+              }
+            ]
+          },
+          "cross_reviews": {
+            "items": {
+              "properties": {
+                "reviewer": {
+                  "not": {
+                    "const": "technical-art"
+                  }
+                }
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "technical-art"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "technical-art"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "game-feel-vfx"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "HUMAN"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "AGENT"
+                  },
+                  "id": {
+                    "const": "game-feel-vfx"
+                  }
+                }
+              }
+            ]
+          },
+          "cross_reviews": {
+            "items": {
+              "properties": {
+                "reviewer": {
+                  "not": {
+                    "const": "game-feel-vfx"
+                  }
+                }
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "game-feel-vfx"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "game-feel-vfx"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "ui-ux"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "HUMAN"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "AGENT"
+                  },
+                  "id": {
+                    "const": "ui-ux"
+                  }
+                }
+              }
+            ]
+          },
+          "cross_reviews": {
+            "items": {
+              "properties": {
+                "reviewer": {
+                  "not": {
+                    "const": "ui-ux"
+                  }
+                }
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "ui-ux"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "ui-ux"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "audio-design"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "HUMAN"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "AGENT"
+                  },
+                  "id": {
+                    "const": "audio-design"
+                  }
+                }
+              }
+            ]
+          },
+          "cross_reviews": {
+            "items": {
+              "properties": {
+                "reviewer": {
+                  "not": {
+                    "const": "audio-design"
+                  }
+                }
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "audio-design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "audio-design"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "qa-performance"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "anyOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "HUMAN"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "AGENT"
+                  },
+                  "id": {
+                    "const": "qa-performance"
+                  }
+                }
+              }
+            ]
+          },
+          "cross_reviews": {
+            "items": {
+              "properties": {
+                "reviewer": {
+                  "not": {
+                    "const": "qa-performance"
+                  }
+                }
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "qa-performance"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "HUMAN"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "kind": {
+                          "const": "AGENT"
+                        },
+                        "id": {
+                          "const": "qa-performance"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "owner": {
+            "const": "HUMAN"
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assessed_by": {
+            "properties": {
+              "kind": {
+                "const": "HUMAN"
+              }
+            }
+          },
+          "evidence_carryover": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "properties": {
+                    "kind": {
+                      "const": "HUMAN"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "evidence_applicability": {
+            "items": {
+              "properties": {
+                "assessed_by": {
+                  "properties": {
+                    "kind": {
+                      "const": "HUMAN"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "gate": {
+      "enum": [
+        "TECHNICAL",
+        "GAMEPLAY_DESIGN",
+        "LEVEL_DESIGN",
+        "ANIMATION",
+        "CAMERA_COMPOSITION",
+        "VISUAL_ART",
+        "GAME_FEEL_VFX",
+        "UI_UX",
+        "AUDIO",
+        "PERFORMANCE",
+        "DEVICE",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "CHANGES_REQUIRED",
+        "NOT_APPLICABLE",
+        "NOT_RUN"
+      ]
+    },
+    "skill": {
+      "enum": [
+        "game-director",
+        "gameplay-design",
+        "level-design",
+        "character-animation",
+        "camera-composition",
+        "art-direction",
+        "environment-art",
+        "technical-art",
+        "game-feel-vfx",
+        "ui-ux",
+        "audio-design",
+        "qa-performance",
+        "game-engineering"
+      ]
+    },
+    "review_policy": {
+      "enum": [
+        "ROUTINE",
+        "CROSS_REVIEW_REQUIRED",
+        "HUMAN_REVIEW_REQUIRED"
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "HUMAN",
+            "AGENT",
+            "CI",
+            "TOOL",
+            "DEVICE"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._@-]*$",
+          "description": "Non-empty identifier without whitespace; used as a cross-record key."
+        }
+      }
+    },
+    "assessor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "AGENT",
+            "HUMAN"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._@-]*$",
+          "description": "Non-empty identifier without whitespace; used as a cross-record key."
+        }
+      }
+    }
+  }
+}

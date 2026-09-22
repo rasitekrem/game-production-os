@@ -1,0 +1,41 @@
+{
+  "description": "A TOOL-approved carryover must not let stale evidence count.",
+  "schema_invalid_gate": true,
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/scope/revision": "rev-example-0003",
+      "/evidence_carryover": [
+        {
+          "evidence_ref": "EV-0001",
+          "evidence_revision": "rev-example-0002",
+          "justification": "x",
+          "assessed_by": {
+            "kind": "TOOL",
+            "id": "carryover-bot"
+          }
+        }
+      ],
+      "/status": "PASS",
+      "/specialist_assessment": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "camera-composition",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0003"
+        }
+      ]
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": "not accountable"
+}

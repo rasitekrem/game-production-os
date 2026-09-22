@@ -1,0 +1,48 @@
+{
+  "description": "A TOOL-approved applicability mapping is refused.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/status": "PASS",
+      "/specialist_assessment": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "camera-composition",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ],
+      "/evidence_applicability": [
+        {
+          "evidence_ref": "EV-0001",
+          "evidence_subject": {
+            "kind": "BUILD",
+            "ref": "build-0042"
+          },
+          "justification": "x",
+          "assessed_by": {
+            "kind": "TOOL",
+            "id": "bot"
+          }
+        }
+      ]
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/subject": {
+          "kind": "BUILD",
+          "ref": "build-0042"
+        }
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "not accountable",
+  "schema_invalid_gate": true
+}

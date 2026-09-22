@@ -1,0 +1,14 @@
+{
+  "description": "Project config without core settings fails.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {},
+  "remove": [
+    "/engine",
+    "/target_platforms",
+    "/human_review",
+    "/golden_gameplay_cell"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

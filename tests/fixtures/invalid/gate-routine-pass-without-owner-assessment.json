@@ -1,0 +1,16 @@
+{
+  "description": "A ROUTINE PASS needs the owner's PASS assessment.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/review_policy": "ROUTINE",
+    "/routine_basis": "x"
+  },
+  "remove": [
+    "/required_changes",
+    "/specialist_assessment"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

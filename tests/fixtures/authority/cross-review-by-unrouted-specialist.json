@@ -1,0 +1,100 @@
+{
+  "description": "ui-ux is not a routed reviewer of TASK-0001; its PASS cannot close ANIMATION.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/presentation": {
+        "target_presentation_differs_from_editor": "NO",
+        "decision_ref": "D-0004"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0004",
+        "/kind": "PRESENTATION_PARITY",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": "NO"
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "routing": "tests/fixtures/valid/routing-example-animation.json",
+  "gates": [
+    {
+      "base": "examples/example-gate-record.json",
+      "remove": [
+        "/required_changes"
+      ],
+      "set": {
+        "/status": "PASS",
+        "/specialist_assessment": "PASS",
+        "/evidence_refs": [
+          "EV-0001",
+          "EV-V"
+        ],
+        "/cross_reviews": [
+          {
+            "reviewer": "ui-ux",
+            "assessment": "PASS",
+            "reviewed_revision": "rev-example-0002"
+          }
+        ]
+      }
+    },
+    {
+      "base": "examples/example-gate-record.json",
+      "remove": [
+        "/required_changes",
+        "/cross_reviews"
+      ],
+      "set": {
+        "/gate_id": "GATE-TECH",
+        "/gate": "TECHNICAL",
+        "/owner": "qa-performance",
+        "/assessed_by": {
+          "kind": "AGENT",
+          "id": "qa-performance"
+        },
+        "/status": "PASS",
+        "/review_policy": "ROUTINE",
+        "/routine_basis": "Bounded fix inside the existing animation state setup",
+        "/specialist_assessment": "PASS",
+        "/evidence_refs": [
+          "EV-R"
+        ]
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    },
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "EV-R",
+        "/type": "RUNTIME_EVIDENCE"
+      },
+      "remove": []
+    },
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "EV-V",
+        "/type": "VISUAL_EVIDENCE"
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "not a routed reviewer"
+}

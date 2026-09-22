@@ -1,0 +1,17 @@
+{
+  "description": "Presentation-parity decision.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/decision_id": "D-0004",
+    "/kind": "PRESENTATION_PARITY",
+    "/value": "NO",
+    "/affects": [
+      "project-config:/presentation"
+    ]
+  },
+  "remove": [
+    "/transition"
+  ],
+  "expect": "valid"
+}

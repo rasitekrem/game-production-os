@@ -1,0 +1,15 @@
+{
+  "description": "An automated save/relaunch/load harness produces PERSISTENCE_EVIDENCE.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "PERSISTENCE_EVIDENCE",
+    "/provenance": {
+      "capture_context": "AUTOMATED_TEST",
+      "subject_revision": "rev-example-0002",
+      "build_id": "b2"
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

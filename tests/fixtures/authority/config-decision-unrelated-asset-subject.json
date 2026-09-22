@@ -1,0 +1,32 @@
+{
+  "description": "A QUALITY_TARGET decision about an asset cannot set the project quality target.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/quality_target": "PROTOTYPE",
+      "/quality_target_decision_ref": "D-0022"
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0022",
+        "/kind": "QUALITY_TARGET",
+        "/affects": [
+          "gate"
+        ],
+        "/value": "PROTOTYPE",
+        "/subject": {
+          "kind": "ASSET",
+          "ref": "hero-sword"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": "subject kind ASSET"
+}

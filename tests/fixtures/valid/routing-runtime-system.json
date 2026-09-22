@@ -1,0 +1,55 @@
+{
+  "description": "Runtime-system routing: game-engineering implements, qa-performance verifies TECHNICAL, gameplay-design cross-reviews the rules.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/workflow": "runtime-system",
+    "/primary_specialist": "game-engineering",
+    "/secondary_specialists": [
+      "qa-performance"
+    ],
+    "/reviewers": [
+      "gameplay-design",
+      "game-feel-vfx"
+    ],
+    "/editor_write_lock": "game-engineering",
+    "/required_gates": [
+      {
+        "gate": "TECHNICAL",
+        "owner": "qa-performance",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "routine_basis": "Implementation of the decided stamina rules in GAME-DESIGN.md",
+        "applied_conditions": [
+          "PERSISTENCE_AFFECTED"
+        ],
+        "required_evidence": [
+          "TEST_EVIDENCE",
+          "PERSISTENCE_EVIDENCE"
+        ]
+      },
+      {
+        "gate": "GAMEPLAY_DESIGN",
+        "owner": "gameplay-design",
+        "blocking": true,
+        "review_policy": "CROSS_REVIEW_REQUIRED",
+        "required_evidence": [
+          "RUNTIME_EVIDENCE"
+        ],
+        "unapplied_conditions": [
+          {
+            "condition": "REAL_TIME_BEHAVIOUR",
+            "reason": "Not part of this task's claim (real time behaviour does not hold)."
+          }
+        ]
+      }
+    ],
+    "/human_review": {
+      "required": false,
+      "not_required_reason": "Implements already-decided rules; no baseline or authority change."
+    },
+    "/omitted_gates": []
+  },
+  "remove": [],
+  "expect": "valid"
+}

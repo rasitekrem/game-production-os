@@ -1,0 +1,20 @@
+{
+  "description": "environment-art is a permitted VISUAL_ART owner for environment scope.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/gate": "VISUAL_ART",
+    "/owner": "environment-art",
+    "/scope": {
+      "kind": "SPACE",
+      "ref": "SPACE-0001",
+      "revision": "rev-1"
+    },
+    "/assessed_by": {
+      "kind": "AGENT",
+      "id": "environment-art"
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

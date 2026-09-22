@@ -1,0 +1,15 @@
+{
+  "description": "An agent cannot author HUMAN_EVIDENCE.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "HUMAN_EVIDENCE",
+    "/provenance": {
+      "capture_context": "HUMAN_RECORD",
+      "subject_revision": "r"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "const"
+}

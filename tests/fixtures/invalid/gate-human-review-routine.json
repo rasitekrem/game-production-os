@@ -1,0 +1,19 @@
+{
+  "description": "HUMAN_REVIEW itself cannot be ROUTINE.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/gate": "HUMAN_REVIEW",
+    "/owner": "HUMAN",
+    "/status": "NOT_RUN",
+    "/evidence_refs": [],
+    "/review_policy": "ROUTINE",
+    "/routine_basis": "x"
+  },
+  "remove": [
+    "/required_changes",
+    "/applied_conditions"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "const"
+}

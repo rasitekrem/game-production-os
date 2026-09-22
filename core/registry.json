@@ -1,0 +1,1364 @@
+{
+  "$comment": "Machine-readable canonical vocabulary for Game Production OS. Markdown documents explain these terms; this file is the single source for names and machine-checkable rules. tests/validate_framework.py checks that schemas and documents agree with it. Changes follow core/GOVERNANCE.md. Per gate: permitted_owners may record the gate; default_review_policy applies unless routing or project authority sets another permitted policy; acceptable_evidence counts toward PASS; base_evidence.all_of must all be present and at least one of base_evidence.any_of (if non-empty); each conditional_evidence entry applies when routing applies its condition id, adding its requires types and, if requires_context is set, requiring at least one counting evidence of the gate's base types captured in one of those contexts; insufficient_alone may be attached as support but can never alone support PASS; evidence captured in non_counting_contexts does not count, except where context_scope_exceptions allows it for listed scope kinds. evidence_context_compatibility lists the capture contexts in which each evidence type can exist at all; any other combination is invalid (schema-enforced). decision_ref_fields lists every field that references a Human Decision and the decision kinds it may resolve to (Phase-2 referential integrity). decision_payloads defines the structured value each decision kind must carry; decision_value_bindings lists, for each decision reference, which config value (relative to the object holding the reference, or absolute when it starts with /) must equal which decision field \u2014 a decision of the right kind but a different value does not authorize the config. record_id_uniqueness lists identifiers that must be unique within a project record set; JSON Schema cannot enforce uniqueness by property, so record-set validation must reject duplicates before any lookup. decision_subject_rules states which subject a decision must have when it authorizes a configuration value. decision_may_omit in a binding lets a decision be broader than the record (e.g. no revision = any revision of that scope). Evidence counts for a gate only when evidence.subject equals the gate scope (kind and ref) or an accountable evidence_applicability entry maps it. Gate records produced for a routed task carry routing_ref and must agree with their routing entry. workflow_gate_requirements lists each workflow's invariant gates (always_required) and the gates routing adds when affected; review_policy_strength orders policies for the effective-policy rule. cross_review_eligibility maps each owning skill to the specialists whose passing review may close its gate. platforms is the target-platform vocabulary shared by project config and evidence provenance; target-runtime evidence counts only on a declared project target platform, DEVICE_EVIDENCE only on a declared reference device where the platform lists any, and release_primary_platform_coverage lists the evidence each PRIMARY platform needs for release.",
+  "gpos_version": "1.0.0-alpha.7",
+  "authority_levels": [
+    "HUMAN_DECISION",
+    "PROJECT_LOCKED_AUTHORITY",
+    "APPROVED_REFERENCES",
+    "GAME_PRODUCTION_OS",
+    "ENGINE_TOOL_DEFAULTS",
+    "IMPLEMENTATION",
+    "AGENT_RECOMMENDATION"
+  ],
+  "gate_statuses": [
+    "PASS",
+    "FAIL",
+    "CHANGES_REQUIRED",
+    "NOT_APPLICABLE",
+    "NOT_RUN"
+  ],
+  "review_policies": [
+    "ROUTINE",
+    "CROSS_REVIEW_REQUIRED",
+    "HUMAN_REVIEW_REQUIRED"
+  ],
+  "mandatory_human_review_triggers": {
+    "GOLDEN_CELL_EXIT": "Exit of the Golden Gameplay Cell.",
+    "CANONICAL_CREATIVE_ASSET": "Creation or change of a canonical creative asset (e.g. a character design, key art, an approved reference).",
+    "MAJOR_BASELINE": "Establishing or changing a major player, camera, animation or game-feel baseline.",
+    "ART_DIRECTION_CHANGE": "A change to visual identity or art-bible rules.",
+    "MILESTONE_ACCEPTANCE": "Acceptance of a major milestone or lifecycle stage transition.",
+    "RELEASE": "Release of a build to players.",
+    "AUTHORITY_CHANGE": "Locking, reopening or changing project authority, waivers or GPOS-level exceptions."
+  },
+  "trigger_scope_kinds": {
+    "GOLDEN_CELL_EXIT": [
+      "GOLDEN_CELL"
+    ],
+    "CANONICAL_CREATIVE_ASSET": [
+      "ASSET",
+      "FEATURE",
+      "TASK"
+    ],
+    "MAJOR_BASELINE": [
+      "FEATURE",
+      "TASK",
+      "PROJECT"
+    ],
+    "ART_DIRECTION_CHANGE": [
+      "PROJECT",
+      "DECISION"
+    ],
+    "MILESTONE_ACCEPTANCE": [
+      "MILESTONE",
+      "PROJECT"
+    ],
+    "RELEASE": [
+      "RELEASE",
+      "BUILD"
+    ],
+    "AUTHORITY_CHANGE": [
+      "DECISION",
+      "PROJECT"
+    ]
+  },
+  "decision_kinds": [
+    "CREATIVE_DIRECTION",
+    "LOCK",
+    "REOPEN",
+    "APPROVED_REFERENCE",
+    "LIFECYCLE_TRANSITION",
+    "GOLDEN_CELL_WAIVER",
+    "GOLDEN_CELL_EXIT",
+    "BLOCKING_DOWNGRADE",
+    "KNOWN_ISSUE_ACCEPTANCE",
+    "REVIEW_POLICY_OVERRIDE",
+    "QUALITY_TARGET",
+    "PRESENTATION_PARITY",
+    "EDITOR_CONCURRENCY",
+    "BUDGET",
+    "RELEASE",
+    "GPOS_UPGRADE",
+    "MATURITY_PROMOTION",
+    "OTHER"
+  ],
+  "decision_ref_fields": {
+    "project-config:/lifecycle_decision_ref": [
+      "LIFECYCLE_TRANSITION"
+    ],
+    "project-config:/golden_gameplay_cell/waiver/decision_ref": [
+      "GOLDEN_CELL_WAIVER"
+    ],
+    "project-config:/golden_gameplay_cell/exit_decision_ref": [
+      "GOLDEN_CELL_EXIT"
+    ],
+    "project-config:/quality_target_decision_ref": [
+      "QUALITY_TARGET"
+    ],
+    "project-config:/presentation/decision_ref": [
+      "PRESENTATION_PARITY"
+    ],
+    "project-config:/editor_concurrency/decision_ref": [
+      "EDITOR_CONCURRENCY"
+    ],
+    "project-config:/human_review/review_policy_overrides/*/decision_ref": [
+      "REVIEW_POLICY_OVERRIDE"
+    ],
+    "gate:/blocking_downgrade_ref": [
+      "BLOCKING_DOWNGRADE",
+      "KNOWN_ISSUE_ACCEPTANCE"
+    ],
+    "task-routing:/required_gates/*/blocking_downgrade_ref": [
+      "BLOCKING_DOWNGRADE",
+      "KNOWN_ISSUE_ACCEPTANCE"
+    ],
+    "project-config:/gpos_upgrade/decision_ref": [
+      "GPOS_UPGRADE"
+    ]
+  },
+  "workflow_mandatory_triggers": {
+    "new-game": [
+      "AUTHORITY_CHANGE"
+    ],
+    "golden-gameplay-cell": [
+      "GOLDEN_CELL_EXIT"
+    ],
+    "release": [
+      "RELEASE"
+    ]
+  },
+  "evidence_types": [
+    "CODE_EVIDENCE",
+    "TEST_EVIDENCE",
+    "RUNTIME_EVIDENCE",
+    "VISUAL_EVIDENCE",
+    "MOTION_EVIDENCE",
+    "AUDIO_EVIDENCE",
+    "DEVICE_EVIDENCE",
+    "PERFORMANCE_EVIDENCE",
+    "PERSISTENCE_EVIDENCE",
+    "HUMAN_EVIDENCE"
+  ],
+  "capture_contexts": [
+    "DCC_RENDER",
+    "EDITOR",
+    "TARGET_RUNTIME",
+    "DIAGNOSTIC_RUNTIME",
+    "PERFORMANCE_RUNTIME",
+    "OFFLINE_ANALYSIS",
+    "AUTOMATED_TEST",
+    "HUMAN_RECORD"
+  ],
+  "evidence_context_compatibility": {
+    "CODE_EVIDENCE": [
+      "OFFLINE_ANALYSIS",
+      "AUTOMATED_TEST"
+    ],
+    "TEST_EVIDENCE": [
+      "AUTOMATED_TEST",
+      "EDITOR",
+      "DIAGNOSTIC_RUNTIME",
+      "TARGET_RUNTIME"
+    ],
+    "RUNTIME_EVIDENCE": [
+      "EDITOR",
+      "TARGET_RUNTIME",
+      "DIAGNOSTIC_RUNTIME",
+      "PERFORMANCE_RUNTIME",
+      "AUTOMATED_TEST"
+    ],
+    "VISUAL_EVIDENCE": [
+      "DCC_RENDER",
+      "EDITOR",
+      "TARGET_RUNTIME",
+      "DIAGNOSTIC_RUNTIME",
+      "AUTOMATED_TEST"
+    ],
+    "MOTION_EVIDENCE": [
+      "DCC_RENDER",
+      "EDITOR",
+      "TARGET_RUNTIME",
+      "DIAGNOSTIC_RUNTIME",
+      "AUTOMATED_TEST"
+    ],
+    "AUDIO_EVIDENCE": [
+      "EDITOR",
+      "TARGET_RUNTIME",
+      "DIAGNOSTIC_RUNTIME",
+      "AUTOMATED_TEST"
+    ],
+    "DEVICE_EVIDENCE": [
+      "TARGET_RUNTIME",
+      "PERFORMANCE_RUNTIME"
+    ],
+    "PERFORMANCE_EVIDENCE": [
+      "EDITOR",
+      "DIAGNOSTIC_RUNTIME",
+      "TARGET_RUNTIME",
+      "PERFORMANCE_RUNTIME",
+      "OFFLINE_ANALYSIS"
+    ],
+    "PERSISTENCE_EVIDENCE": [
+      "EDITOR",
+      "DIAGNOSTIC_RUNTIME",
+      "TARGET_RUNTIME",
+      "AUTOMATED_TEST"
+    ],
+    "HUMAN_EVIDENCE": [
+      "HUMAN_RECORD"
+    ]
+  },
+  "runtime_capture_contexts": [
+    "TARGET_RUNTIME",
+    "DIAGNOSTIC_RUNTIME",
+    "PERFORMANCE_RUNTIME"
+  ],
+  "instrumentation_timing_impacts": [
+    "NONE",
+    "NEGLIGIBLE",
+    "MATERIAL",
+    "UNKNOWN"
+  ],
+  "evidence_conditions": {
+    "PERSISTENCE_AFFECTED": "The change reads or writes saved or persisted data.",
+    "REAL_TIME_BEHAVIOUR": "The claim depends on timing, spatial motion or real-time behaviour.",
+    "CAMERA_MOTION_CLAIM": "The claim concerns camera follow, lag, dead zone, look-ahead, transitions or motion comfort.",
+    "ANIMATED_PRESENTATION": "The subject's appearance changes over time: animated materials, VFX, animated or timing-sensitive UI.",
+    "TARGET_PRESENTATION_DIFFERS": "The target runtime, display, renderer or input differs materially from the environment where evidence would otherwise be captured.",
+    "TOUCH_OR_MOBILE_TARGET": "The claim concerns touch input or a mobile target platform.",
+    "FEEDBACK_INCLUDES_SOUND": "The feedback being judged includes sound.",
+    "TARGET_OUTPUT_MATTERS": "The target audio output device materially affects the result.",
+    "TARGET_PLATFORM_PERFORMANCE_CLAIM": "The claim concerns performance on a target platform or device."
+  },
+  "gate_scope_kinds": [
+    "TASK",
+    "FEATURE",
+    "ASSET",
+    "SPACE",
+    "GOLDEN_CELL",
+    "BUILD",
+    "RELEASE",
+    "MILESTONE",
+    "PROJECT",
+    "DECISION"
+  ],
+  "placeholders": [
+    "UNDECIDED",
+    "NOT_APPLICABLE",
+    "HUMAN_DECISION_REQUIRED",
+    "PROJECT_SPECIFIC"
+  ],
+  "actor_kinds": [
+    "HUMAN",
+    "AGENT",
+    "CI",
+    "TOOL",
+    "DEVICE"
+  ],
+  "authority_document_statuses": [
+    "PROPOSED",
+    "LOCKED"
+  ],
+  "maturity_levels": [
+    "DRAFT",
+    "PILOTED",
+    "PROVEN"
+  ],
+  "lifecycle_stages": [
+    "CONCEPT",
+    "PRE_PRODUCTION",
+    "GOLDEN_CELL",
+    "PRODUCTION",
+    "POLISH",
+    "RELEASE_CANDIDATE",
+    "RELEASED"
+  ],
+  "lifecycle_transitions": {
+    "forward": [
+      [
+        "CONCEPT",
+        "PRE_PRODUCTION"
+      ],
+      [
+        "PRE_PRODUCTION",
+        "GOLDEN_CELL"
+      ],
+      [
+        "GOLDEN_CELL",
+        "PRODUCTION"
+      ],
+      [
+        "PRE_PRODUCTION",
+        "PRODUCTION"
+      ],
+      [
+        "PRODUCTION",
+        "POLISH"
+      ],
+      [
+        "POLISH",
+        "RELEASE_CANDIDATE"
+      ],
+      [
+        "RELEASE_CANDIDATE",
+        "RELEASED"
+      ]
+    ],
+    "backward_allowed": true,
+    "requires_golden_cell_waiver": [
+      [
+        "PRE_PRODUCTION",
+        "PRODUCTION"
+      ]
+    ]
+  },
+  "golden_cell_statuses": [
+    "NOT_STARTED",
+    "IN_PROGRESS",
+    "EXITED",
+    "WAIVED"
+  ],
+  "skills": [
+    "game-director",
+    "gameplay-design",
+    "level-design",
+    "character-animation",
+    "camera-composition",
+    "art-direction",
+    "environment-art",
+    "technical-art",
+    "game-feel-vfx",
+    "ui-ux",
+    "audio-design",
+    "qa-performance",
+    "game-engineering"
+  ],
+  "workflows": [
+    "new-game",
+    "golden-gameplay-cell",
+    "gameplay-feature",
+    "character-production",
+    "animation-production",
+    "asset-production",
+    "level-production",
+    "environment-production",
+    "ui-production",
+    "visual-review",
+    "device-validation",
+    "release",
+    "runtime-system"
+  ],
+  "core_documents": [
+    "PRINCIPLES.md",
+    "HUMAN-AUTHORITY.md",
+    "AUTHORITY-HIERARCHY.md",
+    "QUALITY-GATES.md",
+    "EVIDENCE-RULES.md",
+    "ROLE-ROUTING.md",
+    "PRODUCTION-LIFECYCLE.md",
+    "GOLDEN-GAMEPLAY-CELL.md",
+    "SKILL-MATURITY.md",
+    "DEFINITION-OF-DONE.md",
+    "GOVERNANCE.md"
+  ],
+  "project_authority_files": [
+    "PROJECT.md",
+    "PILLARS.md",
+    "GAME-DESIGN.md",
+    "ART-BIBLE.md",
+    "GAME-FEEL.md",
+    "CAMERA.md",
+    "ANIMATION.md",
+    "LEVEL-DESIGN.md",
+    "UI-UX.md",
+    "AUDIO.md",
+    "PERFORMANCE.md",
+    "ENGINEERING.md",
+    "DECISIONS.md",
+    "CURRENT.md"
+  ],
+  "skill_contract_sections": [
+    "ROLE",
+    "PURPOSE",
+    "MATURITY",
+    "TRIGGERS",
+    "OWNS",
+    "DOES NOT OWN",
+    "REQUIRED INPUTS",
+    "OPTIONAL INPUTS",
+    "TOOL ACCESS",
+    "WORKFLOW",
+    "REQUIRED EVIDENCE",
+    "PASS CRITERIA",
+    "FAILURE CONDITIONS",
+    "STOP / ESCALATE CONDITIONS",
+    "HANDOFFS",
+    "CROSS-REVIEW",
+    "HUMAN REVIEW REQUIREMENTS",
+    "ANTI-PATTERNS",
+    "EXAMPLES"
+  ],
+  "workflow_contract_sections": [
+    "ENTRY CONDITIONS",
+    "PURPOSE",
+    "STEPS",
+    "SPECIALISTS",
+    "REQUIRED GATES",
+    "REQUIRED EVIDENCE",
+    "HUMAN REVIEW POINTS",
+    "EXIT CONDITIONS",
+    "FORBIDDEN SHORTCUTS",
+    "POSTMORTEM / LESSON EXTRACTION"
+  ],
+  "gates": {
+    "TECHNICAL": {
+      "default_owner": "qa-performance",
+      "permitted_owners": [
+        "qa-performance",
+        "technical-art"
+      ],
+      "subjective": false,
+      "default_review_policy": "ROUTINE",
+      "acceptable_evidence": [
+        "CODE_EVIDENCE",
+        "TEST_EVIDENCE",
+        "RUNTIME_EVIDENCE",
+        "PERSISTENCE_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [],
+        "any_of": [
+          "TEST_EVIDENCE",
+          "RUNTIME_EVIDENCE"
+        ]
+      },
+      "conditional_evidence": [
+        {
+          "condition": "PERSISTENCE_AFFECTED",
+          "requires": [
+            "PERSISTENCE_EVIDENCE"
+          ]
+        }
+      ],
+      "insufficient_alone": [
+        "CODE_EVIDENCE"
+      ],
+      "non_counting_contexts": [],
+      "context_scope_exceptions": {}
+    },
+    "GAMEPLAY_DESIGN": {
+      "default_owner": "gameplay-design",
+      "permitted_owners": [
+        "gameplay-design"
+      ],
+      "subjective": true,
+      "default_review_policy": "CROSS_REVIEW_REQUIRED",
+      "acceptable_evidence": [
+        "RUNTIME_EVIDENCE",
+        "MOTION_EVIDENCE",
+        "TEST_EVIDENCE",
+        "HUMAN_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [],
+        "any_of": [
+          "RUNTIME_EVIDENCE",
+          "MOTION_EVIDENCE"
+        ]
+      },
+      "conditional_evidence": [
+        {
+          "condition": "REAL_TIME_BEHAVIOUR",
+          "requires": [
+            "MOTION_EVIDENCE"
+          ]
+        }
+      ],
+      "insufficient_alone": [
+        "CODE_EVIDENCE",
+        "TEST_EVIDENCE"
+      ],
+      "non_counting_contexts": [
+        "DCC_RENDER",
+        "OFFLINE_ANALYSIS"
+      ],
+      "context_scope_exceptions": {}
+    },
+    "LEVEL_DESIGN": {
+      "default_owner": "level-design",
+      "permitted_owners": [
+        "level-design"
+      ],
+      "subjective": true,
+      "default_review_policy": "CROSS_REVIEW_REQUIRED",
+      "acceptable_evidence": [
+        "RUNTIME_EVIDENCE",
+        "VISUAL_EVIDENCE",
+        "MOTION_EVIDENCE",
+        "HUMAN_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [
+          "VISUAL_EVIDENCE"
+        ],
+        "any_of": [
+          "RUNTIME_EVIDENCE",
+          "MOTION_EVIDENCE"
+        ]
+      },
+      "conditional_evidence": [
+        {
+          "condition": "REAL_TIME_BEHAVIOUR",
+          "requires": [
+            "MOTION_EVIDENCE"
+          ]
+        }
+      ],
+      "insufficient_alone": [
+        "CODE_EVIDENCE",
+        "TEST_EVIDENCE"
+      ],
+      "non_counting_contexts": [
+        "DCC_RENDER",
+        "OFFLINE_ANALYSIS"
+      ],
+      "context_scope_exceptions": {}
+    },
+    "ANIMATION": {
+      "default_owner": "character-animation",
+      "permitted_owners": [
+        "character-animation"
+      ],
+      "subjective": true,
+      "default_review_policy": "CROSS_REVIEW_REQUIRED",
+      "acceptable_evidence": [
+        "MOTION_EVIDENCE",
+        "VISUAL_EVIDENCE",
+        "RUNTIME_EVIDENCE",
+        "HUMAN_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [
+          "MOTION_EVIDENCE"
+        ],
+        "any_of": []
+      },
+      "conditional_evidence": [
+        {
+          "condition": "TARGET_PRESENTATION_DIFFERS",
+          "requires": [],
+          "requires_context": [
+            "TARGET_RUNTIME"
+          ]
+        }
+      ],
+      "insufficient_alone": [
+        "VISUAL_EVIDENCE",
+        "RUNTIME_EVIDENCE",
+        "TEST_EVIDENCE",
+        "CODE_EVIDENCE"
+      ],
+      "non_counting_contexts": [
+        "DCC_RENDER",
+        "OFFLINE_ANALYSIS"
+      ],
+      "context_scope_exceptions": {}
+    },
+    "CAMERA_COMPOSITION": {
+      "default_owner": "camera-composition",
+      "permitted_owners": [
+        "camera-composition"
+      ],
+      "subjective": true,
+      "default_review_policy": "CROSS_REVIEW_REQUIRED",
+      "acceptable_evidence": [
+        "VISUAL_EVIDENCE",
+        "MOTION_EVIDENCE",
+        "RUNTIME_EVIDENCE",
+        "DEVICE_EVIDENCE",
+        "HUMAN_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [
+          "VISUAL_EVIDENCE"
+        ],
+        "any_of": []
+      },
+      "conditional_evidence": [
+        {
+          "condition": "CAMERA_MOTION_CLAIM",
+          "requires": [
+            "MOTION_EVIDENCE"
+          ]
+        },
+        {
+          "condition": "TARGET_PRESENTATION_DIFFERS",
+          "requires": [],
+          "requires_context": [
+            "TARGET_RUNTIME"
+          ]
+        }
+      ],
+      "insufficient_alone": [
+        "RUNTIME_EVIDENCE",
+        "CODE_EVIDENCE",
+        "TEST_EVIDENCE"
+      ],
+      "non_counting_contexts": [
+        "DCC_RENDER",
+        "OFFLINE_ANALYSIS"
+      ],
+      "context_scope_exceptions": {}
+    },
+    "VISUAL_ART": {
+      "default_owner": "art-direction",
+      "permitted_owners": [
+        "art-direction",
+        "environment-art"
+      ],
+      "subjective": true,
+      "default_review_policy": "CROSS_REVIEW_REQUIRED",
+      "acceptable_evidence": [
+        "VISUAL_EVIDENCE",
+        "MOTION_EVIDENCE",
+        "DEVICE_EVIDENCE",
+        "HUMAN_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [
+          "VISUAL_EVIDENCE"
+        ],
+        "any_of": []
+      },
+      "conditional_evidence": [
+        {
+          "condition": "ANIMATED_PRESENTATION",
+          "requires": [
+            "MOTION_EVIDENCE"
+          ]
+        },
+        {
+          "condition": "TARGET_PRESENTATION_DIFFERS",
+          "requires": [],
+          "requires_context": [
+            "TARGET_RUNTIME"
+          ]
+        }
+      ],
+      "insufficient_alone": [
+        "CODE_EVIDENCE",
+        "TEST_EVIDENCE",
+        "RUNTIME_EVIDENCE"
+      ],
+      "non_counting_contexts": [
+        "DCC_RENDER",
+        "OFFLINE_ANALYSIS"
+      ],
+      "context_scope_exceptions": {
+        "DCC_RENDER": [
+          "ASSET"
+        ]
+      }
+    },
+    "GAME_FEEL_VFX": {
+      "default_owner": "game-feel-vfx",
+      "permitted_owners": [
+        "game-feel-vfx"
+      ],
+      "subjective": true,
+      "default_review_policy": "CROSS_REVIEW_REQUIRED",
+      "acceptable_evidence": [
+        "MOTION_EVIDENCE",
+        "AUDIO_EVIDENCE",
+        "VISUAL_EVIDENCE",
+        "DEVICE_EVIDENCE",
+        "HUMAN_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [
+          "MOTION_EVIDENCE"
+        ],
+        "any_of": []
+      },
+      "conditional_evidence": [
+        {
+          "condition": "FEEDBACK_INCLUDES_SOUND",
+          "requires": [
+            "AUDIO_EVIDENCE"
+          ]
+        },
+        {
+          "condition": "TARGET_PRESENTATION_DIFFERS",
+          "requires": [],
+          "requires_context": [
+            "TARGET_RUNTIME"
+          ]
+        }
+      ],
+      "insufficient_alone": [
+        "VISUAL_EVIDENCE",
+        "CODE_EVIDENCE",
+        "TEST_EVIDENCE",
+        "RUNTIME_EVIDENCE"
+      ],
+      "non_counting_contexts": [
+        "DCC_RENDER",
+        "OFFLINE_ANALYSIS"
+      ],
+      "context_scope_exceptions": {}
+    },
+    "UI_UX": {
+      "default_owner": "ui-ux",
+      "permitted_owners": [
+        "ui-ux"
+      ],
+      "subjective": true,
+      "default_review_policy": "CROSS_REVIEW_REQUIRED",
+      "acceptable_evidence": [
+        "VISUAL_EVIDENCE",
+        "MOTION_EVIDENCE",
+        "DEVICE_EVIDENCE",
+        "RUNTIME_EVIDENCE",
+        "HUMAN_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [
+          "VISUAL_EVIDENCE"
+        ],
+        "any_of": []
+      },
+      "conditional_evidence": [
+        {
+          "condition": "TOUCH_OR_MOBILE_TARGET",
+          "requires": [
+            "DEVICE_EVIDENCE"
+          ]
+        },
+        {
+          "condition": "ANIMATED_PRESENTATION",
+          "requires": [
+            "MOTION_EVIDENCE"
+          ]
+        },
+        {
+          "condition": "TARGET_PRESENTATION_DIFFERS",
+          "requires": [],
+          "requires_context": [
+            "TARGET_RUNTIME"
+          ]
+        }
+      ],
+      "insufficient_alone": [
+        "CODE_EVIDENCE",
+        "TEST_EVIDENCE",
+        "RUNTIME_EVIDENCE"
+      ],
+      "non_counting_contexts": [
+        "DCC_RENDER",
+        "OFFLINE_ANALYSIS"
+      ],
+      "context_scope_exceptions": {}
+    },
+    "AUDIO": {
+      "default_owner": "audio-design",
+      "permitted_owners": [
+        "audio-design"
+      ],
+      "subjective": true,
+      "default_review_policy": "CROSS_REVIEW_REQUIRED",
+      "acceptable_evidence": [
+        "AUDIO_EVIDENCE",
+        "MOTION_EVIDENCE",
+        "DEVICE_EVIDENCE",
+        "HUMAN_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [
+          "AUDIO_EVIDENCE"
+        ],
+        "any_of": []
+      },
+      "conditional_evidence": [
+        {
+          "condition": "TARGET_OUTPUT_MATTERS",
+          "requires": [
+            "DEVICE_EVIDENCE"
+          ]
+        }
+      ],
+      "insufficient_alone": [
+        "CODE_EVIDENCE",
+        "TEST_EVIDENCE",
+        "RUNTIME_EVIDENCE"
+      ],
+      "non_counting_contexts": [
+        "DCC_RENDER",
+        "OFFLINE_ANALYSIS"
+      ],
+      "context_scope_exceptions": {}
+    },
+    "PERFORMANCE": {
+      "default_owner": "qa-performance",
+      "permitted_owners": [
+        "qa-performance",
+        "technical-art"
+      ],
+      "subjective": false,
+      "default_review_policy": "ROUTINE",
+      "acceptable_evidence": [
+        "PERFORMANCE_EVIDENCE",
+        "DEVICE_EVIDENCE",
+        "RUNTIME_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [
+          "PERFORMANCE_EVIDENCE"
+        ],
+        "any_of": []
+      },
+      "conditional_evidence": [
+        {
+          "condition": "TARGET_PLATFORM_PERFORMANCE_CLAIM",
+          "requires": [
+            "DEVICE_EVIDENCE"
+          ],
+          "requires_context": [
+            "TARGET_RUNTIME",
+            "PERFORMANCE_RUNTIME"
+          ]
+        }
+      ],
+      "insufficient_alone": [
+        "RUNTIME_EVIDENCE",
+        "CODE_EVIDENCE"
+      ],
+      "non_counting_contexts": [
+        "DCC_RENDER",
+        "OFFLINE_ANALYSIS"
+      ],
+      "context_scope_exceptions": {}
+    },
+    "DEVICE": {
+      "default_owner": "qa-performance",
+      "permitted_owners": [
+        "qa-performance"
+      ],
+      "subjective": false,
+      "default_review_policy": "ROUTINE",
+      "acceptable_evidence": [
+        "DEVICE_EVIDENCE",
+        "PERFORMANCE_EVIDENCE",
+        "VISUAL_EVIDENCE",
+        "MOTION_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [
+          "DEVICE_EVIDENCE"
+        ],
+        "any_of": []
+      },
+      "conditional_evidence": [],
+      "insufficient_alone": [
+        "RUNTIME_EVIDENCE",
+        "VISUAL_EVIDENCE"
+      ],
+      "non_counting_contexts": [
+        "DCC_RENDER",
+        "EDITOR",
+        "OFFLINE_ANALYSIS"
+      ],
+      "context_scope_exceptions": {}
+    },
+    "HUMAN_REVIEW": {
+      "default_owner": "HUMAN",
+      "permitted_owners": [
+        "HUMAN"
+      ],
+      "subjective": true,
+      "default_review_policy": "HUMAN_REVIEW_REQUIRED",
+      "acceptable_evidence": [
+        "HUMAN_EVIDENCE"
+      ],
+      "base_evidence": {
+        "all_of": [
+          "HUMAN_EVIDENCE"
+        ],
+        "any_of": []
+      },
+      "conditional_evidence": [],
+      "insufficient_alone": [],
+      "non_counting_contexts": [],
+      "context_scope_exceptions": {}
+    }
+  },
+  "visual_responsibility_defaults": {
+    "art-direction": [
+      "lighting intent",
+      "mood",
+      "color and value hierarchy",
+      "visual target"
+    ],
+    "environment-art": [
+      "environment lighting composition",
+      "scene-light placement",
+      "environmental readability",
+      "visual massing"
+    ],
+    "technical-art": [
+      "lighting and shader implementation",
+      "renderer and tool constraints",
+      "optimization"
+    ],
+    "camera-composition": [
+      "focal and actor readability under lighting (cross-review)"
+    ]
+  },
+  "golden_cell_target_runtime_gates": [
+    "CAMERA_COMPOSITION",
+    "GAME_FEEL_VFX",
+    "UI_UX"
+  ],
+  "assessor_kinds": [
+    "AGENT",
+    "HUMAN"
+  ],
+  "future_considerations": [
+    "Games with materially different core modes may need a Golden Gameplay Cell set rather than one cell.",
+    "Asset source and licensing provenance.",
+    "Further specialist domains: narrative, localization, accessibility, networking, economy / live operations."
+  ],
+  "quality_targets": [
+    "PROFESSIONAL_INDIE",
+    "PROTOTYPE",
+    "HIGHER_THAN_INDIE"
+  ],
+  "decision_payloads": {
+    "LIFECYCLE_TRANSITION": "transition: {from, to} lifecycle stages",
+    "PRESENTATION_PARITY": "value: YES | NO",
+    "QUALITY_TARGET": "value: one of quality_targets",
+    "REVIEW_POLICY_OVERRIDE": "value: {gate, review_policy, scope?}",
+    "EDITOR_CONCURRENCY": "value: {single_writer: boolean}",
+    "GPOS_UPGRADE": "upgrade: {from_version, to_version}",
+    "BLOCKING_DOWNGRADE": "value: {gate}; subject: the gate's scope (kind, ref, optional revision)",
+    "KNOWN_ISSUE_ACCEPTANCE": "value: {gate}; subject: the gate's scope (kind, ref, optional revision)"
+  },
+  "decision_value_bindings": [
+    {
+      "ref": "project-config:/quality_target_decision_ref",
+      "config": "quality_target",
+      "config_default": "PROFESSIONAL_INDIE",
+      "decision": "value"
+    },
+    {
+      "ref": "project-config:/presentation/decision_ref",
+      "config": "target_presentation_differs_from_editor",
+      "decision": "value"
+    },
+    {
+      "ref": "project-config:/editor_concurrency/decision_ref",
+      "config": "single_writer",
+      "config_default": true,
+      "decision": "value/single_writer"
+    },
+    {
+      "ref": "project-config:/human_review/review_policy_overrides/*/decision_ref",
+      "config": "gate",
+      "decision": "value/gate"
+    },
+    {
+      "ref": "project-config:/human_review/review_policy_overrides/*/decision_ref",
+      "config": "review_policy",
+      "decision": "value/review_policy"
+    },
+    {
+      "ref": "project-config:/human_review/review_policy_overrides/*/decision_ref",
+      "config": "scope",
+      "decision": "value/scope",
+      "optional": true
+    },
+    {
+      "ref": "project-config:/gpos_upgrade/decision_ref",
+      "config": "from_version",
+      "decision": "upgrade/from_version"
+    },
+    {
+      "ref": "project-config:/gpos_upgrade/decision_ref",
+      "config": "/gpos_version",
+      "decision": "upgrade/to_version"
+    },
+    {
+      "ref": "project-config:/lifecycle_decision_ref",
+      "config": "lifecycle_stage",
+      "decision": "transition/to"
+    },
+    {
+      "ref": "gate:/blocking_downgrade_ref",
+      "config": "gate",
+      "decision": "value/gate"
+    },
+    {
+      "ref": "gate:/blocking_downgrade_ref",
+      "config": "/scope/kind",
+      "decision": "subject/kind"
+    },
+    {
+      "ref": "gate:/blocking_downgrade_ref",
+      "config": "/scope/ref",
+      "decision": "subject/ref"
+    },
+    {
+      "ref": "gate:/blocking_downgrade_ref",
+      "config": "/scope/revision",
+      "decision": "subject/revision",
+      "decision_may_omit": true
+    },
+    {
+      "ref": "task-routing:/required_gates/*/blocking_downgrade_ref",
+      "config": "gate",
+      "decision": "value/gate"
+    },
+    {
+      "ref": "task-routing:/required_gates/*/blocking_downgrade_ref",
+      "config": "/subject/kind",
+      "decision": "subject/kind"
+    },
+    {
+      "ref": "task-routing:/required_gates/*/blocking_downgrade_ref",
+      "config": "/subject/ref",
+      "decision": "subject/ref"
+    }
+  ],
+  "record_id_uniqueness": {
+    "decision records": "decision_id",
+    "evidence records": "evidence_id",
+    "gate records": "gate_id",
+    "routing records": "task_id",
+    "project-config:/decision_authorities": "id",
+    "project-config:/human_review/reviewers": "id",
+    "project-config:/human_review/additional_mandatory_triggers": "id"
+  },
+  "decision_subject_rules": {
+    "QUALITY_TARGET": {
+      "subject_kinds": [
+        "PROJECT"
+      ],
+      "subject_ref": "PROJECT_ID"
+    },
+    "PRESENTATION_PARITY": {
+      "subject_kinds": [
+        "PROJECT"
+      ],
+      "subject_ref": "PROJECT_ID"
+    },
+    "EDITOR_CONCURRENCY": {
+      "subject_kinds": [
+        "PROJECT"
+      ],
+      "subject_ref": "PROJECT_ID"
+    },
+    "GPOS_UPGRADE": {
+      "subject_kinds": [
+        "PROJECT"
+      ],
+      "subject_ref": "PROJECT_ID"
+    },
+    "LIFECYCLE_TRANSITION": {
+      "subject_kinds": [
+        "PROJECT"
+      ],
+      "subject_ref": "PROJECT_ID"
+    },
+    "REVIEW_POLICY_OVERRIDE": {
+      "subject_kinds": [
+        "PROJECT"
+      ],
+      "subject_ref": "PROJECT_ID"
+    },
+    "GOLDEN_CELL_WAIVER": {
+      "subject_kinds": [
+        "PROJECT"
+      ],
+      "subject_ref": "PROJECT_ID"
+    },
+    "GOLDEN_CELL_EXIT": {
+      "subject_kinds": [
+        "GOLDEN_CELL"
+      ],
+      "subject_ref": "ANY",
+      "note": "One-cell model: the project's single Golden Cell. A Golden Cell set is a documented future consideration."
+    },
+    "BLOCKING_DOWNGRADE": {
+      "subject_kinds": "BOUND_BY_VALUE_BINDINGS"
+    },
+    "KNOWN_ISSUE_ACCEPTANCE": {
+      "subject_kinds": "BOUND_BY_VALUE_BINDINGS"
+    }
+  },
+  "project_trigger_prefix": "PROJECT:",
+  "routing_rules": [
+    "each gate appears at most once in required_gates",
+    "each gate appears at most once in omitted_gates",
+    "required_gates and omitted_gates are disjoint",
+    "every always_required gate of the workflow is in required_gates and never in omitted_gates",
+    "a workflow with account_for_all_gates lists every quality gate in required_gates or omitted_gates",
+    "every conditional-evidence condition defined for a routed gate appears exactly once in applied_conditions or unapplied_conditions",
+    "required_evidence covers the registry minimum and contains only types valid for the gate (acceptable_evidence or insufficient_alone)",
+    "the routed review policy is at least the effective policy: mandatory trigger, then applicable project override, then routing",
+    "a contributing cross-review is by a routed reviewer eligible for the gate owner (registry cross_review_eligibility); game-director never counts"
+  ],
+  "review_policy_strength": {
+    "ROUTINE": 0,
+    "CROSS_REVIEW_REQUIRED": 1,
+    "HUMAN_REVIEW_REQUIRED": 2
+  },
+  "effective_review_policy_precedence": [
+    "MANDATORY_TRIGGER",
+    "PROJECT_OVERRIDE",
+    "ROUTING"
+  ],
+  "workflow_gate_requirements": {
+    "new-game": {
+      "always_required": [
+        "HUMAN_REVIEW"
+      ],
+      "when_affected": []
+    },
+    "golden-gameplay-cell": {
+      "always_required": [
+        "TECHNICAL",
+        "GAMEPLAY_DESIGN",
+        "VISUAL_ART",
+        "GAME_FEEL_VFX",
+        "PERFORMANCE",
+        "DEVICE",
+        "HUMAN_REVIEW"
+      ],
+      "when_affected": [
+        "ANIMATION",
+        "CAMERA_COMPOSITION",
+        "LEVEL_DESIGN",
+        "UI_UX",
+        "AUDIO"
+      ],
+      "account_for_all_gates": true
+    },
+    "gameplay-feature": {
+      "always_required": [
+        "GAMEPLAY_DESIGN",
+        "TECHNICAL"
+      ],
+      "when_affected": [
+        "GAME_FEEL_VFX",
+        "UI_UX",
+        "ANIMATION",
+        "AUDIO",
+        "LEVEL_DESIGN",
+        "CAMERA_COMPOSITION",
+        "PERFORMANCE",
+        "DEVICE",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "character-production": {
+      "always_required": [
+        "VISUAL_ART",
+        "TECHNICAL",
+        "PERFORMANCE"
+      ],
+      "when_affected": [
+        "ANIMATION",
+        "DEVICE",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "animation-production": {
+      "always_required": [
+        "ANIMATION",
+        "TECHNICAL"
+      ],
+      "when_affected": [
+        "CAMERA_COMPOSITION",
+        "GAME_FEEL_VFX",
+        "GAMEPLAY_DESIGN",
+        "PERFORMANCE",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "asset-production": {
+      "always_required": [
+        "VISUAL_ART",
+        "TECHNICAL",
+        "PERFORMANCE"
+      ],
+      "when_affected": [
+        "DEVICE",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "level-production": {
+      "always_required": [
+        "LEVEL_DESIGN",
+        "CAMERA_COMPOSITION",
+        "TECHNICAL"
+      ],
+      "when_affected": [
+        "GAMEPLAY_DESIGN",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "environment-production": {
+      "always_required": [
+        "VISUAL_ART",
+        "LEVEL_DESIGN",
+        "PERFORMANCE",
+        "TECHNICAL"
+      ],
+      "when_affected": [
+        "DEVICE",
+        "CAMERA_COMPOSITION",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "ui-production": {
+      "always_required": [
+        "UI_UX",
+        "TECHNICAL"
+      ],
+      "when_affected": [
+        "DEVICE",
+        "VISUAL_ART",
+        "PERFORMANCE",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "visual-review": {
+      "always_required": [],
+      "when_affected": [
+        "VISUAL_ART",
+        "ANIMATION",
+        "CAMERA_COMPOSITION",
+        "GAME_FEEL_VFX",
+        "UI_UX",
+        "AUDIO",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "device-validation": {
+      "always_required": [
+        "DEVICE",
+        "PERFORMANCE",
+        "TECHNICAL"
+      ],
+      "when_affected": [
+        "UI_UX",
+        "VISUAL_ART",
+        "GAME_FEEL_VFX",
+        "CAMERA_COMPOSITION",
+        "AUDIO"
+      ]
+    },
+    "release": {
+      "always_required": [
+        "TECHNICAL",
+        "PERFORMANCE",
+        "DEVICE",
+        "HUMAN_REVIEW"
+      ],
+      "when_affected": [
+        "GAMEPLAY_DESIGN",
+        "LEVEL_DESIGN",
+        "ANIMATION",
+        "CAMERA_COMPOSITION",
+        "VISUAL_ART",
+        "GAME_FEEL_VFX",
+        "UI_UX",
+        "AUDIO"
+      ],
+      "account_for_all_gates": true
+    },
+    "runtime-system": {
+      "always_required": [
+        "TECHNICAL"
+      ],
+      "when_affected": [
+        "PERFORMANCE",
+        "GAMEPLAY_DESIGN",
+        "GAME_FEEL_VFX",
+        "UI_UX",
+        "ANIMATION",
+        "AUDIO",
+        "HUMAN_REVIEW"
+      ]
+    }
+  },
+  "cross_review_eligibility": {
+    "gameplay-design": [
+      "level-design",
+      "game-feel-vfx"
+    ],
+    "level-design": [
+      "gameplay-design",
+      "camera-composition"
+    ],
+    "character-animation": [
+      "camera-composition",
+      "game-feel-vfx"
+    ],
+    "camera-composition": [
+      "level-design",
+      "game-feel-vfx"
+    ],
+    "art-direction": [
+      "environment-art",
+      "technical-art"
+    ],
+    "environment-art": [
+      "art-direction",
+      "level-design",
+      "camera-composition"
+    ],
+    "technical-art": [
+      "art-direction",
+      "qa-performance"
+    ],
+    "game-feel-vfx": [
+      "gameplay-design",
+      "camera-composition",
+      "audio-design",
+      "ui-ux"
+    ],
+    "ui-ux": [
+      "art-direction",
+      "gameplay-design"
+    ],
+    "audio-design": [
+      "game-feel-vfx"
+    ],
+    "qa-performance": [
+      "game-engineering",
+      "technical-art"
+    ],
+    "game-engineering": [
+      "qa-performance",
+      "gameplay-design"
+    ]
+  },
+  "never_cross_reviewer": [
+    "game-director"
+  ],
+  "cross_review_exception_policy": "A reviewer outside cross_review_eligibility never counts. If a project needs one, the gate is escalated to HUMAN_REVIEW_REQUIRED; agents never invent reviewer exceptions.",
+  "platforms": [
+    "WINDOWS",
+    "MACOS",
+    "LINUX",
+    "ANDROID",
+    "IOS",
+    "WEB",
+    "CONSOLE",
+    "XR"
+  ],
+  "release_primary_platform_coverage": {
+    "DEVICE": "DEVICE_EVIDENCE",
+    "PERFORMANCE": "PERFORMANCE_EVIDENCE"
+  }
+}

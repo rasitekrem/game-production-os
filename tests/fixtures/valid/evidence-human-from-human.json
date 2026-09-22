@@ -1,0 +1,18 @@
+{
+  "description": "HUMAN_EVIDENCE authored by a human, recorded as HUMAN_RECORD.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "HUMAN_EVIDENCE",
+    "/source": {
+      "kind": "HUMAN",
+      "id": "creative-lead"
+    },
+    "/provenance": {
+      "capture_context": "HUMAN_RECORD",
+      "subject_revision": "rev-example-0002"
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

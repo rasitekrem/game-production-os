@@ -1,0 +1,36 @@
+{
+  "description": "The decision concerns UI_UX, not the ANIMATION override it is cited for.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/human_review/review_policy_overrides": [
+        {
+          "gate": "ANIMATION",
+          "review_policy": "HUMAN_REVIEW_REQUIRED",
+          "decision_ref": "D-0021"
+        }
+      ]
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0021",
+        "/kind": "REVIEW_POLICY_OVERRIDE",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": {
+          "gate": "UI_UX",
+          "review_policy": "HUMAN_REVIEW_REQUIRED"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": "does not match"
+}

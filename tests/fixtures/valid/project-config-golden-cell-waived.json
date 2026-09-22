@@ -1,0 +1,17 @@
+{
+  "description": "Golden Cell waived by a recorded Human Decision.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/golden_gameplay_cell": {
+      "required": false,
+      "status": "WAIVED",
+      "waiver": {
+        "decision_ref": "D-0003",
+        "reason": "Human decided the project is a short experimental prototype."
+      }
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

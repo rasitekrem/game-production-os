@@ -1,0 +1,33 @@
+{
+  "description": "The decision authorized alpha.2 -> alpha.4, but the project came from alpha.3.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/gpos_upgrade": {
+        "from_version": "1.0.0-alpha.3",
+        "decision_ref": "D-0024"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0024",
+        "/kind": "GPOS_UPGRADE",
+        "/affects": [
+          "project-config"
+        ],
+        "/upgrade": {
+          "from_version": "1.0.0-alpha.2",
+          "to_version": "1.0.0-alpha.7"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": "does not match"
+}

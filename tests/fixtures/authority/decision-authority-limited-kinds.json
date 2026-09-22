@@ -1,0 +1,27 @@
+{
+  "description": "An authority limited to other decision kinds cannot make this one.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/lifecycle_stage": "PRE_PRODUCTION",
+      "/lifecycle_decision_ref": "D-0001",
+      "/decision_authorities": [
+        {
+          "id": "creative-lead",
+          "may_decide": [
+            "QUALITY_TARGET"
+          ]
+        }
+      ]
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": "not authorized"
+}

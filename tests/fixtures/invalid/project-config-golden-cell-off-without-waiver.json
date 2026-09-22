@@ -1,0 +1,13 @@
+{
+  "description": "Golden Cell cannot be turned off without a Human waiver.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/golden_gameplay_cell": {
+      "required": false
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

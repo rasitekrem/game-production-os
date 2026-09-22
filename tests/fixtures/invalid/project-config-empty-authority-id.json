@@ -1,0 +1,18 @@
+{
+  "description": "Authority ids cannot be empty.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/decision_authorities": [
+      {
+        "id": "",
+        "may_decide": [
+          "ALL"
+        ]
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "pattern"
+}

@@ -1,0 +1,15 @@
+{
+  "description": "HUMAN_REVIEW_REQUIRED gate passes with a linked Human Review record.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/review_policy": "HUMAN_REVIEW_REQUIRED",
+    "/human_review_ref": "GATE-0002",
+    "/disagreements_disclosed": true
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "valid"
+}

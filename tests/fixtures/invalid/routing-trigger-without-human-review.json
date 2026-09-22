@@ -1,0 +1,13 @@
+{
+  "description": "A mandatory trigger cannot be routed without Human Review.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/review_triggers": [
+      "MAJOR_BASELINE"
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "const"
+}

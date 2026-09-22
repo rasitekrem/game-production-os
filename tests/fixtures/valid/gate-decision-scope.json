@@ -1,0 +1,30 @@
+{
+  "description": "An authority change is reviewed on DECISION scope.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/gate": "HUMAN_REVIEW",
+    "/owner": "HUMAN",
+    "/assessed_by": {
+      "kind": "HUMAN",
+      "id": "creative-lead"
+    },
+    "/status": "PASS",
+    "/review_policy": "HUMAN_REVIEW_REQUIRED",
+    "/scope": {
+      "kind": "DECISION",
+      "ref": "D-0007",
+      "revision": "art-bible-v3"
+    },
+    "/evidence_refs": [
+      "EV-0003"
+    ]
+  },
+  "remove": [
+    "/required_changes",
+    "/specialist_assessment",
+    "/cross_reviews",
+    "/applied_conditions"
+  ],
+  "expect": "valid"
+}

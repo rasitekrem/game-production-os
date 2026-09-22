@@ -1,0 +1,29 @@
+{
+  "description": "A Golden Cell exit reference must resolve.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/lifecycle_stage": "PRODUCTION",
+      "/lifecycle_decision_ref": "D-0001",
+      "/golden_gameplay_cell": {
+        "required": true,
+        "status": "EXITED",
+        "exit_decision_ref": "D-0404"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/transition": {
+          "from": "GOLDEN_CELL",
+          "to": "PRODUCTION"
+        }
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "does not resolve"
+}

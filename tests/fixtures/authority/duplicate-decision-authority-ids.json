@@ -1,0 +1,25 @@
+{
+  "description": "The same human listed twice with different powers.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/decision_authorities": [
+        {
+          "id": "same-human",
+          "may_decide": [
+            "QUALITY_TARGET"
+          ]
+        },
+        {
+          "id": "same-human",
+          "may_decide": [
+            "REVIEW_POLICY_OVERRIDE"
+          ]
+        }
+      ]
+    },
+    "remove": []
+  },
+  "decisions": [],
+  "expect_problem": "duplicate decision_authorities id"
+}

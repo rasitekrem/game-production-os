@@ -1,0 +1,23 @@
+{
+  "description": "Material or unknown instrumentation impact must be stated as a limitation.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "PERFORMANCE_EVIDENCE",
+    "/provenance": {
+      "capture_context": "PERFORMANCE_RUNTIME",
+      "subject_revision": "rev-example-0002",
+      "build_id": "build-example-0002",
+      "target_platform": "ANDROID",
+      "device": "Example device, OS x",
+      "instrumentation": {
+        "present": true,
+        "timing_impact": "MATERIAL"
+      }
+    },
+    "/limitations": []
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "minItems"
+}

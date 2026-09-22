@@ -1,0 +1,34 @@
+{
+  "description": "A PRESENTATION_PARITY decision about a task cannot set project parity.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/presentation": {
+        "target_presentation_differs_from_editor": "NO",
+        "decision_ref": "D-0004"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0004",
+        "/kind": "PRESENTATION_PARITY",
+        "/affects": [
+          "gate"
+        ],
+        "/value": "NO",
+        "/subject": {
+          "kind": "TASK",
+          "ref": "TASK-0001"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": "subject kind TASK"
+}

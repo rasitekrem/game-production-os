@@ -1,0 +1,38 @@
+{
+  "description": "RUNTIME_EVIDENCE captured in DCC_RENDER must not pass TECHNICAL (type/context incompatibility).",
+  "schema_invalid_evidence": true,
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/gate": "TECHNICAL",
+      "/owner": "qa-performance",
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "qa-performance"
+      },
+      "/status": "PASS",
+      "/review_policy": "ROUTINE",
+      "/routine_basis": "bounded fix",
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes",
+      "/cross_reviews"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/type": "RUNTIME_EVIDENCE",
+        "/provenance": {
+          "capture_context": "DCC_RENDER",
+          "subject_revision": "rev-example-0002",
+          "tool_version": "dcc x"
+        }
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "incompatible"
+}

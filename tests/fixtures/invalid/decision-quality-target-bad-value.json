@@ -1,0 +1,14 @@
+{
+  "description": "QUALITY_TARGET values come from the registry.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/kind": "QUALITY_TARGET",
+    "/value": "AAA"
+  },
+  "remove": [
+    "/transition"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

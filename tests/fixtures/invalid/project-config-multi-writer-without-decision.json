@@ -1,0 +1,13 @@
+{
+  "description": "Relaxing single-writer needs a Human Decision.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/editor_concurrency": {
+      "single_writer": false
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

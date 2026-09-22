@@ -1,0 +1,11 @@
+{
+  "description": "Every routed gate names required evidence.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/required_gates/0/required_evidence": []
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "minItems"
+}

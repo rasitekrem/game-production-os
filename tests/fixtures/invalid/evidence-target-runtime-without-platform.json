@@ -1,0 +1,13 @@
+{
+  "description": "TARGET_RUNTIME evidence must name the target platform.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/provenance/capture_context": "TARGET_RUNTIME"
+  },
+  "remove": [
+    "/provenance/target_platform"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

@@ -1,0 +1,44 @@
+{
+  "description": "An explicit, justified carryover lets older evidence support a newer revision.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/status": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "camera-composition",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0003"
+        }
+      ],
+      "/scope/revision": "rev-example-0003",
+      "/evidence_carryover": [
+        {
+          "evidence_ref": "EV-0001",
+          "evidence_revision": "rev-example-0002",
+          "justification": "Revision 0003 changed only localisation strings; no animation data or state logic.",
+          "assessed_by": {
+            "kind": "AGENT",
+            "id": "character-animation"
+          }
+        }
+      ],
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "character-animation"
+      },
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": null
+}

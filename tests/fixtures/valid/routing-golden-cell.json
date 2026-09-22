@@ -1,0 +1,205 @@
+{
+  "description": "Golden Cell routing: mandatory trigger, Human Review, target-runtime decision explicit per gate.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/workflow": "golden-gameplay-cell",
+    "/subject": {
+      "kind": "GOLDEN_CELL",
+      "ref": "cell-1"
+    },
+    "/primary_specialist": "game-director",
+    "/secondary_specialists": [
+      "gameplay-design",
+      "level-design",
+      "character-animation",
+      "camera-composition",
+      "art-direction",
+      "game-feel-vfx",
+      "ui-ux",
+      "qa-performance"
+    ],
+    "/reviewers": [
+      "HUMAN"
+    ],
+    "/required_gates": [
+      {
+        "gate": "TECHNICAL",
+        "owner": "qa-performance",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "required_evidence": [
+          "TEST_EVIDENCE",
+          "RUNTIME_EVIDENCE"
+        ],
+        "routine_basis": "Cell correctness against the decided design",
+        "unapplied_conditions": [
+          {
+            "condition": "PERSISTENCE_AFFECTED",
+            "reason": "Not part of this task's claim (persistence affected does not hold)."
+          }
+        ]
+      },
+      {
+        "gate": "GAMEPLAY_DESIGN",
+        "owner": "gameplay-design",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "RUNTIME_EVIDENCE",
+          "MOTION_EVIDENCE"
+        ],
+        "applied_conditions": [
+          "REAL_TIME_BEHAVIOUR"
+        ]
+      },
+      {
+        "gate": "LEVEL_DESIGN",
+        "owner": "level-design",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "VISUAL_EVIDENCE",
+          "MOTION_EVIDENCE"
+        ],
+        "applied_conditions": [
+          "REAL_TIME_BEHAVIOUR"
+        ]
+      },
+      {
+        "gate": "ANIMATION",
+        "owner": "character-animation",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "MOTION_EVIDENCE"
+        ],
+        "applied_conditions": [
+          "TARGET_PRESENTATION_DIFFERS"
+        ]
+      },
+      {
+        "gate": "CAMERA_COMPOSITION",
+        "owner": "camera-composition",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "VISUAL_EVIDENCE",
+          "MOTION_EVIDENCE"
+        ],
+        "applied_conditions": [
+          "CAMERA_MOTION_CLAIM",
+          "TARGET_PRESENTATION_DIFFERS"
+        ]
+      },
+      {
+        "gate": "VISUAL_ART",
+        "owner": "art-direction",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "VISUAL_EVIDENCE"
+        ],
+        "applied_conditions": [
+          "TARGET_PRESENTATION_DIFFERS"
+        ],
+        "unapplied_conditions": [
+          {
+            "condition": "ANIMATED_PRESENTATION",
+            "reason": "The cell has no animated materials or VFX-driven looks."
+          }
+        ]
+      },
+      {
+        "gate": "GAME_FEEL_VFX",
+        "owner": "game-feel-vfx",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "MOTION_EVIDENCE"
+        ],
+        "applied_conditions": [
+          "TARGET_PRESENTATION_DIFFERS"
+        ],
+        "unapplied_conditions": [
+          {
+            "condition": "FEEDBACK_INCLUDES_SOUND",
+            "reason": "Deliberately silent game; AUDIO is omitted."
+          }
+        ]
+      },
+      {
+        "gate": "UI_UX",
+        "owner": "ui-ux",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "VISUAL_EVIDENCE"
+        ],
+        "unapplied_conditions": [
+          {
+            "condition": "TOUCH_OR_MOBILE_TARGET",
+            "reason": "Desktop target with keyboard and gamepad."
+          },
+          {
+            "condition": "ANIMATED_PRESENTATION",
+            "reason": "Static HUD in the cell."
+          },
+          {
+            "condition": "TARGET_PRESENTATION_DIFFERS",
+            "reason": "Project decision D-0004: desktop target equals development display."
+          }
+        ]
+      },
+      {
+        "gate": "PERFORMANCE",
+        "owner": "qa-performance",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "required_evidence": [
+          "PERFORMANCE_EVIDENCE",
+          "DEVICE_EVIDENCE"
+        ],
+        "routine_basis": "Measure against locked budgets",
+        "applied_conditions": [
+          "TARGET_PLATFORM_PERFORMANCE_CLAIM"
+        ]
+      },
+      {
+        "gate": "DEVICE",
+        "owner": "qa-performance",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "required_evidence": [
+          "DEVICE_EVIDENCE"
+        ],
+        "routine_basis": "Reference target device run"
+      },
+      {
+        "gate": "HUMAN_REVIEW",
+        "owner": "HUMAN",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "HUMAN_EVIDENCE"
+        ]
+      }
+    ],
+    "/omitted_gates": [
+      {
+        "gate": "AUDIO",
+        "reason": "Deliberately silent game (Human Decision D-0006); no audio exists to judge."
+      }
+    ],
+    "/review_triggers": [
+      "GOLDEN_CELL_EXIT"
+    ],
+    "/human_review": {
+      "required": true,
+      "timing": "After the unnarrated target-device recording",
+      "primary_question": "Without explanation, does a short representative gameplay recording look and feel like the intended production game?"
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

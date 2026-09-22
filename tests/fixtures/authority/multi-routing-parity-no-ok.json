@@ -1,0 +1,38 @@
+{
+  "description": "Two routings, parity decided NO: declining is consistent.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/presentation": {
+        "target_presentation_differs_from_editor": "NO",
+        "decision_ref": "D-0004"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0004",
+        "/kind": "PRESENTATION_PARITY",
+        "/affects": [
+          "gate"
+        ],
+        "/value": "NO",
+        "/subject": {
+          "kind": "PROJECT",
+          "ref": "example-project"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "routings": [
+    "tests/fixtures/valid/routing-task-0002-runtime.json",
+    "tests/fixtures/valid/routing-example-animation.json"
+  ],
+  "expect_problem": null
+}

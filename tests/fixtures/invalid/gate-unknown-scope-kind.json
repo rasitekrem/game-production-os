@@ -1,0 +1,11 @@
+{
+  "description": "Scope kinds come from the registry.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/scope/kind": "SPRINT"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

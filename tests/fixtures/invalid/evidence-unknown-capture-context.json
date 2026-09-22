@@ -1,0 +1,11 @@
+{
+  "description": "Capture context must come from the registry vocabulary.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/provenance/capture_context": "DEVELOPMENT_BUILD"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

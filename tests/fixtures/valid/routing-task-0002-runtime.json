@@ -1,0 +1,47 @@
+{
+  "description": "A second routed task (TASK-0002) that declines nothing.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/task_id": "TASK-0002",
+    "/subject": {
+      "kind": "TASK",
+      "ref": "TASK-0002"
+    },
+    "/workflow": "runtime-system",
+    "/primary_specialist": "game-engineering",
+    "/secondary_specialists": [
+      "qa-performance"
+    ],
+    "/reviewers": [
+      "gameplay-design",
+      "game-feel-vfx"
+    ],
+    "/omitted_gates": [],
+    "/editor_write_lock": "game-engineering",
+    "/required_gates": [
+      {
+        "gate": "TECHNICAL",
+        "owner": "qa-performance",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "routine_basis": "Decided rules",
+        "required_evidence": [
+          "RUNTIME_EVIDENCE"
+        ],
+        "unapplied_conditions": [
+          {
+            "condition": "PERSISTENCE_AFFECTED",
+            "reason": "Not part of this task's claim (persistence affected does not hold)."
+          }
+        ]
+      }
+    ],
+    "/human_review": {
+      "required": false,
+      "not_required_reason": "Implements decided rules."
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

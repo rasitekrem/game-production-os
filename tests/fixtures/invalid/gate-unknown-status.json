@@ -1,0 +1,11 @@
+{
+  "description": "Only the five statuses are allowed.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS_WITH_NOTES"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

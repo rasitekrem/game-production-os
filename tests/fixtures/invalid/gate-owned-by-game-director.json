@@ -1,0 +1,11 @@
+{
+  "description": "game-director never owns a gate.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/owner": "game-director"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

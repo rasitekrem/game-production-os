@@ -1,0 +1,32 @@
+{
+  "description": "Config allows multiple writers; the human decided to keep a single writer.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/editor_concurrency": {
+        "single_writer": false,
+        "decision_ref": "D-0023"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0023",
+        "/kind": "EDITOR_CONCURRENCY",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": {
+          "single_writer": true
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": "does not match"
+}

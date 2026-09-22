@@ -1,0 +1,18 @@
+{
+  "description": "DCC render with tool version and stated limitations.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "VISUAL_EVIDENCE",
+    "/provenance": {
+      "capture_context": "DCC_RENDER",
+      "subject_revision": "asset-v3",
+      "tool_version": "example-dcc 4.x"
+    },
+    "/limitations": [
+      "DCC viewport render; not in-game presentation"
+    ]
+  },
+  "remove": [],
+  "expect": "valid"
+}

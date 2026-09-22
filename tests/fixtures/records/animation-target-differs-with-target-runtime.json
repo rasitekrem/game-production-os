@@ -1,0 +1,43 @@
+{
+  "description": "Target-runtime motion satisfies TARGET_PRESENTATION_DIFFERS.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/status": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "camera-composition",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ],
+      "/applied_conditions": [
+        "TARGET_PRESENTATION_DIFFERS"
+      ],
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "character-animation"
+      },
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/provenance": {
+          "capture_context": "TARGET_RUNTIME",
+          "subject_revision": "rev-example-0002",
+          "build_id": "b2",
+          "target_platform": "ANDROID",
+          "device": "Example device"
+        }
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": null
+}

@@ -1,0 +1,35 @@
+{
+  "description": "When target presentation differs, motion must be captured in TARGET_RUNTIME.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/status": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "camera-composition",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ],
+      "/applied_conditions": [
+        "TARGET_PRESENTATION_DIFFERS"
+      ],
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "character-animation"
+      },
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": "TARGET_RUNTIME"
+}

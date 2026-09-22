@@ -1,0 +1,19 @@
+{
+  "description": "A routed gate owner must be a permitted owner.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/required_gates/0": {
+      "gate": "VISUAL_ART",
+      "owner": "audio-design",
+      "blocking": true,
+      "review_policy": "CROSS_REVIEW_REQUIRED",
+      "required_evidence": [
+        "VISUAL_EVIDENCE"
+      ]
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

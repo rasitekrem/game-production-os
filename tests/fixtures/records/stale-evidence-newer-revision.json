@@ -1,0 +1,33 @@
+{
+  "description": "Evidence from an older revision cannot silently prove a newer one.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/status": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "camera-composition",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0003"
+        }
+      ],
+      "/scope/revision": "rev-example-0003",
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "character-animation"
+      },
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": "stale"
+}

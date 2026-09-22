@@ -1,0 +1,34 @@
+{
+  "description": "A waiver decision must concern this project.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/golden_gameplay_cell": {
+        "required": false,
+        "status": "WAIVED",
+        "waiver": {
+          "decision_ref": "D-0003",
+          "reason": "prototype"
+        }
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0003",
+        "/kind": "GOLDEN_CELL_WAIVER",
+        "/subject": {
+          "kind": "PROJECT",
+          "ref": "another-project"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": "subject"
+}

@@ -1,0 +1,78 @@
+{
+  "description": "Golden Cell exit cannot skip Human Review.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/workflow": "golden-gameplay-cell",
+    "/primary_specialist": "game-director",
+    "/secondary_specialists": [
+      "game-feel-vfx",
+      "camera-composition",
+      "ui-ux"
+    ],
+    "/reviewers": [
+      "level-design",
+      "HUMAN"
+    ],
+    "/required_gates": [
+      {
+        "gate": "GAME_FEEL_VFX",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "applied_conditions": [
+          "TARGET_PRESENTATION_DIFFERS"
+        ],
+        "required_evidence": [
+          "MOTION_EVIDENCE"
+        ]
+      },
+      {
+        "gate": "CAMERA_COMPOSITION",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "applied_conditions": [
+          "TARGET_PRESENTATION_DIFFERS",
+          "CAMERA_MOTION_CLAIM"
+        ],
+        "required_evidence": [
+          "VISUAL_EVIDENCE",
+          "MOTION_EVIDENCE"
+        ]
+      },
+      {
+        "gate": "UI_UX",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "unapplied_conditions": [
+          {
+            "condition": "TARGET_PRESENTATION_DIFFERS",
+            "reason": "Project decision D-0004: desktop target equals development display."
+          }
+        ],
+        "required_evidence": [
+          "VISUAL_EVIDENCE"
+        ]
+      },
+      {
+        "gate": "HUMAN_REVIEW",
+        "owner": "HUMAN",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "HUMAN_EVIDENCE"
+        ]
+      }
+    ],
+    "/review_triggers": [
+      "GOLDEN_CELL_EXIT"
+    ],
+    "/human_review": {
+      "required": false,
+      "not_required_reason": "agent thinks it looks fine"
+    },
+    "/omitted_gates": []
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "const"
+}

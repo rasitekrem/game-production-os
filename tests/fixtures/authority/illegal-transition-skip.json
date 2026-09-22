@@ -1,0 +1,46 @@
+{
+  "description": "CONCEPT\u2192PRODUCTION skips required stages.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/lifecycle_stage": "PRODUCTION",
+      "/lifecycle_decision_ref": "D-0001",
+      "/golden_gameplay_cell": {
+        "required": true,
+        "status": "EXITED",
+        "exit_decision_ref": "D-0012"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/transition": {
+          "from": "CONCEPT",
+          "to": "PRODUCTION"
+        }
+      },
+      "remove": []
+    },
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0012",
+        "/kind": "GOLDEN_CELL_EXIT",
+        "/subject": {
+          "kind": "GOLDEN_CELL",
+          "ref": "cell-1"
+        },
+        "/affects": [
+          "project-config:/golden_gameplay_cell"
+        ]
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": "not an allowed transition"
+}

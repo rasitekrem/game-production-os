@@ -1,0 +1,21 @@
+{
+  "description": "CROSS_REVIEW_REQUIRED PASS needs the owner's PASS assessment.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/cross_reviews": [
+      {
+        "reviewer": "camera-composition",
+        "assessment": "PASS",
+        "reviewed_revision": "rev-example-0002"
+      }
+    ]
+  },
+  "remove": [
+    "/required_changes",
+    "/specialist_assessment"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

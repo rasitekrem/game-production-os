@@ -1,0 +1,41 @@
+{
+  "description": "ANIMATION applies TARGET_PRESENTATION_DIFFERS.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/required_gates": [
+      {
+        "gate": "ANIMATION",
+        "owner": "character-animation",
+        "blocking": true,
+        "review_policy": "CROSS_REVIEW_REQUIRED",
+        "applied_conditions": [
+          "TARGET_PRESENTATION_DIFFERS"
+        ],
+        "required_evidence": [
+          "MOTION_EVIDENCE"
+        ],
+        "notes": "Gameplay-camera recording of idle, start, run, 45/90/180-degree turns, stop and settle, before and after. Numerical foot-slide diagnostics are supplementary only."
+      },
+      {
+        "gate": "TECHNICAL",
+        "owner": "qa-performance",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "routine_basis": "Bounded fix inside the existing animation state setup; no persisted data or public behaviour changes.",
+        "required_evidence": [
+          "RUNTIME_EVIDENCE"
+        ],
+        "notes": "Clip and blend setup load without errors in a running build; automated tests if the project has animation-state tests.",
+        "unapplied_conditions": [
+          {
+            "condition": "PERSISTENCE_AFFECTED",
+            "reason": "The fix touches no saved or persisted data."
+          }
+        ]
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "valid"
+}

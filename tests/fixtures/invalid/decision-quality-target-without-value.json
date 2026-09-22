@@ -1,0 +1,13 @@
+{
+  "description": "A QUALITY_TARGET decision carries the decided target.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/kind": "QUALITY_TARGET"
+  },
+  "remove": [
+    "/transition"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

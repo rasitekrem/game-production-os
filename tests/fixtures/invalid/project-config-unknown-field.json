@@ -1,0 +1,11 @@
+{
+  "description": "Unknown top-level fields are rejected; use extensions.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/unity_settings": {}
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "additionalProperties"
+}

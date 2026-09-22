@@ -1,0 +1,11 @@
+{
+  "description": "ROUTINE must name the approved authority it stays inside.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/review_policy": "ROUTINE"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

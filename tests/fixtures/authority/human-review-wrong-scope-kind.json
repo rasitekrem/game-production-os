@@ -1,0 +1,93 @@
+{
+  "description": "A Human Review of a MILESTONE with the same ref string cannot close a TASK gate.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/human_review/reviewers": [
+        {
+          "id": "reviewer-a",
+          "gates": [
+            "ANIMATION",
+            "HUMAN_REVIEW"
+          ]
+        }
+      ]
+    },
+    "remove": []
+  },
+  "decisions": [],
+  "gates": [
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {
+        "/status": "PASS",
+        "/review_policy": "HUMAN_REVIEW_REQUIRED",
+        "/human_review_ref": "GATE-HR1",
+        "/specialist_assessment": "PASS",
+        "/cross_reviews": []
+      },
+      "remove": [
+        "/required_changes",
+        "/applied_conditions",
+        "/routing_ref"
+      ]
+    },
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {
+        "/gate_id": "GATE-HR1",
+        "/gate": "HUMAN_REVIEW",
+        "/owner": "HUMAN",
+        "/status": "PASS",
+        "/review_policy": "HUMAN_REVIEW_REQUIRED",
+        "/assessed_by": {
+          "kind": "HUMAN",
+          "id": "reviewer-a"
+        },
+        "/evidence_refs": [
+          "EV-H1"
+        ],
+        "/scope": {
+          "kind": "MILESTONE",
+          "ref": "TASK-0001",
+          "revision": "rev-example-0002"
+        }
+      },
+      "remove": [
+        "/required_changes",
+        "/specialist_assessment",
+        "/cross_reviews",
+        "/applied_conditions",
+        "/routing_ref"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    },
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "EV-H1",
+        "/type": "HUMAN_EVIDENCE",
+        "/source": {
+          "kind": "HUMAN",
+          "id": "reviewer-a"
+        },
+        "/provenance": {
+          "capture_context": "HUMAN_RECORD",
+          "subject_revision": "rev-example-0002"
+        },
+        "/subject": {
+          "kind": "MILESTONE",
+          "ref": "TASK-0001"
+        }
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "same scope kind"
+}

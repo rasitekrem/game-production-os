@@ -1,0 +1,11 @@
+{
+  "description": "Leap second :60 is rejected, matching the reference checker.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/recorded_at": "2026-01-01T12:00:60Z"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "format"
+}

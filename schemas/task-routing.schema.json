@@ -1,0 +1,1333 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-production-os.local/schemas/task-routing.schema.json",
+  "title": "GPOS Task Routing Record",
+  "description": "The game-director's routing of one task. See core/ROLE-ROUTING.md. Routing is an agent recommendation until a human amends or accepts it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "description",
+    "subject",
+    "workflow",
+    "primary_specialist",
+    "secondary_specialists",
+    "reviewers",
+    "required_gates",
+    "review_triggers",
+    "human_review",
+    "rationale"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "task_id": {
+      "$ref": "#/$defs/id"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "description": "The routed subject. Gate records for this routing carry routing_ref = task_id and scope kind/ref equal to this subject.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "TASK",
+            "FEATURE",
+            "ASSET",
+            "SPACE",
+            "GOLDEN_CELL",
+            "BUILD",
+            "RELEASE",
+            "MILESTONE",
+            "PROJECT",
+            "DECISION"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workflow": {
+      "enum": [
+        "new-game",
+        "golden-gameplay-cell",
+        "gameplay-feature",
+        "character-production",
+        "animation-production",
+        "asset-production",
+        "level-production",
+        "environment-production",
+        "ui-production",
+        "visual-review",
+        "device-validation",
+        "release",
+        "runtime-system"
+      ]
+    },
+    "lifecycle_stage": {
+      "enum": [
+        "CONCEPT",
+        "PRE_PRODUCTION",
+        "GOLDEN_CELL",
+        "PRODUCTION",
+        "POLISH",
+        "RELEASE_CANDIDATE",
+        "RELEASED"
+      ]
+    },
+    "primary_specialist": {
+      "$ref": "#/$defs/skill"
+    },
+    "secondary_specialists": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/skill"
+      },
+      "uniqueItems": true
+    },
+    "reviewers": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/skill"
+          },
+          {
+            "const": "HUMAN"
+          }
+        ]
+      },
+      "uniqueItems": true
+    },
+    "required_gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gate",
+          "blocking",
+          "review_policy",
+          "required_evidence"
+        ],
+        "properties": {
+          "gate": {
+            "$ref": "#/$defs/gate"
+          },
+          "owner": {
+            "description": "Overrides the gate's default owner; must be a permitted owner. Required for VISUAL_ART (the primary visual owner).",
+            "enum": [
+              "gameplay-design",
+              "level-design",
+              "character-animation",
+              "camera-composition",
+              "art-direction",
+              "environment-art",
+              "technical-art",
+              "game-feel-vfx",
+              "ui-ux",
+              "audio-design",
+              "qa-performance",
+              "HUMAN"
+            ]
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "blocking_downgrade_ref": {
+            "type": "string",
+            "pattern": "^D-[A-Za-z0-9._-]+$",
+            "description": "Reference to a Human Decision record (schemas/decision.schema.json). A matching pattern is not authority; Phase-2 tooling must resolve it (core/GOVERNANCE.md \u00a712)."
+          },
+          "review_policy": {
+            "$ref": "#/$defs/review_policy"
+          },
+          "cross_review_required": {
+            "type": "boolean",
+            "description": "Implied true under CROSS_REVIEW_REQUIRED; set true under HUMAN_REVIEW_REQUIRED when specialist cross-review must precede the human verdict."
+          },
+          "routine_basis": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Approved authority the bounded ROUTINE work stays inside."
+          },
+          "applied_conditions": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "PERSISTENCE_AFFECTED",
+                "REAL_TIME_BEHAVIOUR",
+                "CAMERA_MOTION_CLAIM",
+                "ANIMATED_PRESENTATION",
+                "TARGET_PRESENTATION_DIFFERS",
+                "TOUCH_OR_MOBILE_TARGET",
+                "FEEDBACK_INCLUDES_SOUND",
+                "TARGET_OUTPUT_MATTERS",
+                "TARGET_PLATFORM_PERFORMANCE_CLAIM"
+              ]
+            },
+            "uniqueItems": true,
+            "description": "Conditions judged to apply. Together with unapplied_conditions, every condition the registry defines for this gate must be accounted for exactly once."
+          },
+          "unapplied_conditions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "condition",
+                "reason"
+              ],
+              "properties": {
+                "condition": {
+                  "enum": [
+                    "PERSISTENCE_AFFECTED",
+                    "REAL_TIME_BEHAVIOUR",
+                    "CAMERA_MOTION_CLAIM",
+                    "ANIMATED_PRESENTATION",
+                    "TARGET_PRESENTATION_DIFFERS",
+                    "TOUCH_OR_MOBILE_TARGET",
+                    "FEEDBACK_INCLUDES_SOUND",
+                    "TARGET_OUTPUT_MATTERS",
+                    "TARGET_PLATFORM_PERFORMANCE_CLAIM"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "description": "Conditions judged not to apply, each with a reason. TARGET_PRESENTATION_DIFFERS may be declined only when project presentation parity is a decided NO."
+          },
+          "required_evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/evidence_type"
+            },
+            "uniqueItems": true,
+            "description": "Authoritative for this task: must cover the registry minimum, contain only types valid for the gate, and be satisfied by the linked gate's counting evidence before routed readiness."
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "blocking": {
+                  "const": false
+                }
+              },
+              "required": [
+                "blocking"
+              ]
+            },
+            "then": {
+              "required": [
+                "blocking_downgrade_ref"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "review_policy": {
+                  "const": "ROUTINE"
+                }
+              },
+              "required": [
+                "review_policy"
+              ]
+            },
+            "then": {
+              "required": [
+                "routine_basis"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "HUMAN_REVIEW"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "review_policy": {
+                  "const": "HUMAN_REVIEW_REQUIRED"
+                },
+                "required_evidence": {
+                  "contains": {
+                    "const": "HUMAN_EVIDENCE"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "VISUAL_ART"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "required": [
+                "owner"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "TECHNICAL"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "qa-performance",
+                    "technical-art"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "GAMEPLAY_DESIGN"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "gameplay-design"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "LEVEL_DESIGN"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "level-design"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "ANIMATION"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "character-animation"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "CAMERA_COMPOSITION"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "camera-composition"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "VISUAL_ART"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "art-direction",
+                    "environment-art"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "GAME_FEEL_VFX"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "game-feel-vfx"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "UI_UX"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "ui-ux"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "AUDIO"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "audio-design"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "PERFORMANCE"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "qa-performance",
+                    "technical-art"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "DEVICE"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "qa-performance"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "HUMAN_REVIEW"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "owner": {
+                  "enum": [
+                    "HUMAN"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "TECHNICAL"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "items": {
+                    "enum": [
+                      "PERSISTENCE_AFFECTED"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "GAMEPLAY_DESIGN"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "items": {
+                    "enum": [
+                      "REAL_TIME_BEHAVIOUR"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "LEVEL_DESIGN"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "items": {
+                    "enum": [
+                      "REAL_TIME_BEHAVIOUR"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "ANIMATION"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "items": {
+                    "enum": [
+                      "TARGET_PRESENTATION_DIFFERS"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "CAMERA_COMPOSITION"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "items": {
+                    "enum": [
+                      "CAMERA_MOTION_CLAIM",
+                      "TARGET_PRESENTATION_DIFFERS"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "VISUAL_ART"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "items": {
+                    "enum": [
+                      "ANIMATED_PRESENTATION",
+                      "TARGET_PRESENTATION_DIFFERS"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "GAME_FEEL_VFX"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "items": {
+                    "enum": [
+                      "FEEDBACK_INCLUDES_SOUND",
+                      "TARGET_PRESENTATION_DIFFERS"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "UI_UX"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "items": {
+                    "enum": [
+                      "TOUCH_OR_MOBILE_TARGET",
+                      "ANIMATED_PRESENTATION",
+                      "TARGET_PRESENTATION_DIFFERS"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "AUDIO"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "items": {
+                    "enum": [
+                      "TARGET_OUTPUT_MATTERS"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "PERFORMANCE"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "items": {
+                    "enum": [
+                      "TARGET_PLATFORM_PERFORMANCE_CLAIM"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "DEVICE"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "maxItems": 0
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "HUMAN_REVIEW"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            },
+            "then": {
+              "properties": {
+                "applied_conditions": {
+                  "maxItems": 0
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "review_policy": {
+                  "const": "CROSS_REVIEW_REQUIRED"
+                },
+                "cross_review_required": {
+                  "const": false
+                }
+              },
+              "required": [
+                "review_policy",
+                "cross_review_required"
+              ]
+            },
+            "then": {
+              "not": {}
+            }
+          }
+        ]
+      },
+      "description": "Each gate at most once; disjoint from omitted_gates (record-set validation)."
+    },
+    "omitted_gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gate",
+          "reason"
+        ],
+        "properties": {
+          "gate": {
+            "$ref": "#/$defs/gate"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "review_triggers": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "Mandatory Human Review triggers that apply: a core GPOS trigger, or PROJECT:<id> for a project trigger declared in project config human_review.additional_mandatory_triggers.",
+      "items": {
+        "anyOf": [
+          {
+            "enum": [
+              "GOLDEN_CELL_EXIT",
+              "CANONICAL_CREATIVE_ASSET",
+              "MAJOR_BASELINE",
+              "ART_DIRECTION_CHANGE",
+              "MILESTONE_ACCEPTANCE",
+              "RELEASE",
+              "AUTHORITY_CHANGE"
+            ]
+          },
+          {
+            "type": "string",
+            "pattern": "^PROJECT:[a-z0-9]+(-[a-z0-9]+)*$"
+          }
+        ]
+      }
+    },
+    "human_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "timing": {
+          "type": "string",
+          "minLength": 1
+        },
+        "primary_question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "not_required_reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "required": {
+                "const": true
+              }
+            },
+            "required": [
+              "required"
+            ]
+          },
+          "then": {
+            "required": [
+              "timing",
+              "primary_question"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "required": {
+                "const": false
+              }
+            },
+            "required": [
+              "required"
+            ]
+          },
+          "then": {
+            "required": [
+              "not_required_reason"
+            ]
+          }
+        }
+      ]
+    },
+    "missing_decisions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "editor_write_lock": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/skill"
+        },
+        {
+          "const": "NONE"
+        }
+      ]
+    },
+    "out_of_scope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "human_review": {
+            "properties": {
+              "required": {
+                "const": true
+              }
+            },
+            "required": [
+              "required"
+            ]
+          }
+        },
+        "required": [
+          "human_review"
+        ]
+      },
+      "then": {
+        "properties": {
+          "required_gates": {
+            "contains": {
+              "properties": {
+                "gate": {
+                  "const": "HUMAN_REVIEW"
+                }
+              },
+              "required": [
+                "gate"
+              ]
+            }
+          },
+          "reviewers": {
+            "contains": {
+              "const": "HUMAN"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "review_triggers": {
+            "minItems": 1
+          }
+        },
+        "required": [
+          "review_triggers"
+        ]
+      },
+      "then": {
+        "properties": {
+          "human_review": {
+            "properties": {
+              "required": {
+                "const": true
+              }
+            }
+          },
+          "required_gates": {
+            "items": {
+              "if": {
+                "properties": {
+                  "gate": {
+                    "enum": [
+                      "GAMEPLAY_DESIGN",
+                      "LEVEL_DESIGN",
+                      "ANIMATION",
+                      "CAMERA_COMPOSITION",
+                      "VISUAL_ART",
+                      "GAME_FEEL_VFX",
+                      "UI_UX",
+                      "AUDIO"
+                    ]
+                  }
+                },
+                "required": [
+                  "gate"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "review_policy": {
+                    "const": "HUMAN_REVIEW_REQUIRED"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "required_gates": {
+            "contains": {
+              "properties": {
+                "review_policy": {
+                  "const": "HUMAN_REVIEW_REQUIRED"
+                }
+              },
+              "required": [
+                "review_policy"
+              ]
+            }
+          }
+        },
+        "required": [
+          "required_gates"
+        ]
+      },
+      "then": {
+        "properties": {
+          "human_review": {
+            "properties": {
+              "required": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "workflow": {
+            "const": "new-game"
+          }
+        },
+        "required": [
+          "workflow"
+        ]
+      },
+      "then": {
+        "required": [
+          "review_triggers"
+        ],
+        "properties": {
+          "review_triggers": {
+            "allOf": [
+              {
+                "contains": {
+                  "const": "AUTHORITY_CHANGE"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "workflow": {
+            "const": "golden-gameplay-cell"
+          }
+        },
+        "required": [
+          "workflow"
+        ]
+      },
+      "then": {
+        "required": [
+          "review_triggers"
+        ],
+        "properties": {
+          "review_triggers": {
+            "allOf": [
+              {
+                "contains": {
+                  "const": "GOLDEN_CELL_EXIT"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "workflow": {
+            "const": "release"
+          }
+        },
+        "required": [
+          "workflow"
+        ]
+      },
+      "then": {
+        "required": [
+          "review_triggers"
+        ],
+        "properties": {
+          "review_triggers": {
+            "allOf": [
+              {
+                "contains": {
+                  "const": "RELEASE"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "workflow": {
+            "const": "golden-gameplay-cell"
+          }
+        },
+        "required": [
+          "workflow"
+        ]
+      },
+      "then": {
+        "properties": {
+          "required_gates": {
+            "items": {
+              "if": {
+                "properties": {
+                  "gate": {
+                    "enum": [
+                      "CAMERA_COMPOSITION",
+                      "GAME_FEEL_VFX",
+                      "UI_UX"
+                    ]
+                  }
+                },
+                "required": [
+                  "gate"
+                ]
+              },
+              "then": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "applied_conditions"
+                    ],
+                    "properties": {
+                      "applied_conditions": {
+                        "contains": {
+                          "const": "TARGET_PRESENTATION_DIFFERS"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "required": [
+                      "unapplied_conditions"
+                    ],
+                    "properties": {
+                      "unapplied_conditions": {
+                        "contains": {
+                          "properties": {
+                            "condition": {
+                              "const": "TARGET_PRESENTATION_DIFFERS"
+                            }
+                          },
+                          "required": [
+                            "condition"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "skill": {
+      "enum": [
+        "game-director",
+        "gameplay-design",
+        "level-design",
+        "character-animation",
+        "camera-composition",
+        "art-direction",
+        "environment-art",
+        "technical-art",
+        "game-feel-vfx",
+        "ui-ux",
+        "audio-design",
+        "qa-performance",
+        "game-engineering"
+      ]
+    },
+    "gate": {
+      "enum": [
+        "TECHNICAL",
+        "GAMEPLAY_DESIGN",
+        "LEVEL_DESIGN",
+        "ANIMATION",
+        "CAMERA_COMPOSITION",
+        "VISUAL_ART",
+        "GAME_FEEL_VFX",
+        "UI_UX",
+        "AUDIO",
+        "PERFORMANCE",
+        "DEVICE",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "evidence_type": {
+      "enum": [
+        "CODE_EVIDENCE",
+        "TEST_EVIDENCE",
+        "RUNTIME_EVIDENCE",
+        "VISUAL_EVIDENCE",
+        "MOTION_EVIDENCE",
+        "AUDIO_EVIDENCE",
+        "DEVICE_EVIDENCE",
+        "PERFORMANCE_EVIDENCE",
+        "PERSISTENCE_EVIDENCE",
+        "HUMAN_EVIDENCE"
+      ]
+    },
+    "review_policy": {
+      "enum": [
+        "ROUTINE",
+        "CROSS_REVIEW_REQUIRED",
+        "HUMAN_REVIEW_REQUIRED"
+      ]
+    }
+  }
+}

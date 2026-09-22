@@ -1,0 +1,506 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-production-os.local/schemas/decision.schema.json",
+  "title": "GPOS Human Decision Record",
+  "description": "Machine-readable record of one Human Decision (authority level 1). The substance of a decision is the human's own words or linked source; this record is the canonical form tooling resolves decision references against. .game/DECISIONS.md is the human-readable log with the same ids. See core/AUTHORITY-HIERARCHY.md \u00a76.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "decision_id",
+    "kind",
+    "subject",
+    "decided_by",
+    "decided_at",
+    "decision",
+    "affects",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "decision_id": {
+      "type": "string",
+      "pattern": "^D-[A-Za-z0-9._-]+$"
+    },
+    "kind": {
+      "enum": [
+        "CREATIVE_DIRECTION",
+        "LOCK",
+        "REOPEN",
+        "APPROVED_REFERENCE",
+        "LIFECYCLE_TRANSITION",
+        "GOLDEN_CELL_WAIVER",
+        "GOLDEN_CELL_EXIT",
+        "BLOCKING_DOWNGRADE",
+        "KNOWN_ISSUE_ACCEPTANCE",
+        "REVIEW_POLICY_OVERRIDE",
+        "QUALITY_TARGET",
+        "PRESENTATION_PARITY",
+        "EDITOR_CONCURRENCY",
+        "BUDGET",
+        "RELEASE",
+        "GPOS_UPGRADE",
+        "MATURITY_PROMOTION",
+        "OTHER"
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "TASK",
+            "FEATURE",
+            "ASSET",
+            "SPACE",
+            "GOLDEN_CELL",
+            "BUILD",
+            "RELEASE",
+            "MILESTONE",
+            "PROJECT",
+            "DECISION"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "decided_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "const": "HUMAN"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._@-]*$",
+          "description": "Non-empty identifier without whitespace; used as a cross-record key."
+        }
+      }
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time",
+      "minLength": 1
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "verbatim": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The human's own words."
+        },
+        "source_uri": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Link to where the human stated it (review record, message, meeting note)."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Optional plain restatement; never stronger than the verbatim/source."
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "verbatim"
+          ]
+        },
+        {
+          "required": [
+            "source_uri"
+          ]
+        }
+      ]
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "enum": [
+            "CONCEPT",
+            "PRE_PRODUCTION",
+            "GOLDEN_CELL",
+            "PRODUCTION",
+            "POLISH",
+            "RELEASE_CANDIDATE",
+            "RELEASED"
+          ]
+        },
+        "to": {
+          "enum": [
+            "CONCEPT",
+            "PRE_PRODUCTION",
+            "GOLDEN_CELL",
+            "PRODUCTION",
+            "POLISH",
+            "RELEASE_CANDIDATE",
+            "RELEASED"
+          ]
+        }
+      }
+    },
+    "upgrade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_version",
+        "to_version"
+      ],
+      "properties": {
+        "from_version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+        },
+        "to_version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+        }
+      }
+    },
+    "value": {
+      "description": "Kind-specific structured value (registry decision_payloads). It must faithfully represent the human's words; tooling enforces the value, never the prose."
+    },
+    "affects": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Authority documents, sections or record ids this decision changes."
+    },
+    "transcribed_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "HUMAN",
+            "AGENT",
+            "CI",
+            "TOOL",
+            "DEVICE"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._@-]*$",
+          "description": "Non-empty identifier without whitespace; used as a cross-record key."
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "ACTIVE",
+        "SUPERSEDED",
+        "REVOKED"
+      ]
+    },
+    "supersedes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^D-[A-Za-z0-9._-]+$"
+      },
+      "uniqueItems": true
+    },
+    "superseded_by": {
+      "type": "string",
+      "pattern": "^D-[A-Za-z0-9._-]+$"
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "LIFECYCLE_TRANSITION"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "transition"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "SUPERSEDED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "superseded_by"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "PRESENTATION_PARITY"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "enum": [
+              "YES",
+              "NO"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "QUALITY_TARGET"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "enum": [
+              "PROFESSIONAL_INDIE",
+              "PROTOTYPE",
+              "HIGHER_THAN_INDIE"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "REVIEW_POLICY_OVERRIDE"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "gate",
+              "review_policy"
+            ],
+            "properties": {
+              "gate": {
+                "enum": [
+                  "TECHNICAL",
+                  "GAMEPLAY_DESIGN",
+                  "LEVEL_DESIGN",
+                  "ANIMATION",
+                  "CAMERA_COMPOSITION",
+                  "VISUAL_ART",
+                  "GAME_FEEL_VFX",
+                  "UI_UX",
+                  "AUDIO",
+                  "PERFORMANCE",
+                  "DEVICE"
+                ]
+              },
+              "review_policy": {
+                "enum": [
+                  "ROUTINE",
+                  "CROSS_REVIEW_REQUIRED",
+                  "HUMAN_REVIEW_REQUIRED"
+                ]
+              },
+              "scope": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "ref"
+                ],
+                "description": "Subject the override applies to; matched against routing.subject. Omitted means project-wide for that gate.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "TASK",
+                      "FEATURE",
+                      "ASSET",
+                      "SPACE",
+                      "GOLDEN_CELL",
+                      "BUILD",
+                      "RELEASE",
+                      "MILESTONE",
+                      "PROJECT",
+                      "DECISION"
+                    ]
+                  },
+                  "ref": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "EDITOR_CONCURRENCY"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "single_writer"
+            ],
+            "properties": {
+              "single_writer": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "GPOS_UPGRADE"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "upgrade"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "BLOCKING_DOWNGRADE",
+              "KNOWN_ISSUE_ACCEPTANCE"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "gate"
+            ],
+            "properties": {
+              "gate": {
+                "enum": [
+                  "TECHNICAL",
+                  "GAMEPLAY_DESIGN",
+                  "LEVEL_DESIGN",
+                  "ANIMATION",
+                  "CAMERA_COMPOSITION",
+                  "VISUAL_ART",
+                  "GAME_FEEL_VFX",
+                  "UI_UX",
+                  "AUDIO",
+                  "PERFORMANCE",
+                  "DEVICE"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

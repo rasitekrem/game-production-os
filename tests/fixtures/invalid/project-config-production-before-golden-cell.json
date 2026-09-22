@@ -1,0 +1,15 @@
+{
+  "description": "No PRODUCTION while the Golden Cell has neither exited nor been waived.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/lifecycle_stage": "PRODUCTION",
+    "/golden_gameplay_cell": {
+      "required": true,
+      "status": "IN_PROGRESS"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

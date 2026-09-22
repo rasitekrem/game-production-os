@@ -1,0 +1,14 @@
+{
+  "description": "Exactly one primary specialist.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/primary_specialist": [
+      "character-animation",
+      "technical-art"
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

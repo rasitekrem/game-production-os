@@ -1,0 +1,41 @@
+{
+  "description": "A DCC render does not prove in-game presentation.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/gate": "VISUAL_ART",
+      "/owner": "art-direction",
+      "/status": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "environment-art",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ],
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "art-direction"
+      },
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/type": "VISUAL_EVIDENCE",
+        "/provenance": {
+          "capture_context": "DCC_RENDER",
+          "subject_revision": "rev-example-0002",
+          "tool_version": "dcc x"
+        }
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "does not count"
+}

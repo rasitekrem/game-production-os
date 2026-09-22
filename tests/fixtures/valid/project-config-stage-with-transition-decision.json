@@ -1,0 +1,11 @@
+{
+  "description": "PRE_PRODUCTION backed by a transition decision reference.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/lifecycle_stage": "PRE_PRODUCTION",
+    "/lifecycle_decision_ref": "D-0001"
+  },
+  "remove": [],
+  "expect": "valid"
+}

@@ -1,0 +1,40 @@
+{
+  "description": "A cross-review of an older revision cannot close the current revision.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/status": "PASS",
+      "/specialist_assessment": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "camera-composition",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ],
+      "/scope/revision": "rev-example-0003",
+      "/evidence_carryover": [
+        {
+          "evidence_ref": "EV-0001",
+          "evidence_revision": "rev-example-0002",
+          "justification": "Only strings changed.",
+          "assessed_by": {
+            "kind": "AGENT",
+            "id": "character-animation"
+          }
+        }
+      ]
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": "stale cross-review"
+}

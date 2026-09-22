@@ -1,0 +1,16 @@
+{
+  "description": "EDITOR evidence must state limitations.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/provenance": {
+      "capture_context": "EDITOR",
+      "subject_revision": "r",
+      "tool_version": "t"
+    },
+    "/limitations": []
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "minItems"
+}

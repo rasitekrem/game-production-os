@@ -1,0 +1,36 @@
+{
+  "description": "UI for a non-touch target passes without device evidence; mobile evidence is not universal.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/gate": "UI_UX",
+      "/owner": "ui-ux",
+      "/status": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "art-direction",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ],
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "ui-ux"
+      },
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/type": "VISUAL_EVIDENCE"
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": null
+}

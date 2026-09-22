@@ -1,0 +1,51 @@
+{
+  "description": "Gate owner/policy must match the routing entry.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/presentation": {
+        "target_presentation_differs_from_editor": "NO",
+        "decision_ref": "D-0004"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0004",
+        "/kind": "PRESENTATION_PARITY",
+        "/affects": [
+          "gate"
+        ],
+        "/value": "NO",
+        "/subject": {
+          "kind": "PROJECT",
+          "ref": "example-project"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "routing": "tests/fixtures/valid/routing-example-animation.json",
+  "gates": [
+    {
+      "base": "examples/example-gate-record.json",
+      "set": {
+        "/review_policy": "HUMAN_REVIEW_REQUIRED"
+      },
+      "remove": []
+    }
+  ],
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": "review_policy"
+}

@@ -1,0 +1,11 @@
+{
+  "description": "Performance evidence must declare instrumentation.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "PERFORMANCE_EVIDENCE"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

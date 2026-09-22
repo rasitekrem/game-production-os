@@ -1,0 +1,11 @@
+{
+  "description": "GPOS version must be semantic.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/gpos_version": "v1"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "pattern"
+}

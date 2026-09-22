@@ -1,0 +1,14 @@
+{
+  "description": "A move from alpha.3 to alpha.4 crosses a governed boundary without a GPOS_UPGRADE decision.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/gpos_upgrade": {
+        "from_version": "1.0.0-alpha.3"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [],
+  "expect_problem": "requires a GPOS_UPGRADE decision"
+}

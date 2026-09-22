@@ -1,0 +1,11 @@
+{
+  "description": "A project must name who may make Human Decisions.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {},
+  "remove": [
+    "/decision_authorities"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

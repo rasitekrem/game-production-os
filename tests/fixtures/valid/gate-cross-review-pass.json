@@ -1,0 +1,20 @@
+{
+  "description": "CROSS_REVIEW_REQUIRED gate passes with a passing cross-review and no Human Review.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/cross_reviews": [
+      {
+        "reviewer": "camera-composition",
+        "assessment": "PASS",
+        "reviewed_revision": "rev-example-0002"
+      }
+    ],
+    "/specialist_assessment": "PASS"
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "valid"
+}

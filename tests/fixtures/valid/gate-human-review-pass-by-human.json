@@ -1,0 +1,25 @@
+{
+  "description": "HUMAN_REVIEW decided by a human.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/gate": "HUMAN_REVIEW",
+    "/owner": "HUMAN",
+    "/status": "PASS",
+    "/review_policy": "HUMAN_REVIEW_REQUIRED",
+    "/assessed_by": {
+      "kind": "HUMAN",
+      "id": "creative-lead"
+    },
+    "/evidence_refs": [
+      "EV-0002"
+    ]
+  },
+  "remove": [
+    "/required_changes",
+    "/specialist_assessment",
+    "/cross_reviews",
+    "/applied_conditions"
+  ],
+  "expect": "valid"
+}

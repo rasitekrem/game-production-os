@@ -1,0 +1,13 @@
+{
+  "description": "NOT_APPLICABLE requires a reason.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "NOT_APPLICABLE"
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

@@ -1,0 +1,16 @@
+{
+  "description": "Under HUMAN_REVIEW_REQUIRED, an unresolved negative review must be disclosed to the human.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/review_policy": "HUMAN_REVIEW_REQUIRED",
+    "/human_review_ref": "GATE-0002",
+    "/specialist_assessment": "PASS"
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

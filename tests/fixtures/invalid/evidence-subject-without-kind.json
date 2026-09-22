@@ -1,0 +1,13 @@
+{
+  "description": "Evidence subject names its kind.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/subject": {
+      "ref": "TASK-0001"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

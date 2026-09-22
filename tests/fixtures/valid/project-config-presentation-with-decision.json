@@ -1,0 +1,13 @@
+{
+  "description": "Presentation parity decided by a Human Decision.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/presentation": {
+      "target_presentation_differs_from_editor": "NO",
+      "decision_ref": "D-0004"
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

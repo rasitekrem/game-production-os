@@ -1,0 +1,35 @@
+{
+  "description": "Superseded evidence cannot satisfy a current gate.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/status": "PASS",
+      "/cross_reviews": [
+        {
+          "reviewer": "camera-composition",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ],
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "character-animation"
+      },
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/superseded": true,
+        "/superseded_by": "EV-0009"
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "superseded"
+}

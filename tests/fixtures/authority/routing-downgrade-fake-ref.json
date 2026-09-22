@@ -1,0 +1,11 @@
+{
+  "description": "A routing entry's blocking_downgrade_ref must resolve to a real decision.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {},
+    "remove": []
+  },
+  "decisions": [],
+  "routing": "tests/fixtures/valid/routing-downgrade-fake-ref.json",
+  "expect_problem": "does not resolve"
+}

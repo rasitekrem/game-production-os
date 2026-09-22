@@ -1,0 +1,11 @@
+{
+  "description": "Evidence must reference at least one artifact.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/artifacts": []
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "minItems"
+}

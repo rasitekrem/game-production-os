@@ -1,0 +1,50 @@
+{
+  "description": "A project trigger alone forces Human Review.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/workflow": "visual-review",
+    "/primary_specialist": "camera-composition",
+    "/secondary_specialists": [],
+    "/reviewers": [
+      "HUMAN"
+    ],
+    "/review_triggers": [
+      "PROJECT:boss-fight-feel"
+    ],
+    "/required_gates": [
+      {
+        "gate": "CAMERA_COMPOSITION",
+        "owner": "camera-composition",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "cross_review_required": false,
+        "applied_conditions": [
+          "CAMERA_MOTION_CLAIM",
+          "TARGET_PRESENTATION_DIFFERS"
+        ],
+        "required_evidence": [
+          "VISUAL_EVIDENCE",
+          "MOTION_EVIDENCE"
+        ]
+      },
+      {
+        "gate": "HUMAN_REVIEW",
+        "owner": "HUMAN",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "HUMAN_EVIDENCE"
+        ]
+      }
+    ],
+    "/human_review": {
+      "required": true,
+      "timing": "On the follow recording",
+      "primary_question": "Does the new camera baseline read and feel like the intended game?"
+    },
+    "/omitted_gates": []
+  },
+  "remove": [],
+  "expect": "valid"
+}

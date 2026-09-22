@@ -1,0 +1,20 @@
+{
+  "description": "Evidence from an earlier revision carried over with justification.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/evidence_carryover": [
+      {
+        "evidence_ref": "EV-0001",
+        "evidence_revision": "rev-example-0001",
+        "justification": "Later change only renamed a data file; no animation data or state logic changed.",
+        "assessed_by": {
+          "kind": "AGENT",
+          "id": "character-animation"
+        }
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "valid"
+}

@@ -1,0 +1,55 @@
+{
+  "description": "A ROUTINE override cannot relax a mandatory trigger: the triggered camera baseline stays HUMAN_REVIEW_REQUIRED, and that is valid.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/presentation": {
+        "target_presentation_differs_from_editor": "NO",
+        "decision_ref": "D-0004"
+      },
+      "/human_review/review_policy_overrides": [
+        {
+          "gate": "CAMERA_COMPOSITION",
+          "review_policy": "ROUTINE",
+          "decision_ref": "D-0021"
+        }
+      ]
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0021",
+        "/kind": "REVIEW_POLICY_OVERRIDE",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": {
+          "gate": "CAMERA_COMPOSITION",
+          "review_policy": "ROUTINE"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    },
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0004",
+        "/kind": "PRESENTATION_PARITY",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": "NO"
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "routing": "tests/fixtures/valid/routing-camera-human-review-only.json",
+  "expect_problem": null
+}

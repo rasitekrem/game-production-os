@@ -1,0 +1,26 @@
+{
+  "description": "A negative review superseded by the same reviewer's later PASS is resolved.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/status": "PASS",
+    "/specialist_assessment": "PASS",
+    "/cross_reviews": [
+      {
+        "reviewer": "camera-composition",
+        "assessment": "CHANGES_REQUIRED",
+        "superseded": true,
+        "reviewed_revision": "rev-example-0002"
+      },
+      {
+        "reviewer": "camera-composition",
+        "assessment": "PASS",
+        "reviewed_revision": "rev-example-0002"
+      }
+    ]
+  },
+  "remove": [
+    "/required_changes"
+  ],
+  "expect": "valid"
+}

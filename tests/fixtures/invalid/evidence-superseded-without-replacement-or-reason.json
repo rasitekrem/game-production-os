@@ -1,0 +1,11 @@
+{
+  "description": "Superseded evidence must say by what or why.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/superseded": true
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "anyOf"
+}

@@ -1,0 +1,11 @@
+{
+  "description": "cross_review_required cannot be false under CROSS_REVIEW_REQUIRED.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/cross_review_required": false
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "not"
+}

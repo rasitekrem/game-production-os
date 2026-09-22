@@ -1,0 +1,16 @@
+{
+  "description": "A DCC render cannot be TEST_EVIDENCE.",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {
+    "/type": "TEST_EVIDENCE",
+    "/provenance": {
+      "capture_context": "DCC_RENDER",
+      "subject_revision": "rev-example-0002",
+      "tool_version": "dcc x"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

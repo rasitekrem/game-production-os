@@ -1,0 +1,14 @@
+{
+  "description": "An EDITOR_CONCURRENCY decision carries a boolean single_writer value.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/kind": "EDITOR_CONCURRENCY",
+    "/value": "keep single writer"
+  },
+  "remove": [
+    "/transition"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "type"
+}

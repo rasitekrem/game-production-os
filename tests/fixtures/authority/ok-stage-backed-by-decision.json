@@ -1,0 +1,19 @@
+{
+  "description": "PRE_PRODUCTION backed by an authorized CONCEPT\u2192PRE_PRODUCTION decision.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/lifecycle_stage": "PRE_PRODUCTION",
+      "/lifecycle_decision_ref": "D-0001"
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {},
+      "remove": []
+    }
+  ],
+  "expect_problem": null
+}

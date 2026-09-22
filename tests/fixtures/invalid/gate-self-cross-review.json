@@ -1,0 +1,17 @@
+{
+  "description": "The owner cannot be its own cross-reviewer.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/cross_reviews": [
+      {
+        "reviewer": "character-animation",
+        "assessment": "PASS",
+        "reviewed_revision": "rev-example-0002"
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "not"
+}

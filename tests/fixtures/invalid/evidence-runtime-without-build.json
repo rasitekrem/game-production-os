@@ -1,0 +1,12 @@
+{
+  "description": "Runtime evidence must identify the build (build_revision or build_id).",
+  "schema": "evidence",
+  "base": "examples/example-evidence-record.json",
+  "set": {},
+  "remove": [
+    "/provenance/build_revision",
+    "/provenance/build_id"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "anyOf"
+}

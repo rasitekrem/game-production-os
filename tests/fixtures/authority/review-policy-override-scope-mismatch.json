@@ -1,0 +1,40 @@
+{
+  "description": "The config narrows the override to a scope the decision did not name.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/human_review/review_policy_overrides": [
+        {
+          "gate": "ANIMATION",
+          "review_policy": "HUMAN_REVIEW_REQUIRED",
+          "decision_ref": "D-0021",
+          "scope": {
+            "kind": "ASSET",
+            "ref": "player-character"
+          }
+        }
+      ]
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0021",
+        "/kind": "REVIEW_POLICY_OVERRIDE",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": {
+          "gate": "ANIMATION",
+          "review_policy": "HUMAN_REVIEW_REQUIRED"
+        }
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "expect_problem": "does not match"
+}

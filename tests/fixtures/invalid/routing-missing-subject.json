@@ -1,0 +1,11 @@
+{
+  "description": "A routing record names its subject.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {},
+  "remove": [
+    "/subject"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "required"
+}

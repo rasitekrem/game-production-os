@@ -1,0 +1,17 @@
+{
+  "description": "HUMAN_REVIEW is owned by HUMAN only.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/gate": "HUMAN_REVIEW",
+    "/status": "NOT_RUN",
+    "/evidence_refs": [],
+    "/review_policy": "HUMAN_REVIEW_REQUIRED"
+  },
+  "remove": [
+    "/required_changes",
+    "/applied_conditions"
+  ],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

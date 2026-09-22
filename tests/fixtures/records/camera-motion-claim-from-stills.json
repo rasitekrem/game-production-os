@@ -1,0 +1,51 @@
+{
+  "description": "A camera follow claim cannot pass from stills and numbers.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/gate": "CAMERA_COMPOSITION",
+      "/owner": "camera-composition",
+      "/status": "PASS",
+      "/applied_conditions": [
+        "CAMERA_MOTION_CLAIM"
+      ],
+      "/cross_reviews": [
+        {
+          "reviewer": "level-design",
+          "assessment": "PASS",
+          "reviewed_revision": "rev-example-0002"
+        }
+      ],
+      "/evidence_refs": [
+        "EV-0001",
+        "EV-R"
+      ],
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "camera-composition"
+      },
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/type": "VISUAL_EVIDENCE"
+      },
+      "remove": []
+    },
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/evidence_id": "EV-R",
+        "/type": "RUNTIME_EVIDENCE"
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": "MOTION_EVIDENCE"
+}

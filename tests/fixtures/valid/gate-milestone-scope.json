@@ -1,0 +1,30 @@
+{
+  "description": "Milestone acceptance is recorded on MILESTONE scope.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/gate": "HUMAN_REVIEW",
+    "/owner": "HUMAN",
+    "/assessed_by": {
+      "kind": "HUMAN",
+      "id": "creative-lead"
+    },
+    "/status": "PASS",
+    "/review_policy": "HUMAN_REVIEW_REQUIRED",
+    "/scope": {
+      "kind": "MILESTONE",
+      "ref": "M-ALPHA",
+      "revision": "build-0042"
+    },
+    "/evidence_refs": [
+      "EV-0002"
+    ]
+  },
+  "remove": [
+    "/required_changes",
+    "/specialist_assessment",
+    "/cross_reviews",
+    "/applied_conditions"
+  ],
+  "expect": "valid"
+}

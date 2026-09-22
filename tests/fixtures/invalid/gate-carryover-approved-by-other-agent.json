@@ -1,0 +1,22 @@
+{
+  "description": "Only the gate owner (or a human) may approve carryover.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/scope/revision": "rev-example-0003",
+    "/evidence_carryover": [
+      {
+        "evidence_ref": "EV-0001",
+        "evidence_revision": "rev-example-0002",
+        "justification": "x",
+        "assessed_by": {
+          "kind": "AGENT",
+          "id": "qa-performance"
+        }
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "anyOf"
+}

@@ -1,0 +1,16 @@
+{
+  "description": "An omitted gate needs its reason.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/omitted_gates": [
+      {
+        "gate": "AUDIO",
+        "reason": ""
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "minLength"
+}

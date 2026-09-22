@@ -1,0 +1,14 @@
+{
+  "description": "Two routing records share TASK-0001.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {},
+    "remove": []
+  },
+  "decisions": [],
+  "routings": [
+    "tests/fixtures/valid/routing-runtime-system.json",
+    "tests/fixtures/valid/routing-routine-no-human-review.json"
+  ],
+  "expect_problem": "duplicate routing task_id"
+}

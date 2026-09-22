@@ -1,0 +1,12 @@
+{
+  "description": "A blocking downgrade must reference a Human Decision, not free text.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/blocking": false,
+    "/blocking_downgrade_ref": "lead said it is fine"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "pattern"
+}

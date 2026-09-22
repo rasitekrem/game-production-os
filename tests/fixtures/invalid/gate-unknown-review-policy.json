@@ -1,0 +1,11 @@
+{
+  "description": "Only the three review policies are allowed.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/review_policy": "SELF_APPROVED"
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

@@ -1,0 +1,31 @@
+{
+  "description": "Presentation parity YES: declining TARGET_PRESENTATION_DIFFERS is not allowed.",
+  "config": {
+    "base": "examples/minimal-project-config.json",
+    "set": {
+      "/presentation": {
+        "target_presentation_differs_from_editor": "YES",
+        "decision_ref": "D-0004"
+      }
+    },
+    "remove": []
+  },
+  "decisions": [
+    {
+      "base": "examples/example-decision-record.json",
+      "set": {
+        "/decision_id": "D-0004",
+        "/kind": "PRESENTATION_PARITY",
+        "/affects": [
+          "project-config"
+        ],
+        "/value": "YES"
+      },
+      "remove": [
+        "/transition"
+      ]
+    }
+  ],
+  "routing": "tests/fixtures/valid/routing-example-animation.json",
+  "expect_problem": "must apply TARGET_PRESENTATION_DIFFERS"
+}

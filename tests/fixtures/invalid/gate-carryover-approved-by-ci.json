@@ -1,0 +1,22 @@
+{
+  "description": "CI may not approve evidence carryover.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/scope/revision": "rev-example-0003",
+    "/evidence_carryover": [
+      {
+        "evidence_ref": "EV-0001",
+        "evidence_revision": "rev-example-0002",
+        "justification": "x",
+        "assessed_by": {
+          "kind": "CI",
+          "id": "ci-pipeline"
+        }
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

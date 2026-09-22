@@ -1,0 +1,14 @@
+{
+  "description": "Identifiers used as keys cannot contain whitespace.",
+  "schema": "decision",
+  "base": "examples/example-decision-record.json",
+  "set": {
+    "/decided_by": {
+      "kind": "HUMAN",
+      "id": "creative lead"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "pattern"
+}

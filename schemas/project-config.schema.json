@@ -1,0 +1,648 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-production-os.local/schemas/project-config.schema.json",
+  "title": "GPOS Project Configuration",
+  "description": "Machine-readable project settings that accompany the .game/ authority documents. Values here never outrank a Human Decision; a waiver or override must cite its DECISIONS.md entry.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project",
+    "gpos_version",
+    "engine",
+    "target_platforms",
+    "human_review",
+    "golden_gameplay_cell",
+    "decision_authorities"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "authority_dir": {
+          "type": "string",
+          "default": ".game",
+          "minLength": 1
+        }
+      }
+    },
+    "gpos_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+    },
+    "gpos_upgrade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_version"
+      ],
+      "description": "Present only when the project moved to gpos_version from an earlier pinned version. Absent for a project created directly on gpos_version. Crossing a MAJOR or alpha boundary requires decision_ref to a GPOS_UPGRADE decision whose upgrade.from_version / to_version match.",
+      "properties": {
+        "from_version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+        },
+        "decision_ref": {
+          "type": "string",
+          "pattern": "^D-[A-Za-z0-9._-]+$"
+        },
+        "migration_notes": {
+          "type": "string"
+        }
+      }
+    },
+    "lifecycle_stage": {
+      "enum": [
+        "CONCEPT",
+        "PRE_PRODUCTION",
+        "GOLDEN_CELL",
+        "PRODUCTION",
+        "POLISH",
+        "RELEASE_CANDIDATE",
+        "RELEASED"
+      ],
+      "default": "CONCEPT"
+    },
+    "lifecycle_decision_ref": {
+      "type": "string",
+      "pattern": "^D-[A-Za-z0-9._-]+$",
+      "description": "Human Decision (kind LIFECYCLE_TRANSITION) that moved the project into its current stage. Required for every stage after CONCEPT."
+    },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Engine name, or UNDECIDED."
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "decision_authorities": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Humans authorised to make Human Decisions, and for which decision kinds. Authorization only; authentication is future tooling. Ids must be unique (record-set validation; JSON Schema cannot enforce uniqueness by property).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "may_decide"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._@-]*$",
+            "description": "Non-empty identifier without whitespace; used as a cross-record key."
+          },
+          "role": {
+            "type": "string"
+          },
+          "may_decide": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "ALL",
+                "CREATIVE_DIRECTION",
+                "LOCK",
+                "REOPEN",
+                "APPROVED_REFERENCE",
+                "LIFECYCLE_TRANSITION",
+                "GOLDEN_CELL_WAIVER",
+                "GOLDEN_CELL_EXIT",
+                "BLOCKING_DOWNGRADE",
+                "KNOWN_ISSUE_ACCEPTANCE",
+                "REVIEW_POLICY_OVERRIDE",
+                "QUALITY_TARGET",
+                "PRESENTATION_PARITY",
+                "EDITOR_CONCURRENCY",
+                "BUDGET",
+                "RELEASE",
+                "GPOS_UPGRADE",
+                "MATURITY_PROMOTION",
+                "OTHER"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "target_platforms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "platform",
+          "tier"
+        ],
+        "properties": {
+          "platform": {
+            "enum": [
+              "WINDOWS",
+              "MACOS",
+              "LINUX",
+              "ANDROID",
+              "IOS",
+              "WEB",
+              "CONSOLE",
+              "XR",
+              "UNDECIDED"
+            ]
+          },
+          "tier": {
+            "enum": [
+              "PRIMARY",
+              "SECONDARY"
+            ]
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "TOUCH",
+                "KEYBOARD_MOUSE",
+                "GAMEPAD",
+                "MOTION_CONTROLLER",
+                "OTHER"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "reference_devices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "When listed, DEVICE_EVIDENCE for this platform counts only on one of these devices (exact identifier)."
+          }
+        }
+      }
+    },
+    "quality_target": {
+      "enum": [
+        "PROFESSIONAL_INDIE",
+        "PROTOTYPE",
+        "HIGHER_THAN_INDIE"
+      ],
+      "default": "PROFESSIONAL_INDIE"
+    },
+    "quality_target_decision_ref": {
+      "type": "string",
+      "pattern": "^D-[A-Za-z0-9._-]+$",
+      "description": "Reference to a Human Decision record (schemas/decision.schema.json). A matching pattern is not authority; Phase-2 tooling must resolve it (core/GOVERNANCE.md \u00a712)."
+    },
+    "human_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewers"
+      ],
+      "properties": {
+        "reviewers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._@-]*$",
+                "description": "Non-empty identifier without whitespace; used as a cross-record key."
+              },
+              "role": {
+                "type": "string"
+              },
+              "gates": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "TECHNICAL",
+                    "GAMEPLAY_DESIGN",
+                    "LEVEL_DESIGN",
+                    "ANIMATION",
+                    "CAMERA_COMPOSITION",
+                    "VISUAL_ART",
+                    "GAME_FEEL_VFX",
+                    "UI_UX",
+                    "AUDIO",
+                    "PERFORMANCE",
+                    "DEVICE",
+                    "HUMAN_REVIEW"
+                  ]
+                },
+                "uniqueItems": true,
+                "description": "Gates this reviewer may judge; omitted means all."
+              }
+            }
+          },
+          "description": "Human Review participants. Ids must be unique (record-set validation). A reviewer with `gates` may give verdicts only for those gates."
+        },
+        "review_policy_overrides": {
+          "type": "array",
+          "description": "Project review-policy overrides (Project Locked Authority, backed by REVIEW_POLICY_OVERRIDE decisions). Routing must use at least the applicable override's policy; mandatory Human Review triggers still take precedence. At most one override may apply to any gate and routing subject (no duplicate gate+scope, and a project-wide and a scoped override for the same gate may not both apply). HUMAN_REVIEW itself cannot be overridden.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "gate",
+              "review_policy",
+              "decision_ref"
+            ],
+            "properties": {
+              "gate": {
+                "enum": [
+                  "TECHNICAL",
+                  "GAMEPLAY_DESIGN",
+                  "LEVEL_DESIGN",
+                  "ANIMATION",
+                  "CAMERA_COMPOSITION",
+                  "VISUAL_ART",
+                  "GAME_FEEL_VFX",
+                  "UI_UX",
+                  "AUDIO",
+                  "PERFORMANCE",
+                  "DEVICE"
+                ]
+              },
+              "scope": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "ref"
+                ],
+                "description": "Subject the override applies to; matched against routing.subject. Omitted means project-wide for that gate.",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "TASK",
+                      "FEATURE",
+                      "ASSET",
+                      "SPACE",
+                      "GOLDEN_CELL",
+                      "BUILD",
+                      "RELEASE",
+                      "MILESTONE",
+                      "PROJECT",
+                      "DECISION"
+                    ]
+                  },
+                  "ref": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "review_policy": {
+                "enum": [
+                  "ROUTINE",
+                  "CROSS_REVIEW_REQUIRED",
+                  "HUMAN_REVIEW_REQUIRED"
+                ]
+              },
+              "decision_ref": {
+                "type": "string",
+                "pattern": "^D-[A-Za-z0-9._-]+$",
+                "description": "Reference to a Human Decision record (schemas/decision.schema.json). A matching pattern is not authority; Phase-2 tooling must resolve it (core/GOVERNANCE.md \u00a712)."
+              }
+            }
+          }
+        },
+        "additional_mandatory_triggers": {
+          "type": "array",
+          "description": "Project-specific situations that always require Human Review, in addition to the seven GPOS triggers (which cannot be relaxed). Routing references them as PROJECT:<id>. Ids must be unique.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "decision_ref": {
+                "type": "string",
+                "pattern": "^D-[A-Za-z0-9._-]+$"
+              }
+            }
+          }
+        }
+      },
+      "description": "Human Review participants: humans whose verdicts may be recorded as HUMAN_EVIDENCE for the listed gates."
+    },
+    "golden_gameplay_cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "default": true
+        },
+        "waiver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "decision_ref",
+            "reason"
+          ],
+          "properties": {
+            "decision_ref": {
+              "type": "string",
+              "pattern": "^D-[A-Za-z0-9._-]+$",
+              "description": "Reference to a Human Decision record (schemas/decision.schema.json). A matching pattern is not authority; Phase-2 tooling must resolve it (core/GOVERNANCE.md \u00a712)."
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "status": {
+          "enum": [
+            "NOT_STARTED",
+            "IN_PROGRESS",
+            "EXITED",
+            "WAIVED"
+          ],
+          "default": "NOT_STARTED"
+        },
+        "exit_decision_ref": {
+          "type": "string",
+          "pattern": "^D-[A-Za-z0-9._-]+$",
+          "description": "Reference to a Human Decision record (schemas/decision.schema.json). A matching pattern is not authority; Phase-2 tooling must resolve it (core/GOVERNANCE.md \u00a712)."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "required": {
+                "const": false
+              }
+            },
+            "required": [
+              "required"
+            ]
+          },
+          "then": {
+            "required": [
+              "waiver"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "EXITED"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "exit_decision_ref"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "WAIVED"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "waiver"
+            ],
+            "properties": {
+              "required": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    "editor_concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "single_writer": {
+          "type": "boolean",
+          "default": true
+        },
+        "decision_ref": {
+          "type": "string",
+          "pattern": "^D-[A-Za-z0-9._-]+$",
+          "description": "Human Decision (EDITOR_CONCURRENCY) that locked a validated multi-writer workflow."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "single_writer": {
+                "const": false
+              }
+            },
+            "required": [
+              "single_writer"
+            ]
+          },
+          "then": {
+            "required": [
+              "decision_ref"
+            ]
+          }
+        }
+      ]
+    },
+    "enabled_adapters": {
+      "type": "array",
+      "description": "Adapter ids (Phase 2+). No adapters exist in Phase 1; an empty list is expected.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Adapter- or project-specific settings, keyed by adapter id. Must not redefine any core field."
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Whether the development environment represents the target presentation. Drives the TARGET_PRESENTATION_DIFFERS condition. A YES or NO value is authoritative only when backed by a PRESENTATION_PARITY Human Decision; otherwise it stays UNDECIDED.",
+      "properties": {
+        "target_presentation_differs_from_editor": {
+          "enum": [
+            "YES",
+            "NO",
+            "UNDECIDED"
+          ],
+          "default": "UNDECIDED"
+        },
+        "decision_ref": {
+          "type": "string",
+          "pattern": "^D-[A-Za-z0-9._-]+$",
+          "description": "Reference to a Human Decision record (schemas/decision.schema.json). A matching pattern is not authority; Phase-2 tooling must resolve it (core/GOVERNANCE.md \u00a712)."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "target_presentation_differs_from_editor": {
+                "enum": [
+                  "YES",
+                  "NO"
+                ]
+              }
+            },
+            "required": [
+              "target_presentation_differs_from_editor"
+            ]
+          },
+          "then": {
+            "required": [
+              "decision_ref"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "quality_target": {
+            "not": {
+              "const": "PROFESSIONAL_INDIE"
+            }
+          }
+        },
+        "required": [
+          "quality_target"
+        ]
+      },
+      "then": {
+        "required": [
+          "quality_target_decision_ref"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle_stage": {
+            "enum": [
+              "PRODUCTION",
+              "POLISH",
+              "RELEASE_CANDIDATE",
+              "RELEASED"
+            ]
+          }
+        },
+        "required": [
+          "lifecycle_stage"
+        ]
+      },
+      "then": {
+        "required": [
+          "golden_gameplay_cell"
+        ],
+        "properties": {
+          "golden_gameplay_cell": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "EXITED",
+                  "WAIVED"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle_stage": {
+            "not": {
+              "const": "CONCEPT"
+            }
+          }
+        },
+        "required": [
+          "lifecycle_stage"
+        ]
+      },
+      "then": {
+        "required": [
+          "lifecycle_decision_ref"
+        ]
+      }
+    }
+  ]
+}

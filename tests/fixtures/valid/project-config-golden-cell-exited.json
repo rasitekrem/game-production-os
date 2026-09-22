@@ -1,0 +1,14 @@
+{
+  "description": "Golden Cell EXITED with the accepting Human Decision.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/golden_gameplay_cell": {
+      "required": true,
+      "status": "EXITED",
+      "exit_decision_ref": "D-0012"
+    }
+  },
+  "remove": [],
+  "expect": "valid"
+}

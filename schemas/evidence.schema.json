@@ -1,0 +1,833 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://game-production-os.local/schemas/evidence.schema.json",
+  "title": "GPOS Evidence Record",
+  "description": "One typed piece of evidence with the provenance of the exact production state it supports. See core/EVIDENCE-RULES.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evidence_id",
+    "type",
+    "summary",
+    "subject",
+    "source",
+    "created_at",
+    "provenance",
+    "artifacts",
+    "limitations",
+    "superseded"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "evidence_id": {
+      "$ref": "#/$defs/id"
+    },
+    "type": {
+      "enum": [
+        "CODE_EVIDENCE",
+        "TEST_EVIDENCE",
+        "RUNTIME_EVIDENCE",
+        "VISUAL_EVIDENCE",
+        "MOTION_EVIDENCE",
+        "AUDIO_EVIDENCE",
+        "DEVICE_EVIDENCE",
+        "PERFORMANCE_EVIDENCE",
+        "PERSISTENCE_EVIDENCE",
+        "HUMAN_EVIDENCE"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "description": "The subject this evidence proves. It counts for a gate only when it equals the gate scope (kind and ref), or through an explicit evidence_applicability entry in the gate.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "TASK",
+            "FEATURE",
+            "ASSET",
+            "SPACE",
+            "GOLDEN_CELL",
+            "BUILD",
+            "RELEASE",
+            "MILESTONE",
+            "PROJECT",
+            "DECISION"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "HUMAN",
+            "AGENT",
+            "CI",
+            "TOOL",
+            "DEVICE"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._@-]*$",
+          "description": "Non-empty identifier without whitespace; used as a cross-record key."
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "minLength": 1
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capture_context",
+        "subject_revision"
+      ],
+      "properties": {
+        "capture_context": {
+          "enum": [
+            "DCC_RENDER",
+            "EDITOR",
+            "TARGET_RUNTIME",
+            "DIAGNOSTIC_RUNTIME",
+            "PERFORMANCE_RUNTIME",
+            "OFFLINE_ANALYSIS",
+            "AUTOMATED_TEST",
+            "HUMAN_RECORD"
+          ],
+          "description": "Must be compatible with the evidence type (registry evidence_context_compatibility)."
+        },
+        "subject_revision": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact revision of the subject captured (commit, asset version)."
+        },
+        "build_revision": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source revision the running build was made from."
+        },
+        "build_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_hash": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hash of the build or asset file captured, e.g. sha256:..."
+        },
+        "target_platform": {
+          "enum": [
+            "WINDOWS",
+            "MACOS",
+            "LINUX",
+            "ANDROID",
+            "IOS",
+            "WEB",
+            "CONSOLE",
+            "XR"
+          ],
+          "description": "Project target-platform vocabulary. Target-runtime evidence counts only when this is a platform declared in project config target_platforms."
+        },
+        "device": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Device model and OS version."
+        },
+        "tool_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Engine, DCC or tool name and version."
+        },
+        "instrumentation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "present",
+            "timing_impact"
+          ],
+          "properties": {
+            "present": {
+              "type": "boolean"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "timing_impact": {
+              "enum": [
+                "NONE",
+                "NEGLIGIBLE",
+                "MATERIAL",
+                "UNKNOWN"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "uri"
+        ],
+        "properties": {
+          "uri": {
+            "type": "string",
+            "minLength": 1
+          },
+          "media_type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "hash": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "supersedes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/id"
+      },
+      "uniqueItems": true
+    },
+    "superseded": {
+      "type": "boolean"
+    },
+    "superseded_by": {
+      "$ref": "#/$defs/id"
+    },
+    "superseded_reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "superseded": {
+            "const": true
+          }
+        },
+        "required": [
+          "superseded"
+        ]
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": [
+              "superseded_by"
+            ]
+          },
+          {
+            "required": [
+              "superseded_reason"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "HUMAN_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source": {
+            "properties": {
+              "kind": {
+                "const": "HUMAN"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DEVICE_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "required": [
+              "capture_context",
+              "subject_revision",
+              "device",
+              "target_platform"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PERFORMANCE_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "required": [
+              "capture_context",
+              "subject_revision",
+              "instrumentation"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "TARGET_RUNTIME",
+                  "DIAGNOSTIC_RUNTIME",
+                  "PERFORMANCE_RUNTIME"
+                ]
+              }
+            },
+            "required": [
+              "capture_context"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "anyOf": [
+              {
+                "required": [
+                  "build_revision"
+                ]
+              },
+              {
+                "required": [
+                  "build_id"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "TARGET_RUNTIME",
+                  "PERFORMANCE_RUNTIME"
+                ]
+              }
+            },
+            "required": [
+              "capture_context"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "required": [
+              "capture_context",
+              "subject_revision",
+              "target_platform"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "const": "PERFORMANCE_RUNTIME"
+              }
+            },
+            "required": [
+              "capture_context"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "required": [
+              "capture_context",
+              "subject_revision",
+              "instrumentation"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "DCC_RENDER",
+                  "EDITOR"
+                ]
+              }
+            },
+            "required": [
+              "capture_context"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "required": [
+              "capture_context",
+              "subject_revision",
+              "tool_version"
+            ]
+          },
+          "limitations": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "const": "DIAGNOSTIC_RUNTIME"
+              }
+            },
+            "required": [
+              "capture_context"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "limitations": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "instrumentation": {
+                "properties": {
+                  "timing_impact": {
+                    "enum": [
+                      "MATERIAL",
+                      "UNKNOWN"
+                    ]
+                  }
+                },
+                "required": [
+                  "timing_impact"
+                ]
+              }
+            },
+            "required": [
+              "instrumentation"
+            ]
+          }
+        },
+        "required": [
+          "provenance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "limitations": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "CODE_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "OFFLINE_ANALYSIS",
+                  "AUTOMATED_TEST"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "TEST_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "AUTOMATED_TEST",
+                  "EDITOR",
+                  "DIAGNOSTIC_RUNTIME",
+                  "TARGET_RUNTIME"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "RUNTIME_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "EDITOR",
+                  "TARGET_RUNTIME",
+                  "DIAGNOSTIC_RUNTIME",
+                  "PERFORMANCE_RUNTIME",
+                  "AUTOMATED_TEST"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "VISUAL_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "DCC_RENDER",
+                  "EDITOR",
+                  "TARGET_RUNTIME",
+                  "DIAGNOSTIC_RUNTIME",
+                  "AUTOMATED_TEST"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "MOTION_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "DCC_RENDER",
+                  "EDITOR",
+                  "TARGET_RUNTIME",
+                  "DIAGNOSTIC_RUNTIME",
+                  "AUTOMATED_TEST"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "AUDIO_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "EDITOR",
+                  "TARGET_RUNTIME",
+                  "DIAGNOSTIC_RUNTIME",
+                  "AUTOMATED_TEST"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "DEVICE_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "TARGET_RUNTIME",
+                  "PERFORMANCE_RUNTIME"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PERFORMANCE_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "EDITOR",
+                  "DIAGNOSTIC_RUNTIME",
+                  "TARGET_RUNTIME",
+                  "PERFORMANCE_RUNTIME",
+                  "OFFLINE_ANALYSIS"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "PERSISTENCE_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "EDITOR",
+                  "DIAGNOSTIC_RUNTIME",
+                  "TARGET_RUNTIME",
+                  "AUTOMATED_TEST"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "HUMAN_EVIDENCE"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": {
+              "capture_context": {
+                "enum": [
+                  "HUMAN_RECORD"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "description": "A gate can only apply conditions the registry defines for it.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/applied_conditions": [
+      "TOUCH_OR_MOBILE_TARGET"
+    ]
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "enum"
+}

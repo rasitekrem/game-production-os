@@ -1,0 +1,14 @@
+{
+  "description": "An ANIMATION gate owned by character-animation cannot be assessed by qa-performance.",
+  "schema": "gate",
+  "base": "examples/example-gate-record.json",
+  "set": {
+    "/assessed_by": {
+      "kind": "AGENT",
+      "id": "qa-performance"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "anyOf"
+}

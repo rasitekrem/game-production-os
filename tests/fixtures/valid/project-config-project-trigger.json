@@ -1,0 +1,15 @@
+{
+  "description": "A declared project trigger.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/human_review/additional_mandatory_triggers": [
+      {
+        "id": "boss-fight-feel",
+        "description": "Any change to boss-fight feel."
+      }
+    ]
+  },
+  "remove": [],
+  "expect": "valid"
+}

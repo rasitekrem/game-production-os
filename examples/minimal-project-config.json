@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "project": {
+    "id": "example-project",
+    "name": "Example Project"
+  },
+  "gpos_version": "1.0.0-alpha.7",
+  "engine": {
+    "name": "UNDECIDED"
+  },
+  "decision_authorities": [
+    {
+      "id": "creative-lead",
+      "role": "Holds creative authority",
+      "may_decide": [
+        "ALL"
+      ]
+    }
+  ],
+  "target_platforms": [
+    {
+      "platform": "UNDECIDED",
+      "tier": "PRIMARY"
+    }
+  ],
+  "human_review": {
+    "reviewers": [
+      {
+        "id": "creative-lead",
+        "role": "Holds creative authority"
+      }
+    ]
+  },
+  "golden_gameplay_cell": {
+    "required": true
+  },
+  "enabled_adapters": []
+}

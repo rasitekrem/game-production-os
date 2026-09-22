@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "gate_id": "GATE-0001",
+  "gate": "ANIMATION",
+  "scope": {
+    "kind": "TASK",
+    "ref": "TASK-0001",
+    "revision": "rev-example-0002"
+  },
+  "routing_ref": "TASK-0001",
+  "status": "CHANGES_REQUIRED",
+  "owner": "character-animation",
+  "assessed_by": {
+    "kind": "AGENT",
+    "id": "character-animation"
+  },
+  "blocking": true,
+  "review_policy": "CROSS_REVIEW_REQUIRED",
+  "applied_conditions": [],
+  "evidence_refs": [
+    "EV-0001"
+  ],
+  "specialist_assessment": "CHANGES_REQUIRED",
+  "cross_reviews": [
+    {
+      "reviewer": "camera-composition",
+      "assessment": "CHANGES_REQUIRED",
+      "notes": "Hip snap on the 180-degree turn is clearly visible at gameplay distance.",
+      "reviewed_revision": "rev-example-0002"
+    }
+  ],
+  "required_changes": [
+    "Remove the hip snap on the 180-degree turn",
+    "Reduce residual foot sliding on the planted foot during 90-degree turns"
+  ],
+  "notes": "45-degree turns read well. Not ready to close.",
+  "limitations": [
+    "Assessed on a development build, not the target runtime"
+  ],
+  "recorded_at": "2026-01-01T13:00:00Z"
+}

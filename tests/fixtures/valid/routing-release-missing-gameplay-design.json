@@ -1,0 +1,113 @@
+{
+  "description": "Release routing that forgets GAMEPLAY_DESIGN entirely.",
+  "schema": "task-routing",
+  "base": "examples/example-task-routing.json",
+  "set": {
+    "/task_id": "REL-1.0",
+    "/subject": {
+      "kind": "RELEASE",
+      "ref": "rel-1.0"
+    },
+    "/workflow": "release",
+    "/lifecycle_stage": "RELEASE_CANDIDATE",
+    "/primary_specialist": "qa-performance",
+    "/secondary_specialists": [],
+    "/reviewers": [
+      "HUMAN"
+    ],
+    "/required_gates": [
+      {
+        "gate": "TECHNICAL",
+        "owner": "qa-performance",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "routine_basis": "Full regression on the candidate build",
+        "required_evidence": [
+          "TEST_EVIDENCE"
+        ],
+        "unapplied_conditions": [
+          {
+            "condition": "PERSISTENCE_AFFECTED",
+            "reason": "Server build stores no player saves."
+          }
+        ]
+      },
+      {
+        "gate": "PERFORMANCE",
+        "owner": "qa-performance",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "routine_basis": "Measure against locked budgets",
+        "applied_conditions": [
+          "TARGET_PLATFORM_PERFORMANCE_CLAIM"
+        ],
+        "required_evidence": [
+          "PERFORMANCE_EVIDENCE",
+          "DEVICE_EVIDENCE"
+        ]
+      },
+      {
+        "gate": "DEVICE",
+        "owner": "qa-performance",
+        "blocking": true,
+        "review_policy": "ROUTINE",
+        "routine_basis": "Run on every reference device",
+        "required_evidence": [
+          "DEVICE_EVIDENCE"
+        ]
+      },
+      {
+        "gate": "HUMAN_REVIEW",
+        "owner": "HUMAN",
+        "blocking": true,
+        "review_policy": "HUMAN_REVIEW_REQUIRED",
+        "required_evidence": [
+          "HUMAN_EVIDENCE"
+        ]
+      }
+    ],
+    "/omitted_gates": [
+      {
+        "gate": "LEVEL_DESIGN",
+        "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+      },
+      {
+        "gate": "ANIMATION",
+        "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+      },
+      {
+        "gate": "CAMERA_COMPOSITION",
+        "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+      },
+      {
+        "gate": "VISUAL_ART",
+        "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+      },
+      {
+        "gate": "GAME_FEEL_VFX",
+        "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+      },
+      {
+        "gate": "UI_UX",
+        "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+      },
+      {
+        "gate": "AUDIO",
+        "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+      }
+    ],
+    "/review_triggers": [
+      "RELEASE"
+    ],
+    "/human_review": {
+      "required": true,
+      "timing": "After device validation on the candidate build",
+      "primary_question": "Is this candidate build accepted for release?"
+    },
+    "/editor_write_lock": "NONE",
+    "/out_of_scope": [],
+    "/missing_decisions": []
+  },
+  "remove": [],
+  "expect": "valid"
+}

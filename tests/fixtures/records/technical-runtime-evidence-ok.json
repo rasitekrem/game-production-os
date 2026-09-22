@@ -1,0 +1,32 @@
+{
+  "description": "RUNTIME_EVIDENCE from a running build passes TECHNICAL under ROUTINE.",
+  "gate": {
+    "base": "examples/example-gate-record.json",
+    "set": {
+      "/gate": "TECHNICAL",
+      "/owner": "qa-performance",
+      "/assessed_by": {
+        "kind": "AGENT",
+        "id": "qa-performance"
+      },
+      "/status": "PASS",
+      "/review_policy": "ROUTINE",
+      "/routine_basis": "bounded fix",
+      "/specialist_assessment": "PASS"
+    },
+    "remove": [
+      "/required_changes",
+      "/cross_reviews"
+    ]
+  },
+  "evidence": [
+    {
+      "base": "examples/example-evidence-record.json",
+      "set": {
+        "/type": "RUNTIME_EVIDENCE"
+      },
+      "remove": []
+    }
+  ],
+  "expect_problem": null
+}

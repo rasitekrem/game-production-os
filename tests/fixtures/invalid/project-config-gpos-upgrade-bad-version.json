@@ -1,0 +1,13 @@
+{
+  "description": "gpos_upgrade.from_version is semantic.",
+  "schema": "project-config",
+  "base": "examples/minimal-project-config.json",
+  "set": {
+    "/gpos_upgrade": {
+      "from_version": "alpha three"
+    }
+  },
+  "remove": [],
+  "expect": "invalid",
+  "expect_keyword": "pattern"
+}

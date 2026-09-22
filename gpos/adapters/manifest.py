@@ -26,13 +26,17 @@ def ir_semantics(ir):
                     "lifecycle_stage": ir.project["lifecycle_stage"]},
         "authority_order": [lvl for lvl, _ in ir.authority_order],
         "project_authority": [{
-            "path": d.path, "present": d.present, "status": d.status, "source": d.source_id,
+            "path": d.path, "present": d.present, "status": d.status, "locked_by": d.locked_by, "source": d.source_id,
+            "document_sha256": d.document_sha256,
             "locked": [[r.section, r.item, r.decision_ref, r.lock_verified] for r in d.rows if r.status == "LOCKED"],
             "human_decision_required": [[r.section, r.item] for r in d.rows if "HUMAN_DECISION_REQUIRED" in r.placeholders],
             "undecided": [[r.section, r.item] for r in d.rows if "UNDECIDED" in r.placeholders],
         } for d in ir.project_authority],
         "enabled_skills": [s.name for s in ir.skills],
+        "skill_ids": {s.name: s.agent_id for s in ir.skills},
         "disabled_skills": list(ir.disabled_skills),
+        "rules": [{"id": r.id, "statement_sha256": hashlib.sha256(r.statement.encode("utf-8")).hexdigest(),
+                   "skill": r.skill, "sources": list(r.sources)} for r in ir.rules],
         "skills": {s.name: {
             "maturity": s.maturity, "may_own_gates": list(s.may_own_gates), "sections": [h for h, _ in s.sections],
             "authority_files": list(s.authority_files), "cross_reviewers": list(s.cross_reviewers),

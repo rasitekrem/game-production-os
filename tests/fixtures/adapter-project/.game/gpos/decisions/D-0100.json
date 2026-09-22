@@ -21,5 +21,21 @@
   "transcribed_by": {
     "id": "game-director",
     "kind": "AGENT"
+  },
+  "value": {
+    "locks": [
+      {
+        "authority_path": ".game/PROJECT.md",
+        "item": "Project id (lowercase, hyphenated)",
+        "section": "Identity",
+        "value": "synthetic-adapter-project"
+      },
+      {
+        "authority_path": ".game/PROJECT.md",
+        "item": "Working title",
+        "section": "Identity",
+        "value": "Synthetic Adapter Project"
+      }
+    ]
   }
 }

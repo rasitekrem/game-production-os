@@ -23,6 +23,7 @@ from . import diagnostics as dg
 from .backends import BACKENDS
 from .compiler import compile_ir, project_root_of
 from .errors import AdapterError
+from .layers import owned_entrypoints, unmanaged_instruction_layers
 from .manifest import parse_manifest
 from .paths import is_managed, is_safe_relative, managed_files_on_disk, unsafe_on_disk
 from .render import render_bundle
@@ -31,10 +32,11 @@ from .validation import validate_bundle
 
 
 class Result:
-    def __init__(self, command, project_id, diagnostics, agents=None):
+    def __init__(self, command, project_id, diagnostics, agents=None, data=None):
         self.command, self.project_id = command, project_id
         self.diagnostics = dg.sort(diagnostics)
         self.agents = agents or {}
+        self.data = data
         self.status = dg.result_class(self.diagnostics)
 
     @property
@@ -77,12 +79,6 @@ def _fail(command, exc, project_id=None, agent=None):
     return Result(command, project_id, [dg.make(exc.code, str(exc), agent)] + list(exc.diagnostics))
 
 
-def _warnings(ir):
-    return [dg.make("LOCK_REFERENCE_UNRESOLVED", f"{d.path}: {r.section} › {r.item} is LOCKED without an ACTIVE decision "
-                    f"record {r.decision_ref or '(no reference)'}; rendered as unverified", path=d.path)
-            for d in ir.project_authority for r in d.rows if r.status == "LOCKED" and not r.lock_verified]
-
-
 def _bundles(ir, agents):
     bundles, diags = {}, []
     for a in agents:
@@ -106,7 +102,6 @@ def render(project, agent="all", out=None, framework=None):
         bundles, diags = _bundles(ir, agents)
     except AdapterError as exc:
         return _fail("render", exc)
-    diags += _warnings(ir)
     info = {a: {"files": [{"path": f.path, "sha256": f.sha256, "bytes": len(f.data)} for f in b.files],
                 "semantic_hash": b.manifest.data["semantic_hash"]} for a, b in bundles.items()}
     if out is not None and dg.result_class(diags) == dg.OK:
@@ -142,10 +137,25 @@ def _old_manifest(root, backend):
         raise AdapterError("MANIFEST_UNTRUSTED", f"{backend.manifest_path}: {exc}; sync will not guess ownership") from exc
 
 
-def plan_sync(root, bundle, repair=False):
+def _manifest_or_none(root, backend):
+    try:
+        return _old_manifest(root, backend)
+    except AdapterError:
+        return None
+
+
+def _layer_conflicts(root, backend, owned):
+    return [dg.make("INSTRUCTION_LAYER_CONFLICT", f"{path} is a {backend.agent_name} instruction file GPOS does not own; the "
+                    f"runtime can let it add to or override the generated instructions. Move its content into project "
+                    f"authority (.game/) or remove it; GPOS never edits it", backend.id, path)
+            for path in unmanaged_instruction_layers(root, backend, owned)]
+
+
+def plan_sync(root, bundle, repair=False, owned_entry_files=()):
     """(writes {path: bytes}, deletes [path], diagnostics). Nothing is touched."""
     backend = bundle.backend
     diags, writes, deletes = [], {}, []
+    diags += _layer_conflicts(root, backend, set(owned_entry_files) | {backend.entrypoint})
     old = _old_manifest(root, backend)
     old_files = {}
     if old is not None:
@@ -232,13 +242,13 @@ def sync(project, agent="all", repair=False, framework=None):
         bundles, diags = _bundles(ir, agents)
     except AdapterError as exc:
         return _fail("sync", exc)
-    diags += _warnings(ir)
     if dg.result_class(diags) != dg.OK:
         return Result("sync", ir.project["id"], diags)
+    owned = {BACKENDS[a].entrypoint for a in agents} | owned_entrypoints(root, BACKENDS.values(), _manifest_or_none)
     plans = {}
     for a, b in bundles.items():
         try:
-            plans[a] = plan_sync(root, b, repair)
+            plans[a] = plan_sync(root, b, repair, owned)
         except AdapterError as exc:
             diags.append(dg.make(exc.code, str(exc), a))
             continue
@@ -270,6 +280,40 @@ def _prune(root, backend, directory):
             return
         d.rmdir()
         rel = Path(rel).parent.as_posix()
+
+
+# ---------------------------------------------------------------- authority (read-only helper)
+
+def authority(project, framework=None):
+    """The machine-readable project authority as the compiler reads it, with the exact structured bindings a LOCK
+    Human Decision must carry (`value.locks`) to lock a row or a whole document. Read-only; checks no lock."""
+    from . import sources as src
+    fw = framework or load_framework()
+    reg = fw.registry
+    try:
+        root = project_root_of(project)
+    except AdapterError as exc:
+        return _fail("authority", exc)
+    docs, diags = [], []
+    for f in reg["project_authority_files"]:
+        path = root / ".game" / f
+        if not path.is_file():
+            continue
+        rel = f".game/{f}"
+        try:
+            parsed = src.parse_authority_document(path.read_text(encoding="utf-8"), reg["placeholders"],
+                                                  tuple(reg["authority_document_statuses"]))
+        except src.AuthorityDocumentError as exc:
+            diags.append(dg.make("AUTHORITY_DOCUMENT_INVALID", f"{rel}: {exc}", path=rel))
+            continue
+        docs.append({"authority_path": rel, "status": parsed["status"], "locked_by": parsed["locked_by"],
+                     "document_binding": {"authority_path": rel,
+                                          "document_sha256": src.document_sha256(rel, parsed["rows"])},
+                     "rows": [{"status": r["status"], "decision_ref": r["decision_ref"], "placeholders": r["placeholders"],
+                               "row_binding": {"authority_path": rel, "section": r["section"], "item": r["item"],
+                                               "value": r["value"]}} for r in parsed["rows"]]})
+    return Result("authority", None, diags, data={"lock_binding": {k: v for k, v in reg["project_lock_binding"].items()
+                                                                   if not k.startswith("$")}, "documents": docs})
 
 
 # ---------------------------------------------------------------- check
@@ -305,7 +349,7 @@ def check_agent(root, ir, bundle):
         m = parse_manifest(raw)
     except ValueError as exc:
         return [d("MANIFEST_INVALID", f"{backend.manifest_path}: {exc}", backend.manifest_path)]
-    out = []
+    out = _layer_conflicts(root, backend, owned_entrypoints(root, BACKENDS.values(), _manifest_or_none))
     if m["adapter"].get("id") != a or m["adapter"].get("format") != backend.format_id:
         out.append(d("ADAPTER_FORMAT_MISMATCH", f"manifest adapter {m['adapter']} is not {a} {backend.format_id}",
                      backend.manifest_path))

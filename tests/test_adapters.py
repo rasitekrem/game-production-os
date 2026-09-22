@@ -34,7 +34,7 @@ os.environ["HOME"] = _HOME  # any accidental write to a user/global agent direct
 
 from gpos.adapters import backends, cli as adapter_cli, content, pipeline  # noqa: E402
 from gpos.adapters import diagnostics as adg  # noqa: E402
-from gpos.adapters.compiler import compile_ir  # noqa: E402
+from gpos.adapters.compiler import compile_ir, skill_namespace  # noqa: E402
 from gpos.adapters.manifest import ir_semantics  # noqa: E402
 from gpos.adapters.paths import is_managed, is_safe_relative  # noqa: E402
 from gpos.adapters.render import render_bundle  # noqa: E402
@@ -47,6 +47,19 @@ REG = FW.registry
 FIXTURE = ROOT / "tests" / "fixtures" / "adapter-project"
 SNAPSHOTS = ROOT / "tests" / "fixtures" / "adapter-snapshots"
 CLAUDE, CODEX = backends.BACKENDS["claude-code"], backends.BACKENDS["codex"]
+NS = skill_namespace("synthetic-adapter-project")
+
+
+def SK(name):
+    """Generated (project-scoped) agent skill id of a logical GPOS skill in the fixture project."""
+    return f"gpos-{NS}-{name}"
+
+
+def RULE(rule_id):
+    """A registry agent_operating_contract statement (the canonical source of every generated rule sentence)."""
+    return next(r["statement"] for r in REG["agent_operating_contract"]["rules"] if r["id"] == rule_id)
+
+
 ENABLED = ["game-director", "gameplay-design", "character-animation", "camera-composition", "qa-performance", "game-engineering"]
 
 
@@ -144,16 +157,11 @@ class A01_IR(TmpCase):
         self.assertEqual(ir.skill("character-animation").authority_files, ("ANIMATION.md",))
         self.assertFalse(docs["CAMERA.md"].present)
 
-    def test_unbacked_lock_is_not_presented_as_locked_authority(self):
+    def test_unbacked_lock_stops_generation(self):
         p = self.proj()
         (p / ".game" / "gpos" / "decisions" / "D-0101.json").unlink()
-        ir = compile_ir(p)
-        row = next(r for d in ir.project_authority if d.file == "ANIMATION.md" for r in d.rows if r.status == "LOCKED")
-        self.assertFalse(row.lock_verified)
         r = pipeline.render(p)
-        self.assertIn("LOCK_REFERENCE_UNRESOLVED", codes(r))
-        text = render_bundle(ir, CLAUDE).by_path()[".claude/skills/gpos-character-animation/SKILL.md"].text
-        self.assertIn("**unverified**: no ACTIVE decision record; treat as `PROPOSED`", text)
+        self.assertEqual((r.status, codes(r)), (adg.INVALID, {"AUTHORITY_LOCK_UNVERIFIED"}))
 
     def test_skill_authority_files_come_from_the_contract_inputs(self):
         ir = compile_ir(self.proj(all_skills=True))
@@ -175,8 +183,8 @@ class A01_IR(TmpCase):
 
 def expected_files(backend, skills):
     files = {backend.entrypoint, backend.manifest_path}
-    files |= {f"{backend.skill_root}/gpos-{s}/SKILL.md" for s in skills}
-    files |= {f"{backend.skill_root}/gpos-game-director/references/workflows/{w}.md" for w in REG["workflows"]}
+    files |= {f"{backend.skill_root}/{SK(s)}/SKILL.md" for s in skills}
+    files |= {f"{backend.skill_root}/{SK('game-director')}/references/workflows/{w}.md" for w in REG["workflows"]}
     return files
 
 
@@ -193,16 +201,15 @@ class B01_Rendering(TmpCase):
             # the operating contract every root must state, independent of the marker machinery
             positions = [root.index(label) for _, label in ir.authority_order]
             self.assertEqual(positions, sorted(positions))
-            for required in (ir.validator["readiness"], ir.validator["validate"], content.REASONING_IS_NOT_VALIDATION,
-                             content.DIRECTOR_NOT_REVIEWER, content.NO_HUMAN_SYNTHESIS, "`HUMAN_DECISION_REQUIRED`",
-                             "Human Decision", "Project Locked Authority", content.DO_NOT_EDIT):
+            for required in [ir.validator["readiness"], ir.validator["validate"], "`HUMAN_DECISION_REQUIRED`",
+                             "Human Decision", "Project Locked Authority"] + [r["statement"] for r in REG["agent_operating_contract"]["rules"]]:
                 self.assertIn(required, root, required)
             for d in ir.project_authority:
                 if d.present:
                     self.assertIn(f"`{d.path}`", root)
-            anim = b1.by_path()[f"{backend.skill_root}/gpos-character-animation/SKILL.md"].text
+            anim = b1.by_path()[f"{backend.skill_root}/{SK('character-animation')}/SKILL.md"].text
             self.assertIn("Root motion vs in-place policy: in-place locomotion; root motion only for authored traversal", anim)
-            self.assertIn("Style › Animation style statement", anim.split("Human decisions required")[1].split("Undecided")[0])
+            self.assertIn("Style › Animation style statement", anim.split("`HUMAN_DECISION_REQUIRED`:\n")[1].split("`UNDECIDED`:")[0])
             self.assertLessEqual(len(root), content.ROOT_MAX_CHARS)
             self.assertLessEqual(root.count("\n"), content.ROOT_MAX_LINES)
             for f in b1.files:
@@ -210,9 +217,9 @@ class B01_Rendering(TmpCase):
                     self.assertNotIn(g, f.text, f.path)
                 self.assertFalse(f.path.startswith("/") or ".." in f.path.split("/"), f.path)
             for s in ir.skills:
-                text = b1.by_path()[f"{backend.skill_root}/gpos-{s.name}/SKILL.md"].text
+                text = b1.by_path()[f"{backend.skill_root}/{s.agent_id}/SKILL.md"].text
                 m = re.match(r"^---\nname: (.*)\ndescription: (.*)\n---\n", text)
-                self.assertEqual(m.group(1), f"gpos-{s.name}")
+                self.assertEqual(m.group(1), s.agent_id)
                 self.assertTrue(re.match(r"^[a-z0-9]+(-[a-z0-9]+)*$", m.group(1)) and len(m.group(1)) <= 64)
                 self.assertLessEqual(len(json.loads(m.group(2))), 1024)
                 self.assertIn(f"Maturity: `{s.maturity}`", text)
@@ -223,16 +230,17 @@ class B01_Rendering(TmpCase):
         self.check_backend(CLAUDE)
         b = render_bundle(compile_ir(project(self.tmp / "c")), CLAUDE)
         self.assertIn("CLAUDE.md", b.by_path())
-        self.assertIn("`/gpos-game-director`", b.by_path()["CLAUDE.md"].text)
+        self.assertIn(f"`/{SK('game-director')}`", b.by_path()["CLAUDE.md"].text)
         self.assertFalse(any(p.startswith(".agents/") or p == "AGENTS.md" for p in b.by_path()))
 
     def test_codex(self):
         self.check_backend(CODEX)
         b = render_bundle(compile_ir(project(self.tmp / "x")), CODEX)
-        self.assertIn("`$gpos-game-director`", b.by_path()["AGENTS.md"].text)
+        self.assertIn(f"`${SK('game-director')}`", b.by_path()["AGENTS.md"].text)
         agents_files = [p for p in b.by_path() if p.endswith("AGENTS.md")]
         self.assertEqual(agents_files, ["AGENTS.md"])  # only the root: nested AGENTS.md files stay human-owned scopes
-        self.assertIn("closer to the working directory may add local conventions", b.by_path()["AGENTS.md"].text)
+        self.assertIn(RULE("UNMANAGED_INSTRUCTION_LAYERS"), b.by_path()["AGENTS.md"].text)
+        self.assertNotIn("cannot relax", b.by_path()["AGENTS.md"].text)
         self.assertFalse(any(p.startswith(".claude/") or p == "CLAUDE.md" for p in b.by_path()))
 
     def test_all_13_skills_render_within_budget(self):
@@ -245,8 +253,8 @@ class B01_Rendering(TmpCase):
             self.assertLess(max(sizes.values()), content.SKILL_MAX_CHARS)
 
     def test_game_director_contract(self):
-        text = render_bundle(compile_ir(self.proj()), CLAUDE).by_path()[".claude/skills/gpos-game-director/SKILL.md"].text
-        self.assertIn(content.DIRECTOR_NOT_REVIEWER, text)
+        text = render_bundle(compile_ir(self.proj()), CLAUDE).by_path()[f".claude/skills/{SK('game-director')}/SKILL.md"].text
+        self.assertIn(RULE("DIRECTOR_ROUTES_ONLY"), text)
         self.assertIn("## Routing reference (registry)", text)
         for w in REG["workflows"]:
             self.assertIn(f"references/workflows/{w}.md", text)
@@ -289,10 +297,12 @@ class D01_SemanticParity(TmpCase):
         root_x = render_bundle(ir, CODEX).by_path()["AGENTS.md"].text
         self.assertNotEqual(root_c, root_x)
         backend_src = (ROOT / "gpos" / "adapters" / "backends.py").read_text()
-        for phrase in (content.NO_HUMAN_SYNTHESIS, content.DIRECTOR_NOT_REVIEWER, content.REASONING_IS_NOT_VALIDATION,
-                       content.LOCKED_RULE, content.TESTS_NOT_DONE, content.PLACEHOLDER_RULE):
-            self.assertNotIn(phrase, backend_src)  # backends carry format only
-            for root in (root_c, root_x):          # ...and both renderings carry the same rules
+        content_src = (ROOT / "gpos" / "adapters" / "content.py").read_text()
+        for rule in REG["agent_operating_contract"]["rules"]:
+            phrase = rule["statement"]
+            self.assertNotIn(phrase[:60], backend_src)  # backends carry format only
+            self.assertNotIn(phrase[:60], content_src)  # the renderer authors no rule: statements come from the registry
+            for root in (root_c, root_x):              # ...and both renderings carry the same rules
                 self.assertIn(content.normalize(phrase), content.normalize(root))
         for token in ("HUMAN_REVIEW_REQUIRED", "LOCKED", "never_cross_reviewer", "cross_review_eligibility"):
             self.assertNotIn(token, backend_src)
@@ -323,7 +333,7 @@ class E01_Drift(TmpCase):
 
     def test_manual_edit(self):
         p = self.synced()
-        f = p / ".claude" / "skills" / "gpos-character-animation" / "SKILL.md"
+        f = p / ".claude" / "skills" / SK("character-animation") / "SKILL.md"
         f.write_text(f.read_text() + "\nextra\n")
         self.assertDrift(p, "MANAGED_FILE_MODIFIED")
 
@@ -331,13 +341,13 @@ class E01_Drift(TmpCase):
         p = self.synced()
         (p / "AGENTS.md").unlink()
         self.assertDrift(p, "MANAGED_FILE_MISSING", "codex")
-        (p / ".claude" / "skills" / "gpos-gameplay-design" / "notes.md").write_text("x")
+        (p / ".claude" / "skills" / SK("gameplay-design") / "notes.md").write_text("x")
         self.assertDrift(p, "UNEXPECTED_MANAGED_FILE", "claude-code")
 
     def test_source_change(self):
         p = self.synced()
         a = p / ".game" / "ANIMATION.md"
-        a.write_text(a.read_text().replace("in-place locomotion", "root motion everywhere"))
+        a.write_text(a.read_text().replace("| Idle | `UNDECIDED` |", "| Idle | breathing idle, weight shift every 4 s |"))
         r = self.assertDrift(p, "SOURCE_CHANGED")
         self.assertIn("project:.game/ANIMATION.md", {d.path for d in r.diagnostics})
         self.assertEqual(tree(p / ".claude"), tree(p / ".claude"))  # check never regenerates
@@ -378,12 +388,17 @@ class E01_Drift(TmpCase):
 
     def test_generator_change_is_stale(self):
         p = self.synced()
-        original = content.DO_NOT_EDIT
+        original = content.root_blocks
+
+        def changed(ir, fmt, mpath):  # the renderer's own wording changes; sources do not
+            blocks = original(ir, fmt, mpath)
+            blocks[1].markdown += " (renderer wording changed)"
+            return blocks
         try:
-            content.DO_NOT_EDIT = "Generated file (changed generator) — do not edit as authority."
+            content.root_blocks = changed
             self.assertDrift(p, "GENERATED_STALE")
         finally:
-            content.DO_NOT_EDIT = original
+            content.root_blocks = original
 
 
 class F01_Sync(TmpCase):
@@ -414,7 +429,7 @@ class F01_Sync(TmpCase):
 
     def test_unowned_file_in_managed_area_blocks(self):
         p = self.proj()
-        f = p / ".claude" / "skills" / "gpos-gameplay-design" / "SKILL.md"
+        f = p / ".claude" / "skills" / SK("gameplay-design") / "SKILL.md"
         f.parent.mkdir(parents=True)
         f.write_text("hand written")
         before = tree(p)
@@ -439,8 +454,8 @@ class F01_Sync(TmpCase):
         r = pipeline.sync(p)
         self.assertEqual(r.status, adg.OK)
         removed = {d.path for d in r.diagnostics if d.code == "FILE_REMOVED"}
-        self.assertEqual(removed, {".claude/skills/gpos-camera-composition/SKILL.md", ".agents/skills/gpos-camera-composition/SKILL.md"})
-        self.assertFalse((p / ".claude" / "skills" / "gpos-camera-composition").exists())
+        self.assertEqual(removed, {f".claude/skills/{SK('camera-composition')}/SKILL.md", f".agents/skills/{SK('camera-composition')}/SKILL.md"})
+        self.assertFalse((p / ".claude" / "skills" / SK("camera-composition")).exists())
         self.assertTrue((p / ".claude" / "skills").is_dir())
         after_outside = {k: v for k, v in tree(p).items() if not is_managed(CLAUDE, k) and not is_managed(CODEX, k)}
         self.assertEqual(after_outside, outside)  # nothing outside the managed areas changed
@@ -449,7 +464,7 @@ class F01_Sync(TmpCase):
     def test_edited_stale_file_is_not_deleted(self):
         p = self.proj()
         pipeline.sync(p)
-        f = p / ".claude" / "skills" / "gpos-camera-composition" / "SKILL.md"
+        f = p / ".claude" / "skills" / SK("camera-composition") / "SKILL.md"
         f.write_text(f.read_text() + "team note\n")
         edit_config(p, lambda c: c["extensions"]["gpos-adapters"]["skills"].remove("camera-composition"))
         r = pipeline.sync(p)
@@ -474,7 +489,7 @@ class F01_Sync(TmpCase):
         p = self.proj()
         pipeline.sync(p)
         a = p / ".game" / "ANIMATION.md"
-        a.write_text(a.read_text().replace("in-place locomotion", "in-place locomotion only"))
+        a.write_text(a.read_text().replace("| Idle | `UNDECIDED` |", "| Idle | breathing idle |"))
         _, bundle = pipeline.prepare(p)[0], render_bundle(compile_ir(p), CLAUDE)
         half = [f for f in bundle.files if f.role == "skill"][:3]  # simulate a crash after three writes
         for f in half:
@@ -741,17 +756,350 @@ class K01_Cli(TmpCase):
         self.assertLess(time.perf_counter() - t0, 30)
 
 
+# ---------------------------------------------------------------- M  LOCK authority binding (hardening 1)
+
+def set_decision(p, did, fn=None, **fields):
+    path = p / ".game" / "gpos" / "decisions" / f"{did}.json"
+    d = json.loads(path.read_text()) if path.exists() else json.loads((p / ".game" / "gpos" / "decisions" / "D-0101.json").read_text())
+    d.update(fields, decision_id=did)
+    if fn:
+        fn(d)
+    path.write_text(json.dumps(d, indent=2, sort_keys=True) + "\n")
+
+
+def edit_doc(p, name, old, new):
+    f = p / ".game" / name
+    text = f.read_text()
+    assert old in text, old
+    f.write_text(text.replace(old, new, 1))
+
+
+ROOT_MOTION = "| Root motion vs in-place policy | in-place locomotion; root motion only for authored traversal | `LOCKED` · D-0101 |"
+
+
+class M01_LockBinding(TmpCase):
+    def assertLockRejected(self, p, fragment=None):
+        r = pipeline.render(p)
+        self.assertEqual((r.status, codes(r)), (adg.INVALID, {"AUTHORITY_LOCK_UNVERIFIED"}), [d.message for d in r.diagnostics])
+        if fragment:
+            self.assertIn(fragment, r.diagnostics[0].message)
+        self.assertEqual(pipeline.sync(p).status, adg.INVALID)
+        self.assertFalse((p / "CLAUDE.md").exists() or (p / "AGENTS.md").exists())
+
+    def test_correct_bound_lock_passes(self):
+        p = self.proj()
+        ir = compile_ir(p)
+        row = next(r for d in ir.project_authority if d.file == "ANIMATION.md" for r in d.rows if r.status == "LOCKED")
+        self.assertTrue(row.lock_verified)
+        self.assertEqual(pipeline.render(p).status, adg.OK)
+
+    def test_unrelated_active_decision_cannot_lock(self):
+        p = self.proj()
+        edit_doc(p, "ANIMATION.md", "`LOCKED` · D-0101 |", "`LOCKED` · D-0099 |")  # D-0099: the ACTIVE lifecycle decision
+        self.assertLockRejected(p, "not a locking kind")
+
+    def test_other_kind_with_a_matching_binding_cannot_lock(self):
+        p = self.proj()
+        set_decision(p, "D-0102", kind="CREATIVE_DIRECTION")  # same structured binding, wrong kind
+        edit_doc(p, "ANIMATION.md", "`LOCKED` · D-0101 |", "`LOCKED` · D-0102 |")
+        self.assertLockRejected(p, "not a locking kind")
+
+    def test_lock_for_another_document_cannot_lock(self):
+        p = self.proj()
+        edit_doc(p, "PROJECT.md", "| Engine and version | `HUMAN_DECISION_REQUIRED` | `PROPOSED` |",
+                 "| Engine and version | in-place locomotion; root motion only for authored traversal | `LOCKED` · D-0101 |")
+        self.assertLockRejected(p, "does not lock this row")
+
+    def test_lock_for_another_row_cannot_lock(self):
+        p = self.proj()
+        edit_doc(p, "ANIMATION.md", "| Idle | `UNDECIDED` | `PROPOSED` |", "| Idle | breathing idle | `LOCKED` · D-0101 |")
+        self.assertLockRejected(p, "does not lock this row")
+
+    def test_changed_locked_value_with_old_decision_fails(self):
+        p = self.proj()
+        edit_doc(p, "ANIMATION.md", ROOT_MOTION, ROOT_MOTION.replace("in-place locomotion; root motion only for authored traversal",
+                                                                    "always root motion"))
+        self.assertLockRejected(p, "value differs")
+
+    def test_decision_must_be_authorized_active_and_about_this_project(self):
+        for i, fn in enumerate((lambda d: d["decided_by"].__setitem__("id", "visitor"),
+                                lambda d: d.update(status="SUPERSEDED", superseded_by="D-0999"),
+                                lambda d: d["subject"].__setitem__("ref", "another-project"),
+                                lambda d: d.__setitem__("value", {"locks": "everything"}),
+                                lambda d: d.__setitem__("value", {"locks": [{"authority_path": ".game/ANIMATION.md"}]}))):
+            p = project(self.tmp / str(i))
+            set_decision(p, "D-0101", fn)
+            r = pipeline.render(p)
+            if r.status != adg.INVALID:  # the validator may reject some records first; either way nothing is generated
+                self.fail(f"case {i}: {r.status}")
+            self.assertTrue(codes(r) & {"AUTHORITY_LOCK_UNVERIFIED", "PROJECT_INVALID"}, i)
+
+    def test_fake_document_lock_fails_and_valid_document_lock_passes(self):
+        p = self.proj()
+        edit_doc(p, "ANIMATION.md", "Document authority status: `PROPOSED`", "Document authority status: `LOCKED`")
+        edit_doc(p, "ANIMATION.md", "Locked by decision: `UNDECIDED`", "Locked by decision: `D-0101`")
+        self.assertLockRejected(p, "does not lock this document")
+        # a document lock bound to the canonical hash of the current rows passes
+        doc = next(d for d in pipeline.authority(p).data["documents"] if d["authority_path"] == ".game/ANIMATION.md")
+        set_decision(p, "D-0103", lambda d: d.__setitem__("value", {"locks": [doc["document_binding"]]}))
+        edit_doc(p, "ANIMATION.md", "Locked by decision: `D-0101`", "Locked by decision: `D-0103`")
+        self.assertEqual(pipeline.render(p).status, adg.OK)
+        anim = compile_ir(p)
+        self.assertEqual(next(d for d in anim.project_authority if d.file == "ANIMATION.md").locked_by, "D-0103")
+        # ...and any later row change breaks the document lock
+        edit_doc(p, "ANIMATION.md", "| Idle | `UNDECIDED` | `PROPOSED` |", "| Idle | breathing idle | `PROPOSED` |")
+        self.assertLockRejected(p, "does not lock this document")
+
+    def test_lock_binding_is_a_registry_fact(self):
+        binding = REG["project_lock_binding"]
+        self.assertEqual(binding["decision_kinds"], ["LOCK"])
+        self.assertIn("LOCK", REG["decision_kinds"])
+        self.assertEqual(set(binding["row_fields"]) & set(binding["document_fields"]), {"authority_path"})
+
+
+class M02_StrictAuthorityDocuments(TmpCase):
+    CASES = [
+        ("row with two cells", ("| Idle | `UNDECIDED` | `PROPOSED` |", "| Idle | `UNDECIDED` |")),
+        ("bad status", ("| Idle | `UNDECIDED` | `PROPOSED` |", "| Idle | `UNDECIDED` | `FINAL` |")),
+        ("LOCKED without reference", ("| Idle | `UNDECIDED` | `PROPOSED` |", "| Idle | breathing idle | `LOCKED` |")),
+        ("malformed reference", ("| Idle | `UNDECIDED` | `PROPOSED` |", "| Idle | breathing idle | `LOCKED` · 0101 |")),
+        ("empty item", ("| Idle | `UNDECIDED` | `PROPOSED` |", "|  | `UNDECIDED` | `PROPOSED` |")),
+        ("duplicate row", ("| Idle | `UNDECIDED` | `PROPOSED` |", "| Idle | `UNDECIDED` | `PROPOSED` |\n| Idle | `UNDECIDED` | `PROPOSED` |")),
+        ("near-miss header", ("| Item | Value | Status · decision ref |", "| Item | Value | Status |")),
+        ("stray authority row", ("## Locomotion set", "| Floating | `UNDECIDED` | `PROPOSED` |\n\n## Locomotion set")),
+        ("duplicate metadata", ("Locked by decision: `UNDECIDED`", "Locked by decision: `UNDECIDED`\n> Locked by decision: `UNDECIDED`")),
+        ("missing metadata", ("Document authority status: `PROPOSED`", "Document status: `PROPOSED`")),
+        ("PROPOSED document claiming a decision", ("Locked by decision: `UNDECIDED`", "Locked by decision: `D-0101`")),
+    ]
+
+    def test_malformed_authority_is_never_silently_omitted(self):
+        for i, (name, (old, new)) in enumerate(self.CASES):
+            p = project(self.tmp / str(i))
+            edit_doc(p, "ANIMATION.md", old, new)
+            r = pipeline.render(p)
+            self.assertEqual((r.status, codes(r)), (adg.INVALID, {"AUTHORITY_DOCUMENT_INVALID"}), name)
+            self.assertIn(".game/ANIMATION.md", r.diagnostics[0].message, name)
+
+    def test_near_miss_table_with_informal_rows_is_not_skipped(self):
+        p = self.proj()
+        edit_doc(p, "ANIMATION.md", "## Style", "## Traversal\n\n| Item | Value | Status |\n|---|---|---|\n"
+                 "| Ledge grab | always one-handed | locked by D-0101 |\n\n## Style")
+        r = pipeline.render(p)
+        self.assertEqual((r.status, codes(r)), (adg.INVALID, {"AUTHORITY_DOCUMENT_INVALID"}))
+
+    def test_placeholders_and_free_prose_survive(self):
+        p = self.proj()
+        edit_doc(p, "ANIMATION.md", "## Style", "Some free prose the adapter does not compile.\n\n| Note | Anything |\n|---|---|\n| a | b |\n\n## Style")
+        ir = compile_ir(p)
+        anim = next(d for d in ir.project_authority if d.file == "ANIMATION.md")
+        self.assertIn(("HUMAN_DECISION_REQUIRED",), [r.placeholders for r in anim.rows])
+        self.assertEqual(pipeline.render(p).status, adg.OK)
+
+
+# ---------------------------------------------------------------- N  unmanaged instruction layers (hardening 2)
+
+class N01_InstructionLayers(TmpCase):
+    CASES = [
+        ("codex", "src/AGENTS.md"), ("codex", "src/AGENTS.override.md"), ("codex", "AGENTS.override.md"),
+        ("claude-code", ".claude/CLAUDE.md"), ("claude-code", "CLAUDE.local.md"), ("claude-code", "src/CLAUDE.md"),
+        ("claude-code", ".claude/rules/testing.md"), ("claude-code", "AGENTS.md"),
+    ]
+
+    def test_unmanaged_layers_block_sync_and_stay_untouched(self):
+        for i, (agent, rel) in enumerate(self.CASES):
+            p = project(self.tmp / str(i))
+            f = p / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("# human instructions\nDo things our way.\n")
+            before = tree(p)
+            r = pipeline.sync(p, agent)
+            self.assertEqual(r.status, adg.CONFLICT, (agent, rel))
+            self.assertIn(("INSTRUCTION_LAYER_CONFLICT", rel), {(d.code, d.path) for d in r.diagnostics}, (agent, rel))
+            self.assertEqual(tree(p), before, (agent, rel))
+
+    def test_check_reports_a_layer_added_after_sync(self):
+        p = self.proj()
+        self.assertEqual(pipeline.sync(p).status, adg.OK)
+        (p / "src").mkdir()
+        (p / "src" / "AGENTS.md").write_text("override\n")
+        r = pipeline.check(p)
+        self.assertEqual(r.status, adg.CONFLICT)
+        self.assertEqual({(d.agent, d.path) for d in r.diagnostics if d.code == "INSTRUCTION_LAYER_CONFLICT"},
+                         {("codex", "src/AGENTS.md"), ("claude-code", "src/AGENTS.md")})
+        self.assertEqual((p / "src" / "AGENTS.md").read_text(), "override\n")
+
+    def test_gpos_owned_files_do_not_conflict(self):
+        p = self.proj()
+        self.assertEqual(pipeline.sync(p, "codex").status, adg.OK)   # GPOS-owned AGENTS.md
+        self.assertEqual(pipeline.sync(p, "claude-code").status, adg.OK)  # Claude may read AGENTS.md: owned, so fine
+        self.assertEqual(pipeline.check(p).status, adg.OK)
+
+    def test_parent_layers_inside_the_repository(self):
+        repo = self.tmp / "repo"
+        (repo / ".git").mkdir(parents=True)
+        (repo / "AGENTS.md").write_text("monorepo rules\n")
+        p = project(repo / "games")
+        r = pipeline.sync(p, "codex")
+        self.assertIn(("INSTRUCTION_LAYER_CONFLICT", "../../AGENTS.md"), {(d.code, d.path) for d in r.diagnostics})
+        self.assertEqual((repo / "AGENTS.md").read_text(), "monorepo rules\n")
+
+    def test_generated_text_no_longer_claims_layers_cannot_relax_gpos(self):
+        for backend in (CLAUDE, CODEX):
+            root = render_bundle(compile_ir(self.proj() if backend is CLAUDE else project(self.tmp / "x")), backend).by_path()[backend.entrypoint].text
+            self.assertNotIn("cannot relax", root)
+            self.assertIn(RULE("UNMANAGED_INSTRUCTION_LAYERS"), root)
+            for name in backend.instruction_layer_names:
+                self.assertIn(f"`{name}`", root)
+
+
+# ---------------------------------------------------------------- O  project-scoped skill identity (hardening 3)
+
+class O01_SkillIdentity(TmpCase):
+    def test_deterministic_project_scoped_names(self):
+        ir1, ir2 = compile_ir(self.proj()), compile_ir(project(self.tmp / "again"))
+        self.assertEqual([s.agent_id for s in ir1.skills], [s.agent_id for s in ir2.skills])
+        for s in ir1.skills:
+            self.assertEqual(s.agent_id, f"gpos-{NS}-{s.name}")
+        self.assertTrue(NS.startswith("synthetic-adapte-"))
+        claude, codex = render_bundle(ir1, CLAUDE), render_bundle(ir1, CODEX)
+        self.assertEqual(claude.manifest.data["semantics"]["skill_ids"], codex.manifest.data["semantics"]["skill_ids"])
+        self.assertEqual(claude.manifest.data["semantics"]["skill_ids"], {s.name: s.agent_id for s in ir1.skills})
+        self.assertEqual(sorted(claude.manifest.data["semantics"]["skills"]), sorted(s.name for s in ir1.skills))
+
+    def test_long_and_similar_project_ids(self):
+        base = "an-extremely-long-project-identifier-that-keeps-going-for-quite-a-while"
+        ids = [base + "-alpha", base + "-beta", base + "-alphb", "short", "a", "x" * 200]
+        namespaces = set()
+        for pid in ids:
+            ns = skill_namespace(pid)
+            namespaces.add(ns)
+            for skill in REG["skills"]:
+                name = f"gpos-{ns}-{skill}"
+                self.assertLessEqual(len(name), 64, name)
+                self.assertTrue(re.match(r"^[a-z0-9]+(-[a-z0-9]+)*$", name), name)
+            self.assertEqual(ns, skill_namespace(pid))
+        self.assertEqual(len(namespaces), len(ids))
+
+    def test_second_project_gets_its_own_namespace(self):
+        p = self.proj()
+        q = project(self.tmp / "second")
+        edit_config(q, lambda c: c["project"].__setitem__("id", "second-synthetic-game"))
+        for f in ("D-0099", "D-0100", "D-0101"):
+            set_decision(q, f, lambda d: d["subject"].__setitem__("ref", "second-synthetic-game"))
+        set_decision(q, "D-0100", lambda d: d["value"]["locks"][0].__setitem__("value", "second-synthetic-game"))
+        edit_doc(q, "PROJECT.md", "| synthetic-adapter-project |", "| second-synthetic-game |")
+        a, b = compile_ir(p), compile_ir(q)
+        self.assertNotEqual(a.project["skill_namespace"], b.project["skill_namespace"])
+        self.assertEqual([s.name for s in a.skills], [s.name for s in b.skills])
+        self.assertTrue(set(s.agent_id for s in a.skills).isdisjoint(s.agent_id for s in b.skills))
+        sa, sb = ir_semantics(a), ir_semantics(b)
+        self.assertEqual(sa["skills"], sb["skills"])  # same logical specialist semantics
+
+
+# ---------------------------------------------------------------- P  canonical semantic source (hardening 4)
+
+def framework_copy(dest, edit_registry=None, edit_files=None):
+    for part in ("core", "schemas", "skills", "workflows", "templates"):
+        shutil.copytree(ROOT / part, dest / part)
+    for f in ("VERSION", "tools/validator/README.md", "adapters/README.md"):
+        (dest / f).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / f, dest / f)
+    if edit_registry:
+        r = json.loads((dest / "core" / "registry.json").read_text())
+        edit_registry(r)
+        (dest / "core" / "registry.json").write_text(json.dumps(r, indent=2))
+    for rel, (old, new) in (edit_files or {}).items():
+        f = dest / rel
+        f.write_text(f.read_text().replace(old, new, 1))
+    return load_framework(dest)
+
+
+class P01_CanonicalSource(TmpCase):
+    def test_every_rule_quotes_its_frozen_source(self):
+        rules = REG["agent_operating_contract"]["rules"]
+        self.assertEqual(len({r["id"] for r in rules}), len(rules))
+        for r in rules:
+            self.assertTrue(r["sources"], r["id"])
+            for src_ in r["sources"]:
+                text = content.normalize((ROOT / src_["path"]).read_text())
+                self.assertIn(content.normalize(src_["quote"]), text, (r["id"], src_["path"]))
+        director = [r for r in rules if r.get("skill")]
+        self.assertEqual([r["skill"] for r in director], REG["never_cross_reviewer"])
+
+    def test_cited_sources_are_hashed_provenance(self):
+        ir = compile_ir(self.proj())
+        cited = {f"gpos:{s['path']}" for r in REG["agent_operating_contract"]["rules"] for s in r["sources"]}
+        self.assertTrue(cited <= {s["id"] for s in ir.sources})
+
+    def sync_with(self, fw_edit=None, files=None):
+        p = self.proj()
+        self.assertEqual(pipeline.sync(p).status, adg.OK)
+        fw = framework_copy(self.tmp / "fw", fw_edit, files)
+        return p, fw
+
+    def test_removing_the_human_authority_fact(self):
+        p, fw = self.sync_with(lambda r: r["agent_operating_contract"].__setitem__(
+            "rules", [x for x in r["agent_operating_contract"]["rules"] if x["id"] != "HUMAN_AUTHORITY_RESERVED"]))
+        before, after = compile_ir(p), compile_ir(p, fw)
+        self.assertNotEqual(canonical_json(before.to_dict()), canonical_json(after.to_dict()))           # IR changes
+        root = render_bundle(after, CLAUDE).by_path()["CLAUDE.md"].text
+        self.assertNotIn(RULE("HUMAN_AUTHORITY_RESERVED"), root)                                           # rendered meaning changes
+        self.assertIn("SOURCE_CHANGED", codes(pipeline.check(p, framework=fw)))                            # drift after sync
+
+    def test_removing_the_never_cross_reviewer_fact_fails_compilation(self):
+        p, fw = self.sync_with(lambda r: r.__setitem__("never_cross_reviewer", []))
+        r = pipeline.render(p, framework=fw)
+        self.assertEqual(r.status, adg.ERROR)
+        self.assertIn("SOURCE_INVALID", codes(r))
+
+    def test_altering_placeholder_semantics(self):
+        new = "`HUMAN_DECISION_REQUIRED`: agents may fill it after a week."
+
+        def alter(r):
+            for x in r["agent_operating_contract"]["rules"]:
+                if x["id"] == "MISSING_DECISIONS_STAY_MISSING":
+                    x["statement"] = new
+        p, fw = self.sync_with(alter)
+        root = render_bundle(compile_ir(p, fw), CODEX).by_path()["AGENTS.md"].text
+        self.assertIn(new, root)
+        self.assertIn("SOURCE_CHANGED", codes(pipeline.check(p, framework=fw)))
+
+    def test_changing_a_cited_core_document_is_drift(self):
+        p, fw = self.sync_with(files={"core/HUMAN-AUTHORITY.md": ("Promote any skill's maturity.", "Promote a skill's maturity.")})
+        r = pipeline.check(p, framework=fw)
+        self.assertIn(("SOURCE_CHANGED", "gpos:core/HUMAN-AUTHORITY.md"), {(d.code, d.path) for d in r.diagnostics})
+
+    def test_renderer_cannot_drop_or_redefine_a_rule(self):
+        ir = compile_ir(self.proj())
+        original = content._rules_for
+        try:
+            content._rules_for = lambda ir_, placement: original(ir_, placement).replace(RULE("INDEPENDENT_GATES"), "Tests passing is done.")
+            diags = validate_bundle(render_bundle(ir, CLAUDE))
+        finally:
+            content._rules_for = original
+        self.assertTrue(any(d.code == "RENDER_INVALID" and "routing" in d.message for d in diags), [d.message for d in diags])
+        placement = dict(content.ROOT_PLACEMENT)
+        try:
+            del content.ROOT_PLACEMENT["INDEPENDENT_GATES"]  # an unplaced rule still renders (Other GPOS rules)
+            b = render_bundle(ir, CLAUDE)
+            self.assertEqual(validate_bundle(b), [])
+            self.assertIn(RULE("INDEPENDENT_GATES"), b.by_path()["CLAUDE.md"].text.split("## Other GPOS rules")[1])
+        finally:
+            content.ROOT_PLACEMENT.clear()
+            content.ROOT_PLACEMENT.update(placement)
+
+
 # ---------------------------------------------------------------- L  snapshots (layout, manifest, concise root)
 
 class L01_Snapshots(TmpCase):
-    """Layout and root-file snapshots. Update deliberately with GPOS_UPDATE_SNAPSHOTS=1."""
+    """Layout and root-file snapshots. Update deliberately with GPOS_UPDATE_SNAPSHOTS=1. (Manifest hashes are not
+    snapshotted: they cover every source hash, and provenance is asserted by the drift tests instead.)"""
 
     def test_snapshots(self):
         ir = compile_ir(self.proj())
         for backend in (CLAUDE, CODEX):
             b = render_bundle(ir, backend)
-            snap = {"layout": sorted(b.by_path()), "semantic_hash": b.manifest.data["semantic_hash"],
-                    "root": b.by_path()[backend.entrypoint].text}
+            snap = {"layout": sorted(b.by_path()), "root": b.by_path()[backend.entrypoint].text}
             path = SNAPSHOTS / f"{backend.id}.json"
             if os.environ.get("GPOS_UPDATE_SNAPSHOTS") == "1":
                 SNAPSHOTS.mkdir(parents=True, exist_ok=True)
@@ -759,7 +1107,6 @@ class L01_Snapshots(TmpCase):
             expected = json.loads(path.read_text())
             self.assertEqual(snap["layout"], expected["layout"], backend.id)
             self.assertEqual(snap["root"], expected["root"], backend.id)
-            self.assertEqual(snap["semantic_hash"], expected["semantic_hash"], backend.id)
 
 
 if __name__ == "__main__":

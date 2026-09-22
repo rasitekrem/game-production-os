@@ -15,8 +15,16 @@ Builds on the frozen Phase-1 core (`v1.0.0-alpha.7`) and the frozen Phase-2A val
 - Manifests with provenance (source ids and sha256, per-file sources and semantic blocks) and a `semantics` parity block; deterministic, without timestamps.
 - Strict ownership: human-written entry files are never overwritten or adopted, the managed area is limited, paths are safe, sync is atomic and idempotent, and drift is detected without regenerating.
 - Context budgets and progressive disclosure: a concise root, one skill per specialist, workflow references loaded on demand. Monolithic renders are rejected.
-- Registry `adapter_ids` and `adapter_extension_key`; `adapters/README.md`, `adapters/claude-code.md`, `adapters/codex.md`.
+- Registry `adapter_ids`, `adapter_extension_key`, `agent_operating_contract` and `project_lock_binding`; `adapters/README.md`, `adapters/claude-code.md`, `adapters/codex.md`.
 - Tests (`tests/test_adapters.py`), a synthetic adapter project, layout and root snapshots, and an adapter mutation harness.
+
+### Hardened (Human Review of Phase 2B)
+
+- Project Locked Authority is bound to its Human Decision. A `LOCK` decision's structured `value.locks` must target the exact row and current value, or the document's canonical hash (registry `project_lock_binding`). An authorized decider, `ACTIVE` status and this project as subject are also required; otherwise generation fails closed (`AUTHORITY_LOCK_UNVERIFIED`). A read-only `authority` command prints the exact bindings.
+- Strict authority-document parsing: malformed, duplicate or near-miss authority rows and metadata fail (`AUTHORITY_DOCUMENT_INVALID`) instead of being skipped.
+- Unmanaged project instruction layers are detected and block sync and check (`INSTRUCTION_LAYER_CONFLICT`): Codex nested or override `AGENTS` files; Claude Code `.claude/CLAUDE.md`, `CLAUDE.local.md`, nested `CLAUDE.md`, `.claude/rules/` and unowned `AGENTS.md`. Generated text no longer claims such layers cannot relax GPOS.
+- Project-scoped generated skill ids, `gpos-<namespace>-<skill>`: deterministic, 64 characters at most. Manifests map them to the logical ids.
+- The rules generated instructions state come from registry `agent_operating_contract`: statements with verbatim-quoted frozen sources, whose documents are hashed as sources. `content.py` is a renderer and authors no rule.
 
 ### Changed
 

@@ -21,5 +21,15 @@
   "transcribed_by": {
     "id": "game-director",
     "kind": "AGENT"
+  },
+  "value": {
+    "locks": [
+      {
+        "authority_path": ".game/ANIMATION.md",
+        "item": "Root motion vs in-place policy",
+        "section": "Quality bar",
+        "value": "in-place locomotion; root motion only for authored traversal"
+      }
+    ]
   }
 }

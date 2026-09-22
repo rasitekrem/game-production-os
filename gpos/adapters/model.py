@@ -11,8 +11,17 @@ IR_VERSION = 1
 
 
 @dataclass(frozen=True)
+class RuleIR:
+    id: str                        # registry agent_operating_contract rule id
+    statement: str                 # the normative statement, rendered verbatim
+    skill: str                     # skill the rule is about (None when general)
+    sources: tuple                 # frozen documents it restates (paths)
+
+
+@dataclass(frozen=True)
 class SkillIR:
-    name: str                      # frozen GPOS skill id, e.g. character-animation
+    name: str                      # frozen GPOS skill id, e.g. character-animation (logical id)
+    agent_id: str                  # generated agent skill id, e.g. gpos-<namespace>-character-animation
     title: str                     # e.g. Character Animation
     description: str               # discovery text: domain intent, not keywords
     maturity: str                  # copied from the contract; adapters never change it
@@ -45,7 +54,7 @@ class AuthorityRowIR:
     value: str
     status: str                    # LOCKED or PROPOSED, as written by the project
     decision_ref: str              # None when absent
-    lock_verified: bool            # LOCKED with an ACTIVE decision record of that id
+    lock_verified: bool            # LOCKED and bound to this exact row and value by an authorized ACTIVE LOCK decision
     placeholders: tuple            # UNDECIDED / HUMAN_DECISION_REQUIRED / ... present in the value
 
 
@@ -54,8 +63,9 @@ class AuthorityDocIR:
     file: str                      # e.g. ANIMATION.md
     path: str                      # project-relative, e.g. .game/ANIMATION.md
     present: bool
-    status: str                    # document status, e.g. PROPOSED / LOCKED (None when absent)
-    locked_by: str
+    status: str                    # document status, e.g. PROPOSED / LOCKED (None when absent or not tabular)
+    locked_by: str                 # verified document-level locking decision (None unless LOCKED)
+    document_sha256: str           # canonical hash of the machine-readable rows (what a document lock binds)
     rows: tuple
     source_id: str                 # None when absent
 
@@ -64,7 +74,8 @@ class AuthorityDocIR:
 class IR:
     ir_version: int
     gpos_version: str
-    project: dict                  # id, name, lifecycle_stage, pinned gpos_version, enabled adapters
+    project: dict                  # id, name, lifecycle_stage, pinned gpos_version, enabled adapters, skill_namespace
+    rules: tuple                   # RuleIR from registry agent_operating_contract, registry order
     authority_order: tuple         # ((REGISTRY_ID, label), ...) highest first
     human_review: dict             # mandatory triggers, project triggers, never_cross_reviewer, placeholders
     gates: tuple                   # ((GATE, owners, subjective), ...)
@@ -80,3 +91,6 @@ class IR:
 
     def skill(self, name):
         return next(s for s in self.skills if s.name == name)
+
+    def rule(self, rule_id):
+        return next(r for r in self.rules if r.id == rule_id)

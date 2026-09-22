@@ -31,7 +31,7 @@ GPOS sources + project authority
         │  compiler.py (explicit source selection, hashing)
         ▼
 Adapter IR (model.py) ── one agent-independent model
-        │  content.py (all GPOS meaning, built from the IR)
+        │  content.py (renderer: IR facts → neutral wording; authors no rule)
         ├───────────────────────┐
         ▼                       ▼
 claude-code backend      codex backend        (backends.py: FORMAT only)
@@ -40,27 +40,99 @@ CLAUDE.md                AGENTS.md
 ```
 
 - **Sources** (`sources.py`). Only these are read, each with a kind and a sha256:
-  - `NORMATIVE`: `core/registry.json`;
+  - `NORMATIVE`: `core/registry.json`, plus every frozen document its `agent_operating_contract` cites;
   - `SPECIALIST_SKILL`: `skills/*/SKILL.md`;
   - `WORKFLOW`: `workflows/*.md`;
   - `PROJECT_AUTHORITY`: the registry `project_authority_files` present in `.game/`, `.game/gpos/project-config.json` and decision records.
   - Manifests are `GENERATED_METADATA`, produced but never read as authority. Nothing is concatenated wholesale.
 - **IR** (`model.py`). Holds:
-  - GPOS version and project identity;
+  - GPOS version and project identity, including the project's skill namespace;
+  - the operating rules: registry `agent_operating_contract` statements, each citing the frozen documents it restates;
   - authority order;
   - Human Review boundaries (mandatory and project triggers, `never_cross_reviewer`, placeholders);
   - gates;
   - enabled specialist skills, each with every contract section, maturity, gates, cross-review eligibility and the project authority files its contract names as inputs;
   - workflows with their registry gate requirements;
-  - project authority documents, row by row (`LOCKED` / `PROPOSED`, decision reference, whether the lock is backed by an `ACTIVE` decision record, placeholders);
+  - project authority documents, row by row (`LOCKED` / `PROPOSED`, decision reference, placeholders), with each lock verified against its binding Human Decision;
   - the validator contract;
   - source hashes.
-- **Content** (`content.py`). Every generated statement of GPOS meaning is composed here from the IR, as blocks tagged with a semantic id.
-- **Backends** (`backends.py`). Supply only file locations, front matter, invocation syntax, discovery wording and a documented compatibility declaration. A backend cannot add, drop or reword a rule; a test checks that no rule text appears in backend code.
+- **Content** (`content.py`). A renderer: it lays IR facts out as blocks tagged with semantic ids and adds only neutral connective wording. No normative fact originates there. Every rule sentence is a registry statement rendered verbatim, and a rule the renderer does not place still renders (under "Other GPOS rules"). Tests check that no rule text appears in renderer or backend code.
+- **Backends** (`backends.py`). Supply only file locations, front matter, invocation syntax, discovery wording, the instruction files their runtime can also load, and a documented compatibility declaration. A backend cannot add, drop or reword a rule.
+
+### Canonical rules
+
+The rules generated instructions state (authority order, Project Locked Authority, missing decisions, reserved human authority, mandatory Human Review, role routing, independent gates, game-director's routing-only role, machine validation, generated files, unmanaged instruction layers) live in registry `agent_operating_contract`. Each rule has:
+- an `id`;
+- a normative `statement`, rendered verbatim;
+- `sources`: the frozen documents it restates, each with a verbatim quote that a test checks exists.
+
+Each cited document is a hashed source. A change to the rule or to a document it restates is therefore reported as `SOURCE_CHANGED` until regeneration. The game-director rule names its skill and must agree with registry `never_cross_reviewer`, or compilation fails.
 
 ### Semantic equivalence, not textual equality
 
 Claude Code and Codex outputs differ in text (file names, `/skill` vs `$skill`, discovery notes). They must not differ in meaning. Each manifest carries a `semantics` block derived from the IR only (authority order, project authority, enabled skills and their maturity, ownership, review eligibility, Human Review boundaries, validator contract, workflows). Bundle validation checks that each rendered file really contains its semantic blocks' required markers, in order: authority levels, Human Review triggers, validator commands, locked project rows, open decisions and every contract section. For one IR, the two manifests' `semantics` are identical (tested). Prose is never parsed back into rules.
+
+## Project Locked Authority and LOCK bindings
+
+A `LOCKED` row in a `.game/` authority table is rendered as Project Locked Authority only when a Human Decision provably locked exactly that row and value. The compiler checks every `LOCKED` row, and every document whose status is `LOCKED`, and fails closed (`AUTHORITY_LOCK_UNVERIFIED`, nothing is generated) unless the referenced decision:
+
+- exists and is `ACTIVE`;
+- has a locking kind (registry `project_lock_binding.decision_kinds`: `LOCK`);
+- was decided by a human decision authority allowed to make that kind of decision;
+- has this project as its subject;
+- carries a structured binding in `value.locks` that targets this exact row and its current value, or, for a document lock, this document's current canonical hash.
+
+```json
+"kind": "LOCK",
+"value": {"locks": [
+  {"authority_path": ".game/ANIMATION.md", "section": "Quality bar",
+   "item": "Root motion vs in-place policy", "value": "in-place locomotion; root motion only for authored traversal"},
+  {"authority_path": ".game/PROJECT.md", "document_sha256": "<canonical hash of the document's authority rows>"}
+]}
+```
+
+The human's own words (`decision.verbatim`) remain the substance; the structured binding is what tooling enforces, never by parsing prose.
+- **Changed value.** A changed `LOCKED` value with the old decision reference fails; it needs a new Human Decision.
+- **Wrong decision.** An unrelated `ACTIVE` decision, a decision of another kind, or a `LOCK` for another row or document never verifies a lock.
+- **Helper.** `python3 -m gpos.adapters authority --project .` prints each row's exact binding and each document's canonical hash (read-only).
+
+The frozen Phase-2A validator does not check `LOCK` payloads; this binding is enforced by the adapter compiler.
+
+### Strict authority documents
+
+The machine-readable part of a `.game/` authority document is parsed strictly: its status and locking-decision metadata, and every table whose header is exactly `| Item | Value | Status · decision ref |`. Any of the following fails generation with `AUTHORITY_DOCUMENT_INVALID`; nothing is silently skipped:
+- a row that does not parse;
+- a duplicate row;
+- malformed status or reference syntax;
+- a near-miss authority header;
+- an authority-looking row outside an authority table;
+- duplicated or missing metadata;
+- a `PROPOSED` document claiming a locking decision.
+
+Free prose and other tables are not compiled. Placeholders (`UNDECIDED`, `HUMAN_DECISION_REQUIRED`, ...) are preserved as written.
+
+## Unmanaged instruction layers
+
+Unmanaged project instruction layers are unsupported in Phase 2B. Agent runtimes load more than the generated entry file and do not enforce GPOS precedence:
+
+- **Codex** reads every `AGENTS.md` and `AGENTS.override.md` from the git root down to the working directory. Deeper files come later and can override root instructions.
+- **Claude Code** instruction layers are additive, and more specific instructions may take precedence. `CLAUDE.local.md`, `CLAUDE.md` files in other directories (loaded as Claude works there), `.claude/CLAUDE.md` and `.claude/rules/*.md` all add persistent instructions. With a user-level setting, `AGENTS.md` loads too.
+
+A generated file therefore cannot promise that such a layer will not relax GPOS. Sync refuses and check reports every such project-local file that GPOS does not own (`INSTRUCTION_LAYER_CONFLICT`, exit 4). This covers:
+- the project tree (all directories except `.git`);
+- when the project lies in a git repository, the directories above it up to the repository root.
+
+Such a file is never edited or deleted. Move its legitimate content into project authority (`.game/`), or wait for a future explicit adoption or overlay mechanism. Generated `AGENTS.md` and `CLAUDE.md` files that GPOS owns (listed in a manifest) do not conflict. User-level and organization-level configuration (`~/.claude`, `~/.codex`, managed settings) remains a documented trust boundary and is never read.
+
+## Project-scoped skill ids
+
+Generated skills are named `gpos-<namespace>-<skill>`. The namespace is the first 16 characters of the project id plus the first 6 hex digits of the project id's sha256; for example, the fixture project uses `gpos-synthetic-adapte-<hash>-character-animation`.
+
+- **Deterministic.** Names are stable across regeneration and the same for Claude Code and Codex. There are no random or time-based parts.
+- **Valid.** Names stay within 64 characters and the Agent Skills syntax.
+- **Collision-resistant.** Long or similar project ids still produce different namespaces.
+- **Why.** A higher-scope Claude Code skill with the same name shadows a project skill, and Codex lists same-name skills side by side. Project-scoped names remove normal name collisions with user or global skills. Global configuration can still contain arbitrary instructions; that remains a trust boundary.
+- **Semantics.** Manifests map each logical GPOS skill id to its generated id (`semantics.skill_ids`). Semantic parity is on the logical ids.
 
 ## Progressive disclosure
 
@@ -68,7 +140,7 @@ Claude Code and Codex outputs differ in text (file names, `/skill` vs `$skill`, 
 |---|---|---|---|
 | Root (`CLAUDE.md` / `AGENTS.md`) | every session | authority order, project authority summary, routing rule, specialist index, Human Review boundaries, validator contract, generated-file rules | 8,000 characters, 200 lines |
 | Skill description (front matter) | every session (skill listing) | role and domain boundary of one specialist | 600 characters each, 8,000 total |
-| Skill body (`gpos-<skill>/SKILL.md`) | when the skill is used | project authority for that discipline, the full generic contract, gates and reviews, validator use | 20,000 characters, 500 lines |
+| Skill body (`gpos-<namespace>-<skill>/SKILL.md`) | when the skill is used | project authority for that discipline, the full generic contract, gates and reviews, validator use | 20,000 characters, 500 lines |
 | Workflow references (game-director only) | when routing into a workflow | one workflow contract | 12,000 characters each |
 
 Budgets are in characters and lines, so they do not depend on any tokenizer. They derive from the documented agent limits:
@@ -90,9 +162,9 @@ Skills are triggered by domain intent. Each description is the contract's ROLE s
     claude-code/manifest.json
     codex/manifest.json
   CLAUDE.md                     generated (Claude Code root)       } only when the adapter
-  .claude/skills/gpos-*/        generated (Claude Code skills)     } is enabled and synced
+  .claude/skills/gpos-<ns>-*/   generated (Claude Code skills)     } is enabled and synced
   AGENTS.md                     generated (Codex root)             }
-  .agents/skills/gpos-*/        generated (Codex skills)           }
+  .agents/skills/gpos-<ns>-*/   generated (Codex skills)           }
 ```
 
 Generated metadata lives in `.game/gpos-generated/`, not inside `.game/gpos/`. The frozen alpha.8 record-bundle convention treats any unexpected entry in `.game/gpos/` as an error, and adapters must not change validator semantics.
@@ -105,19 +177,21 @@ Enable adapters in the project config: `enabled_adapters: ["claude-code", "codex
 python3 -m gpos.adapters render --project PATH [--agent claude-code|codex|all] [--out <dir>] [--format text|json]
 python3 -m gpos.adapters sync   --project PATH [--agent claude-code|codex|all] [--repair] [--format text|json]
 python3 -m gpos.adapters check  --project PATH [--agent claude-code|codex|all] [--format text|json]
+python3 -m gpos.adapters authority --project PATH [--format text|json]
 ```
 
 - **render** compiles, renders and validates in memory and lists the files and their hashes. With `--out` it writes each bundle to `<dir>/<agent>/`. `<dir>` must be a new or empty directory outside `.game`, `.claude` and `.agents`. It never changes the project.
 - **sync** updates only GPOS-managed files for the enabled adapters (`--agent all`) or one adapter. It is deterministic and idempotent: a second sync changes nothing, and check right after sync is clean.
-- **check** is read-only. It reports drift and is suitable for CI; it never regenerates.
+- **check** is read-only. It reports drift and instruction-layer conflicts and is suitable for CI; it never regenerates.
+- **authority** is read-only. It shows the parsed project authority and the exact LOCK bindings it needs.
 
 | Exit | Meaning |
 |---|---|
 | 0 | OK: rendered, synced, or check clean |
-| 1 | INVALID: the project is INVALID by the production validator, adapter settings are invalid, or a budget is exceeded |
+| 1 | INVALID: the project is INVALID by the production validator, an authority document is malformed, a lock is not bound to its Human Decision, adapter settings are invalid, or a budget is exceeded |
 | 2 | DRIFT: check found generated state out of date or edited |
 | 3 | ERROR: invocation or tool error, incompatible GPOS version, unknown adapter, internal error |
-| 4 | CONFLICT: sync refused because it would overwrite or delete a file GPOS does not own; nothing was written |
+| 4 | CONFLICT: sync refused because it would overwrite or delete a file GPOS does not own, or an unmanaged instruction layer exists; nothing was written. Check also reports instruction-layer conflicts with 4 |
 
 ## Validator precondition
 
@@ -153,13 +227,15 @@ A file is GPOS-owned only when the adapter's manifest lists it. The managed area
 | `UNEXPECTED_MANAGED_FILE` | a file appeared inside the managed area |
 | `GENERATED_STALE` | sources unchanged but the generator would now produce different files |
 | `PATH_ESCAPE` | the manifest names a path outside the managed area |
+| `INSTRUCTION_LAYER_CONFLICT` | an unmanaged project instruction file exists (class CONFLICT) |
 
 ## Manifest and provenance
 
 `.game/gpos-generated/<adapter>/manifest.json` records:
 - adapter id, format and target agent, with its compatibility declaration;
 - generator versions, GPOS version and project id;
-- the managed area and the enabled skills;
+- the managed area and the enabled skills, with the logical-to-generated skill id map;
+- the operating rules (id, statement hash, cited sources);
 - every source (`kind`, logical id such as `gpos:skills/character-animation/SKILL.md` or `project:.game/ANIMATION.md`, and sha256);
 - the IR hash and the `semantics` parity block;
 - for every generated file: path, sha256, bytes, role, skill, the source ids it derives from and its semantic blocks;
@@ -170,7 +246,7 @@ There is no timestamp, so identical inputs give byte-identical manifests; git hi
 ## Adding an adapter
 
 1. Verify the agent's current first-party documentation for its instruction file, skill format and discovery, and record the target in a compatibility declaration.
-2. Add a `Backend` subclass in `gpos/adapters/backends.py` with its entry file, skill root, front matter, invocation syntax and discovery and scope notes. Add no rule text.
+2. Add a `Backend` subclass in `gpos/adapters/backends.py` with its entry file, skill root, front matter, invocation syntax, discovery note and the instruction files its runtime can also load. Add no rule text.
 3. Register the id in `core/registry.json` `adapter_ids`.
 4. Extend `tests/test_adapters.py` (rendering, parity, sync) and `tests/mutate_adapters.py`.
 

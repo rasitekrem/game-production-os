@@ -24,6 +24,8 @@ CODES = {
     "ADAPTER_CONFIG_INVALID": (INVALID, "adapter settings in project config are invalid"),
     "ADAPTER_NOT_ENABLED": (INVALID, "the project config does not enable this adapter (enabled_adapters)"),
     "CONTEXT_BUDGET_EXCEEDED": (INVALID, "a generated file exceeds its context budget; nothing is truncated"),
+    "AUTHORITY_DOCUMENT_INVALID": (INVALID, "the machine-readable part of a .game/ authority document is malformed"),
+    "AUTHORITY_LOCK_UNVERIFIED": (INVALID, "a LOCKED row or document is not bound to an authorized ACTIVE LOCK decision for its current value"),
     # tool (ERROR)
     "GPOS_VERSION_INCOMPATIBLE": (ERROR, "the project pins a GPOS version this toolchain does not implement"),
     "ADAPTER_UNSUPPORTED": (ERROR, "unknown adapter id"),
@@ -47,8 +49,8 @@ CODES = {
     "MODIFIED_MANAGED_FILE_CONFLICT": (CONFLICT, "a generated file was edited; sync will not overwrite it without --repair"),
     "UNSAFE_PATH": (CONFLICT, "a target path is a symlink or resolves outside the project"),
     "MANIFEST_UNTRUSTED": (CONFLICT, "the existing manifest is malformed or edited; sync cannot establish ownership"),
+    "INSTRUCTION_LAYER_CONFLICT": (CONFLICT, "a project instruction file GPOS does not own can add to or override the generated instructions"),
     # informational
-    "LOCK_REFERENCE_UNRESOLVED": ("WARNING", "a LOCKED project row has no ACTIVE decision record; rendered as unverified"),
     "FILE_WRITTEN": ("INFO", "a managed file was created or updated"),
     "FILE_REMOVED": ("INFO", "a stale managed file was removed"),
 }

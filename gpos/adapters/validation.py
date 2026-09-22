@@ -10,7 +10,6 @@ import re
 
 from . import content
 from . import diagnostics as dg
-from .compiler import SKILL_PREFIX
 from .manifest import ir_semantics
 from .paths import is_managed
 from .render import MANIFEST, REFERENCE, ROOT, SKILL
@@ -49,10 +48,11 @@ def validate_bundle(bundle):
         out.append(dg.make(code, message, backend.id, path, details))
 
     files = bundle.by_path()
+    notice = ir.rule("GENERATED_FILES_NOT_AUTHORITY").statement
     expected = {backend.entrypoint, backend.manifest_path}
-    expected |= {f"{backend.skill_root}/{SKILL_PREFIX}{s.name}/SKILL.md" for s in ir.skills}
+    expected |= {f"{backend.skill_root}/{s.agent_id}/SKILL.md" for s in ir.skills}
     if any(s.name == "game-director" for s in ir.skills):
-        expected |= {f"{backend.skill_root}/{SKILL_PREFIX}game-director/references/workflows/{w.name}.md" for w in ir.workflows}
+        expected |= {f"{backend.skill_root}/{ir.skill('game-director').agent_id}/references/workflows/{w.name}.md" for w in ir.workflows}
     if set(files) != expected:
         err("RENDER_INVALID", "rendered file set differs from the IR", missing=sorted(expected - set(files)),
             extra=sorted(set(files) - expected))
@@ -86,7 +86,7 @@ def validate_bundle(bundle):
                 err("CONTEXT_BUDGET_EXCEEDED", f"skill {skill.name} is {len(text)} characters / {lines} lines "
                     f"(budget {content.SKILL_MAX_CHARS} / {content.SKILL_MAX_LINES})", path, chars=len(text), lines=lines)
             name, description = _front_matter(text)
-            if name != f"{SKILL_PREFIX}{skill.name}" or not NAME_RE.match(name or "") or len(name) > 64 \
+            if name != skill.agent_id or not NAME_RE.match(name or "") or len(name) > 64 \
                     or path.split("/")[-2] != name:
                 err("RENDER_INVALID", f"skill name {name!r} is not a valid name matching its directory", path)
             if not description or len(description) > content.DESCRIPTION_MAX_CHARS:
@@ -102,11 +102,11 @@ def validate_bundle(bundle):
         elif f.role == REFERENCE:
             if len(text) > content.REFERENCE_MAX_CHARS:
                 err("CONTEXT_BUDGET_EXCEEDED", f"reference is {len(text)} characters (budget {content.REFERENCE_MAX_CHARS})", path)
-            markers = {"workflow": [content.DO_NOT_EDIT]}
+            markers = {"workflow": [notice]}
         else:
             markers = {}
         if f.role != MANIFEST:
-            if content.DO_NOT_EDIT not in text:
+            if notice not in text:
                 err("RENDER_INVALID", f"{path} lacks the generated-file notice", path)
             for semantic in f.semantics:
                 missing = _in_order(text, markers.get(semantic, []))

@@ -3,6 +3,7 @@
     python3 -m gpos.adapters render --project PATH [--agent claude-code|codex|all] [--out DIR] [--format text|json]
     python3 -m gpos.adapters sync   --project PATH [--agent claude-code|codex|all] [--repair] [--format text|json]
     python3 -m gpos.adapters check  --project PATH [--agent claude-code|codex|all] [--format text|json]
+    python3 -m gpos.adapters authority --project PATH [--format text|json]   (read-only LOCK binding helper)
 
 Exit codes: 0 OK / clean, 1 INVALID project or adapter settings, 2 DRIFT, 3 ERROR (invocation, tool,
 incompatible GPOS version, internal), 4 CONFLICT (sync refused; nothing written).
@@ -15,7 +16,7 @@ import sys
 from .. import __version__
 from . import diagnostics as dg
 from .backends import ADAPTER_LAYER_VERSION, BACKENDS
-from .pipeline import check, render, sync
+from .pipeline import authority, check, render, sync
 
 TOOL = "gpos-adapters"
 
@@ -36,10 +37,12 @@ def build_parser():
     sub = parser.add_subparsers(dest="command", parser_class=_Parser)
     for name, helptext in (("render", "compile and render without touching the project (optionally into --out)"),
                            ("sync", "update the project's GPOS-managed agent files"),
-                           ("check", "read-only drift detection")):
+                           ("check", "read-only drift detection"),
+                           ("authority", "read-only: show project authority rows and the exact LOCK bindings they need")):
         p = sub.add_parser(name, help=helptext, description=helptext)
         p.add_argument("--project", required=True, help="project root (the directory containing .game/)")
-        p.add_argument("--agent", default="all", choices=sorted(BACKENDS) + ["all"])
+        if name != "authority":
+            p.add_argument("--agent", default="all", choices=sorted(BACKENDS) + ["all"])
         p.add_argument("--format", choices=("text", "json"), default="text")
         if name == "render":
             p.add_argument("--out", help="new or empty directory to write the rendered bundles into")
@@ -60,6 +63,12 @@ def _text(result):
         lines.append(f"  {agent}: {count} files · semantic hash {info['semantic_hash'][:16]}")
         if isinstance(files, list):
             lines += [f"    {f['sha256'][:12]}  {f['path']}" for f in files]
+    for doc in (result.data or {}).get("documents", []):
+        lines.append(f"  {doc['authority_path']}: status {doc['status']}; document_sha256 {doc['document_binding']['document_sha256']}")
+        for r in doc["rows"]:
+            b = r["row_binding"]
+            lines.append(f"    {r['status']:<8} {b['section']} › {b['item']}: {b['value']}"
+                         + (f" ({r['decision_ref']})" if r["decision_ref"] else ""))
     for d in result.diagnostics:
         where = " ".join(x for x in (d.agent, d.path) if x)
         lines.append(f"  {d.cls:<8} {d.code}  {where}\n           {d.message}")
@@ -81,6 +90,8 @@ def main(argv=None, stdout=None):
             result = render(args.project, args.agent, args.out)
         elif args.command == "sync":
             result = sync(args.project, args.agent, args.repair)
+        elif args.command == "authority":
+            result = authority(args.project)
         else:
             result = check(args.project, args.agent)
     except UsageError as exc:
@@ -89,7 +100,7 @@ def main(argv=None, stdout=None):
         return _error(fmt, "INTERNAL_ERROR", f"{type(exc).__name__}: {exc}", stdout)
     if fmt == "json":
         print(_dump({"tool": TOOL, "version": __version__, "command": result.command, "project_id": result.project_id,
-                     "status": result.status, "exit_code": result.exit_code, "agents": result.agents,
+                     "status": result.status, "exit_code": result.exit_code, "agents": result.agents, "data": result.data,
                      "diagnostics": [d.to_dict() for d in result.diagnostics]}), file=stdout)
     else:
         print(_text(result), file=stdout)

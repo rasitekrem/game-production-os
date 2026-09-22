@@ -3,7 +3,6 @@
 import hashlib
 
 from . import content
-from .compiler import SKILL_PREFIX
 from .manifest import build_manifest
 from .model import IR
 
@@ -50,9 +49,9 @@ def render_bundle(ir: IR, backend):
                               registry + config_and_decisions + _authority_sources(ir) + [s.source_id for s in ir.skills],
                               [b.semantic for b in root_blocks]))
     for skill in ir.skills:
-        d = f"{backend.skill_root}/{SKILL_PREFIX}{skill.name}"
+        d = f"{backend.skill_root}/{skill.agent_id}"
         blocks = content.skill_blocks(ir, skill, fmt, mpath)
-        text = backend.skill_front_matter(f"{SKILL_PREFIX}{skill.name}", skill.description) + "\n" + content.markdown(blocks)
+        text = backend.skill_front_matter(skill.agent_id, skill.description) + "\n" + content.markdown(blocks)
         files.append(RenderedFile(f"{d}/SKILL.md", text, SKILL,
                                   registry + config_and_decisions + _authority_sources(ir, skill.authority_files)
                                   + [skill.source_id] + ([w.source_id for w in ir.workflows] if skill.name == "game-director" else []),

@@ -1365,5 +1365,184 @@
     "claude-code",
     "codex"
   ],
-  "adapter_extension_key": "gpos-adapters"
+  "adapter_extension_key": "gpos-adapters",
+  "agent_operating_contract": {
+    "$comment": "Machine projection of the frozen rules generated agent instructions must state (Phase 2B). Adapters render these statements verbatim from the IR; they author no rule of their own. Each rule cites the frozen documents it restates; tests check every quote appears verbatim in its source, and adapters hash every cited source so a change there is reported as drift.",
+    "rules": [
+      {
+        "id": "AUTHORITY_ORDER",
+        "statement": "A lower authority level never silently overrides a higher one; the agent recommendation is the lowest level.",
+        "sources": [
+          {
+            "path": "core/AUTHORITY-HIERARCHY.md",
+            "quote": "a lower level may not silently override a higher level"
+          }
+        ]
+      },
+      {
+        "id": "PROJECT_LOCKED_AUTHORITY",
+        "statement": "A `LOCKED` project authority row bound to an active Human Decision is Project Locked Authority and overrides generic GPOS defaults; `PROPOSED` rows are proposals, not decisions. Changing `LOCKED` content requires a new Human Decision.",
+        "sources": [
+          {
+            "path": "core/AUTHORITY-HIERARCHY.md",
+            "quote": "`PROPOSED` (level 7 until a human approves it) or `LOCKED` (level 2)"
+          },
+          {
+            "path": "core/AUTHORITY-HIERARCHY.md",
+            "quote": "Changing `LOCKED` content requires a Human Decision referenced in the change."
+          }
+        ]
+      },
+      {
+        "id": "MISSING_DECISIONS_STAY_MISSING",
+        "statement": "`HUMAN_DECISION_REQUIRED`: only a human decides — surface it, prepare options, never fill it. `UNDECIDED`: you may propose a value, marked `PROPOSED`; a proposal is not a decision. Never replace a missing decision with an assumption and proceed as if it were decided.",
+        "sources": [
+          {
+            "path": "templates/README.md",
+            "quote": "Must surface it; may prepare options; must not fill it."
+          },
+          {
+            "path": "templates/README.md",
+            "quote": "May propose a value marked `PROPOSED`. Must not treat a proposal as decided."
+          },
+          {
+            "path": "core/HUMAN-AUTHORITY.md",
+            "quote": "Replace a missing decision (`UNDECIDED`, `HUMAN_DECISION_REQUIRED`) with an assumption and proceed as if it were decided."
+          }
+        ]
+      },
+      {
+        "id": "HUMAN_AUTHORITY_RESERVED",
+        "statement": "Never make, record or imply a Human Decision: never create or modify `LOCKED` project authority without one, never decide a `HUMAN_REVIEW` status or author `HUMAN_EVIDENCE` (you may only transcribe a human's own verdict), never waive the Golden Gameplay Cell, downgrade a relevant gate or advance a lifecycle stage, and never promote a skill's maturity.",
+        "sources": [
+          {
+            "path": "core/HUMAN-AUTHORITY.md",
+            "quote": "Create or modify `LOCKED` project authority without Human Decision."
+          },
+          {
+            "path": "core/HUMAN-AUTHORITY.md",
+            "quote": "Decide a `HUMAN_REVIEW` status or author `HUMAN_EVIDENCE`."
+          },
+          {
+            "path": "core/HUMAN-AUTHORITY.md",
+            "quote": "Waive the Golden Gameplay Cell, downgrade a relevant gate to non-blocking, or advance a lifecycle stage."
+          },
+          {
+            "path": "core/HUMAN-AUTHORITY.md",
+            "quote": "Promote any skill's maturity."
+          }
+        ]
+      },
+      {
+        "id": "MANDATORY_HUMAN_REVIEW",
+        "statement": "Mandatory Human Review triggers cannot be relaxed by any project, routing record or agent; when one applies, every subjective gate in scope is `HUMAN_REVIEW_REQUIRED`.",
+        "sources": [
+          {
+            "path": "core/QUALITY-GATES.md",
+            "quote": "No project, routing record or agent may relax these seven."
+          },
+          {
+            "path": "core/HUMAN-AUTHORITY.md",
+            "quote": "Relax a mandatory Human Review trigger, or route triggered work below `HUMAN_REVIEW_REQUIRED`."
+          }
+        ]
+      },
+      {
+        "id": "ROLE_ROUTING",
+        "statement": "game-director produces a routing record for every non-trivial task before implementation starts: one primary specialist, the gates and evidence the task needs, and when Human Review happens. Engage a specialist for the discipline the task depends on, judged by its domain, not by keywords.",
+        "sources": [
+          {
+            "path": "core/ROLE-ROUTING.md",
+            "quote": "The `game-director` produces a routing record for every non-trivial task before implementation starts:"
+          },
+          {
+            "path": "core/ROLE-ROUTING.md",
+            "quote": "the one whose domain the task's success most depends on. Exactly one."
+          }
+        ]
+      },
+      {
+        "id": "INDEPENDENT_GATES",
+        "statement": "Passing tests is not done: each relevant discipline passes or fails its own gate on its own typed evidence, and no gate passes because another gate passed.",
+        "sources": [
+          {
+            "path": "core/PRINCIPLES.md",
+            "quote": "No gate passes because another gate passed."
+          },
+          {
+            "path": "core/PRINCIPLES.md",
+            "quote": "A feature is not complete because it compiles, tests pass"
+          }
+        ]
+      },
+      {
+        "id": "DIRECTOR_ROUTES_ONLY",
+        "skill": "game-director",
+        "statement": "game-director routes and coordinates; it never implements for specialists, never makes creative decisions and never counts as a discipline-quality cross-reviewer.",
+        "sources": [
+          {
+            "path": "skills/game-director/SKILL.md",
+            "quote": "Does not replace any specialist's judgement."
+          },
+          {
+            "path": "skills/game-director/SKILL.md",
+            "quote": "Implementation in any discipline."
+          },
+          {
+            "path": "core/QUALITY-GATES.md",
+            "quote": "`game-director` never counts"
+          }
+        ]
+      },
+      {
+        "id": "MACHINE_VALIDATION",
+        "statement": "Agent reasoning is not GPOS validation: the production validator decides whether records are valid and whether a routed task is ready, and only its `READY` verdict permits a readiness claim.",
+        "sources": [
+          {
+            "path": "tools/validator/README.md",
+            "quote": "It verifies that the required qualified review/evidence/authority records exist and are internally valid."
+          }
+        ]
+      },
+      {
+        "id": "GENERATED_FILES_NOT_AUTHORITY",
+        "statement": "Generated file — do not edit as authority. It is a disposable projection of GPOS and project authority; if it disagrees with its sources, the sources win: stop and report the mismatch.",
+        "sources": [
+          {
+            "path": "adapters/README.md",
+            "quote": "Generated agent files are disposable projections. Canonical authority is GPOS plus Project Locked Authority."
+          }
+        ]
+      },
+      {
+        "id": "UNMANAGED_INSTRUCTION_LAYERS",
+        "statement": "Project instruction files that GPOS does not own are unsupported in this project: the agent runtime may let them add to or override these instructions, so GPOS sync and check refuse to run while they exist.",
+        "sources": [
+          {
+            "path": "adapters/README.md",
+            "quote": "Unmanaged project instruction layers are unsupported in Phase 2B."
+          }
+        ]
+      }
+    ]
+  },
+  "project_lock_binding": {
+    "$comment": "Structured binding a LOCK Human Decision uses to establish Project Locked Authority (Phase 2B). The decision value lists what was locked; the adapter compiler verifies every LOCKED row and LOCKED document against it and fails closed. The human's own words remain the substance; the structured value must faithfully represent them.",
+    "decision_kinds": [
+      "LOCK"
+    ],
+    "subject_kind": "PROJECT",
+    "value_key": "locks",
+    "row_fields": [
+      "authority_path",
+      "section",
+      "item",
+      "value"
+    ],
+    "document_fields": [
+      "authority_path",
+      "document_sha256"
+    ],
+    "document_hash": "sha256 of canonical JSON {authority_path, rows: [[section, item, value, status, decision_ref], ...]} in document order"
+  }
 }

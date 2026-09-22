@@ -2,7 +2,8 @@
 
 Only these sources are read, each with a kind and a sha256:
 
-    NORMATIVE          core/registry.json (canonical vocabulary, gates, workflows, triggers)
+    NORMATIVE          core/registry.json (canonical vocabulary, gates, workflows, triggers, the
+                       agent_operating_contract) and every frozen document a contract rule cites
     SPECIALIST_SKILL   skills/<name>/SKILL.md (the 13 frozen specialist contracts)
     WORKFLOW           workflows/<name>.md
     PROJECT_AUTHORITY  <project>/.game/<file>.md for registry project_authority_files,
@@ -97,33 +98,102 @@ def delink(text, origin):
 
 # ---------------------------------------------------------------- project authority documents
 
-def parse_authority_document(text, placeholders):
-    """Structured view of a `.game/*.md` authority file written from the GPOS templates."""
-    status = re.search(r"Document authority status:\s*`([A-Z_]+)`", text)
-    locked_by = re.search(r"Locked by decision:\s*`?([A-Za-z0-9._-]+)`?", text)
-    rows, section = [], None
-    for line in text.splitlines():
+AUTHORITY_HEADER = ["Item", "Value", "Status · decision ref"]
+_STATUS_CELL = re.compile(r"^`(PROPOSED)`$|^`(LOCKED)` · (D-[A-Za-z0-9._-]+)$")
+_DOC_STATUS = re.compile(r"Document authority status:\s*`([A-Z_]+)`")
+_LOCKED_BY = re.compile(r"Locked by decision:\s*`?([A-Za-z0-9._-]+)`?")
+
+
+class AuthorityDocumentError(ValueError):
+    """The machine-readable authority portion of a `.game/*.md` file is malformed (fail closed)."""
+
+    def __init__(self, problems):
+        super().__init__("; ".join(problems))
+        self.problems = problems
+
+
+def _cells(line):
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def parse_authority_document(text, placeholders, statuses=("PROPOSED", "LOCKED")):
+    """Strict structural parse of a `.game/*.md` authority file written from the GPOS templates.
+
+    Machine-readable parts: the `Document authority status:` / `Locked by decision:` lines and every
+    table whose header is exactly `| Item | Value | Status · decision ref |`. Inside those, nothing is
+    skipped: a row that does not parse, a duplicate row, malformed status/reference syntax, a near-miss
+    authority header, or an authority-looking row outside an authority table raises
+    AuthorityDocumentError. Other tables and prose are not compiled (and not interpreted).
+    """
+    problems, rows, seen = [], [], set()
+    lines = text.splitlines()
+    status_lines = [m for m in (_DOC_STATUS.search(l) for l in lines if "Document authority status:" in l)]
+    locked_lines = [l for l in lines if "Locked by decision:" in l]
+    section, in_table, has_tables = None, False, False
+    for n, line in enumerate(lines, 1):
         h = re.match(r"^## (.+?)\s*$", line)
         if h:
-            section = h.group(1).strip()
+            section, in_table = h.group(1).strip(), False
             continue
-        if not line.startswith("|") or re.match(r"^\|\s*-", line):
+        if not line.startswith("|"):
+            in_table = False
             continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 3 or cells[0] == "Item":
+        is_header = n < len(lines) and re.match(r"^\|\s*:?-", lines[n])
+        if re.match(r"^\|\s*:?-", line):
             continue
-        item, value, status_cell = cells[0], cells[1], cells[-1]
-        row_status = LOCKED if "`LOCKED`" in status_cell else PROPOSED if "`PROPOSED`" in status_cell else None
-        if row_status is None:
+        cells = _cells(line)
+        if is_header:
+            in_table = cells == AUTHORITY_HEADER
+            has_tables |= in_table
+            if not in_table and "Value" in cells and any(c.startswith("Status") for c in cells):
+                problems.append(f"line {n}: table header {cells} looks like an authority table but is not {AUTHORITY_HEADER}")
             continue
-        tokens = set(re.findall(r"`([A-Z_]+)`", value))
-        rows.append({
-            "section": section, "item": item, "value": value.strip(),
-            "status": row_status, "decision_ref": (DECISION_REF.findall(status_cell) or [None])[0],
-            "placeholders": sorted(tokens & set(placeholders)),
-        })
-    return {"status": status.group(1) if status else None,
-            "locked_by": locked_by.group(1) if locked_by else None, "rows": rows}
+        if not in_table:
+            if len(cells) == 3 and re.search(r"`(LOCKED|PROPOSED)`", cells[2]):
+                problems.append(f"line {n}: authority-style row outside an authority table")
+            continue
+        if len(cells) != 3 or not cells[0] or not cells[1]:
+            problems.append(f"line {n}: authority row must have exactly three non-empty cells (Item | Value | Status)")
+            continue
+        m = _STATUS_CELL.match(cells[2])
+        if not m:
+            problems.append(f"line {n}: status {cells[2]!r} must be `PROPOSED` or `LOCKED` · D-<id>")
+            continue
+        key = (section, cells[0])
+        if key in seen:
+            problems.append(f"line {n}: duplicate authority row {section} › {cells[0]}")
+            continue
+        seen.add(key)
+        tokens = set(re.findall(r"`([A-Z_]+)`", cells[1]))
+        rows.append({"section": section, "item": cells[0], "value": cells[1],
+                     "status": "PROPOSED" if m.group(1) else "LOCKED", "decision_ref": m.group(3),
+                     "placeholders": sorted(tokens & set(placeholders))})
+    status = locked_by = None
+    if len(status_lines) > 1 or len(locked_lines) > 1:
+        problems.append("authority metadata (Document authority status / Locked by decision) appears more than once")
+    elif status_lines or locked_lines or has_tables:
+        if len(status_lines) != 1 or status_lines[0] is None or len(locked_lines) != 1:
+            problems.append("authority document needs exactly one `Document authority status:` and one `Locked by decision:` line")
+        else:
+            status = status_lines[0].group(1)
+            lm = _LOCKED_BY.search(locked_lines[0])
+            locked_by = lm.group(1) if lm else None
+            if status not in statuses:
+                problems.append(f"document status {status!r} is not one of {list(statuses)}")
+            if status == "LOCKED" and not (locked_by and DECISION_REF.fullmatch(locked_by)):
+                problems.append("a LOCKED document must name its locking decision (Locked by decision: D-<id>)")
+            if status != "LOCKED" and locked_by not in placeholders:
+                problems.append(f"a {status} document must not claim a locking decision ({locked_by!r}); use a placeholder")
+    if problems:
+        raise AuthorityDocumentError(problems)
+    return {"status": status, "locked_by": locked_by if status == "LOCKED" else None, "rows": rows}
+
+
+def document_sha256(authority_path, rows):
+    """Canonical hash a document-level LOCK binds to: the machine-readable rows, in order."""
+    payload = {"authority_path": authority_path,
+               "rows": [[r["section"], r["item"], r["value"], r["status"], r["decision_ref"]] for r in rows]}
+    return sha256_bytes(canonical_json(payload).encode("utf-8"))
 
 
 def canonical_json(obj):

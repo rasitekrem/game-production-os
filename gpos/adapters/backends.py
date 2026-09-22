@@ -7,17 +7,24 @@ time only; nothing here needs the network):
 
 * Claude Code — https://code.claude.com/docs/en/memory and https://code.claude.com/docs/en/skills
   - project instructions: ./CLAUDE.md (or ./.claude/CLAUDE.md), loaded at session start; target
-    under 200 lines; while any CLAUDE.md exists, Claude Code does not read AGENTS.md (default).
+    under 200 lines; while any CLAUDE.md exists, Claude Code does not read AGENTS.md (default; a
+    user-level setting can make it read both). Instruction files are additive: CLAUDE.local.md,
+    CLAUDE.md files in parent directories and in subdirectories (loaded as Claude works there) and
+    .claude/rules/*.md all add persistent instructions, and more specific instructions generally
+    take precedence when they conflict.
+  - skills with the same name at a higher scope (enterprise, personal) shadow a project skill.
   - project skills: .claude/skills/<name>/SKILL.md, discovered from the session directory and its
     parents up to the repository root; `description` is always in context, the body loads on use;
     keep SKILL.md under 500 lines; supporting files load only when referenced.
 * Codex — https://developers.openai.com/codex/guides/agents-md and /codex/skills (both redirect,
   308, to OpenAI's learn.chatgpt.com)
-  - AGENTS.md read from the git root down to the working directory, closer files later;
-    AGENTS.override.md takes precedence at the same level; 32 KiB default project_doc_max_bytes.
+  - AGENTS.md read from the git root down to the working directory, closer files later, so deeper
+    instructions can override root instructions; AGENTS.override.md takes precedence at the same
+    level; 32 KiB default project_doc_max_bytes.
   - repository skills: .agents/skills/<name>/SKILL.md, scanned in every directory from the working
     directory up to the repository root; SKILL.md front matter `name` and `description`; the skill
-    list uses at most ~8000 characters; the body loads when the skill is selected.
+    list uses at most ~8000 characters; the body loads when the skill is selected; two skills with the
+    same name are not merged and both can appear in skill selectors.
 * Shared skill format — Agent Skills specification (https://agentskills.io/specification):
   `name` 1–64 characters of a-z, 0-9 and single hyphens, matching the directory; `description`
   1–1024 characters.
@@ -47,6 +54,11 @@ class Backend:
     def manifest_path(self):
         return f"{self.manifest_dir}/manifest.json"
 
+    # project-local instruction files the runtime can load in addition to the entry file (format facts;
+    # gpos.adapters.layers detects them, content.py names them)
+    instruction_layer_names = ()
+    instruction_layer_dirs = ()
+
     def managed_prefixes(self):
         return (f"{self.skill_root}/gpos-", f"{self.manifest_dir}/")
 
@@ -64,6 +76,8 @@ class ClaudeCodeBackend(Backend):
     format_id = "claude-code-project/1"
     entrypoint = "CLAUDE.md"
     skill_root = ".claude/skills"
+    instruction_layer_names = ("CLAUDE.md", "CLAUDE.local.md", "AGENTS.md")
+    instruction_layer_dirs = (".claude/rules",)
     compatibility = {
         "target_agent": "Claude Code",
         "documented_target": "Claude Code project instructions (CLAUDE.md) and project skills (.claude/skills/<name>/SKILL.md), "
@@ -74,19 +88,20 @@ class ClaudeCodeBackend(Backend):
         "entrypoints": ["CLAUDE.md"],
         "skill_discovery": "automatic: .claude/skills in the session directory and its parents up to the repository root",
         "known_limitations": [
-            "an existing human-written CLAUDE.md or .claude/CLAUDE.md blocks sync (no adoption in Phase 2B)",
-            "CLAUDE.local.md and CLAUDE.md files in other directories are human-owned and load alongside the generated file",
-            "while CLAUDE.md exists Claude Code does not read AGENTS.md by default, so a generated Codex AGENTS.md is not loaded twice",
+            "an existing human-written CLAUDE.md blocks sync (no adoption in Phase 2B)",
+            "CLAUDE.md layers are additive and more specific instructions may take precedence, so any project-local "
+            "CLAUDE.md, .claude/CLAUDE.md, CLAUDE.local.md, AGENTS.md or .claude/rules file GPOS does not own blocks sync and check",
+            "user, enterprise and parent-of-repository instruction files and settings are outside the project: a documented trust boundary",
+            "higher-scope skills shadow project skills of the same name; generated skill ids are project-scoped to avoid collisions",
             "hooks and settings are not generated",
         ],
     }
 
     def agent_format(self):
         return AgentFormat(
-            "Claude Code", self.entrypoint, self.skill_root, lambda d: f"the `{d}` skill (`/{d}`)",
+            "Claude Code", self.entrypoint, self.skill_root, lambda d: f"`/{d}`",
             "Claude Code lists each skill's description automatically and loads the full skill when it is used",
-            "A human-owned `CLAUDE.local.md` or subdirectory `CLAUDE.md` may add local conventions; it cannot relax GPOS, "
-            "project authority, Human Review or validation rules.")
+            self.instruction_layer_names + tuple(f"{d}/" for d in self.instruction_layer_dirs))
 
 
 class CodexBackend(Backend):
@@ -95,6 +110,7 @@ class CodexBackend(Backend):
     format_id = "codex-project/1"
     entrypoint = "AGENTS.md"
     skill_root = ".agents/skills"
+    instruction_layer_names = ("AGENTS.md", "AGENTS.override.md")
     compatibility = {
         "target_agent": "OpenAI Codex",
         "documented_target": "Codex AGENTS.md project instructions and repository skills (.agents/skills/<name>/SKILL.md), "
@@ -107,7 +123,10 @@ class CodexBackend(Backend):
         "known_limitations": [
             "an existing human-written AGENTS.md blocks sync (no adoption in Phase 2B)",
             "AGENTS.md discovery starts at the git root; outside a git repository only the working directory is assumed",
-            "a closer AGENTS.md or AGENTS.override.md is human-owned and is read after the generated file",
+            "deeper AGENTS.md and AGENTS.override.md files can override root instructions, so any such file GPOS does not own "
+            "blocks sync and check",
+            "user-level Codex instructions and configured fallback file names are outside the project: a documented trust boundary",
+            "same-name skills are not merged; generated skill ids are project-scoped to avoid collisions",
             "Codex truncates combined AGENTS.md content above project_doc_max_bytes (32 KiB default); the generated root is budgeted far below",
             "agents/openai.yaml is not generated; implicit invocation keeps the Codex default",
         ],
@@ -115,10 +134,9 @@ class CodexBackend(Backend):
 
     def agent_format(self):
         return AgentFormat(
-            "Codex", self.entrypoint, self.skill_root, lambda d: f"the `{d}` skill (`${d}`)",
+            "Codex", self.entrypoint, self.skill_root, lambda d: f"`${d}`",
             "Codex lists each skill's description automatically and loads the full skill when it is selected",
-            "A human-owned `AGENTS.md` or `AGENTS.override.md` closer to the working directory may add local conventions; it "
-            "cannot relax GPOS, project authority, Human Review or validation rules.")
+            self.instruction_layer_names + tuple(f"{d}/" for d in self.instruction_layer_dirs))
 
 
 BACKENDS = {b.id: b for b in (ClaudeCodeBackend(), CodexBackend())}

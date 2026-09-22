@@ -46,7 +46,7 @@ GATES = REGISTRY["gates"]
 SUBJECTIVE_DISCIPLINE_GATES = sorted(g for g, d in GATES.items() if d["subjective"] and g != "HUMAN_REVIEW")
 TRIGGERS = list(REGISTRY["mandatory_human_review_triggers"])
 CONDITIONS = list(REGISTRY["evidence_conditions"])
-VERSION = "1.0.0-alpha.7"
+VERSION = "1.0.0-alpha.8"
 GATE_OWNERS = [s for s in REGISTRY["skills"] if any(s in d["permitted_owners"] for d in GATES.values())] + ["HUMAN"]
 
 
@@ -791,6 +791,55 @@ def scope_ready(gate_records):
     return all(g["status"] == "PASS" for g in gate_records if g["blocking"] and g["status"] != "NOT_APPLICABLE")
 
 
+# ---------------------------------------------------------------- phase boundary (Phase 2A)
+#
+# Phase 1 allowed no code outside tests/ and only README.md in adapters/ and tools/.
+# Phase 2A (alpha.8) adds exactly one thing: the production validator package gpos/ and its
+# Markdown documentation under tools/validator/. The boundary tests of alpha.4–alpha.7
+# (B09, C14, D10, E06, X08) asserted the Phase-1 file layout; they now assert this single
+# Phase-2A boundary instead, so the protection (no adapters, no tool code outside the
+# validator, production code independent of tests and of the network) is preserved.
+
+CODE_SUFFIXES = {".py", ".js", ".ts", ".cs", ".sh", ".ps1"}
+CODE_ROOTS = ("tests", "gpos")
+PRODUCTION_FORBIDDEN_IMPORTS = {
+    "tests", "validate_framework", "schema_lite", "jsonschema", "unittest",
+    "socket", "ssl", "http", "urllib", "urllib3", "requests", "ftplib", "smtplib", "asyncio", "subprocess",
+}
+
+
+def _imports(path):
+    import ast
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            names.add(node.module.split(".")[0])
+    return names
+
+
+def phase_boundary_problems():
+    problems = []
+    files = lambda d: sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / d).rglob("*")  # untracked OS/bytecode files ignored
+                             if p.is_file() and "__pycache__" not in p.parts and not p.name.startswith("."))
+    if files("adapters") != ["adapters/README.md"]:
+        problems.append(f"adapters/ must contain only README.md: {files('adapters')}")
+    for f in files("tools"):
+        if not f.endswith(".md"):
+            problems.append(f"tools/ holds documentation only (the validator lives in gpos/): {f}")
+    for p in ROOT.rglob("*"):
+        rel = p.relative_to(ROOT)
+        if p.suffix in CODE_SUFFIXES and rel.parts[0] not in CODE_ROOTS and ".git" not in p.parts:
+            problems.append(f"code outside {CODE_ROOTS}: {rel}")
+    for p in sorted((ROOT / "gpos").rglob("*.py")):
+        bad = _imports(p) & PRODUCTION_FORBIDDEN_IMPORTS
+        if bad:
+            problems.append(f"{p.relative_to(ROOT)} imports {sorted(bad)} (production code must not depend on tests or the network)")
+    return problems
+
+
 # ---------------------------------------------------------------- structure (T01–T05)
 
 class T01_SkillsExist(unittest.TestCase):
@@ -1375,7 +1424,8 @@ class H08_Phase2Boundary(unittest.TestCase):
                        "not the gate owner", "superseded evidence", "registry and schemas"]:
             self.assertIn(phrase, section, phrase)
         self.assertIn("GOVERNANCE.md#12-phase-2-acceptance-requirement-record-validation", read("tools/README.md"))
-        self.assertIn("Project record validation is not implemented", read("README.md"))
+        # Phase 2A: the README now states that the production validator implements §12 (was: "not implemented").
+        self.assertIn("Project record validation is implemented by the Phase-2A production validator", read("README.md"))
 
 
 class H09_HumanEvidenceTrustBoundary(unittest.TestCase):
@@ -1889,8 +1939,7 @@ class B09_BoundaryAndMaturity(unittest.TestCase):
         self.assertEqual(len(REGISTRY["skills"]), 13)
         for s_ in REGISTRY["skills"]:
             self.assertEqual(front_matter(skill_text(s_))["maturity"], "DRAFT", s_)
-        for d in ("adapters", "tools"):
-            self.assertEqual(sorted(p.name for p in (ROOT / d).iterdir()), ["README.md"], d)
+        self.assertEqual(phase_boundary_problems(), [])
 
 
 # ---------------------------------------------------------------- alpha.5 binding and readiness (C01–C14)
@@ -2097,8 +2146,7 @@ class C14_Phase2ContractAndBoundary(unittest.TestCase):
         self.assertEqual(len(REGISTRY["skills"]), 13)
         for s_ in REGISTRY["skills"]:
             self.assertEqual(front_matter(skill_text(s_))["maturity"], "DRAFT", s_)
-        for d in ("adapters", "tools"):
-            self.assertEqual(sorted(p.name for p in (ROOT / d).iterdir()), ["README.md"], d)
+        self.assertEqual(phase_boundary_problems(), [])
 
 
 # ---------------------------------------------------------------- alpha.6 routing authority closure (D01–D10)
@@ -2327,11 +2375,7 @@ class D10_MaturityAndBoundary(unittest.TestCase):
         self.assertEqual(len(REGISTRY["skills"]), 13)
         for s_ in REGISTRY["skills"]:
             self.assertEqual(front_matter(skill_text(s_))["maturity"], "DRAFT", s_)
-        for d in ("adapters", "tools"):
-            self.assertEqual(sorted(p.name for p in (ROOT / d).iterdir()), ["README.md"], d)
-        code = [p for p in ROOT.rglob("*") if p.suffix in {".py", ".js", ".ts", ".cs"} and "tests" not in p.relative_to(ROOT).parts
-                and ".git" not in p.parts]
-        self.assertEqual(code, [])
+        self.assertEqual(phase_boundary_problems(), [])
 
 
 # ---------------------------------------------------------------- alpha.7 freeze hardening (E01–E06)
@@ -2507,8 +2551,7 @@ class E06_FreezeBoundary(unittest.TestCase):
         self.assertEqual(len(REGISTRY["skills"]), 13)
         for s_ in REGISTRY["skills"]:
             self.assertEqual(front_matter(skill_text(s_))["maturity"], "DRAFT", s_)
-        for d in ("adapters", "tools"):
-            self.assertEqual(sorted(p.name for p in (ROOT / d).iterdir()), ["README.md"], d)
+        self.assertEqual(phase_boundary_problems(), [])
 
 
 # ---------------------------------------------------------------- consistency (X00–X10)
@@ -2572,11 +2615,28 @@ class X02_GateOwnershipConsistent(unittest.TestCase):
             self.assertEqual(row[1].strip("`"), "human" if expected == "HUMAN" else expected, row[0])
 
 
+def validator_vocabulary():
+    """Terms the Phase-2A production validator emits: diagnostic codes, severities, categories, verdicts,
+    tool error codes and readiness-overview states. Taken from gpos/ itself (Phase 2A added it to X03)."""
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, str(ROOT))
+    from gpos import cli, diagnostics, errors
+    from gpos.validation import project
+    words = set(diagnostics.CODES) | set(diagnostics.SEVERITY_ORDER) | {diagnostics.LOAD, diagnostics.RECORD, diagnostics.READINESS}
+    words |= set(cli.VERDICTS) | set(cli.CLI_ERROR_CODES) | set(project.OVERVIEW_STATES)
+    pending = [errors.GposToolError]
+    while pending:
+        cls = pending.pop()
+        words.add(cls.code)
+        pending += cls.__subclasses__()
+    return words
+
+
 class X03_VocabularyConsistent(unittest.TestCase):
     """Every backticked canonical-looking token in any Markdown file must be a known term."""
 
     def test_backticked_terms(self):
-        upper_vocab = registry_vocabulary() | schema_vocabulary()
+        upper_vocab = registry_vocabulary() | schema_vocabulary() | validator_vocabulary()
         lower_vocab = set(REGISTRY["skills"]) | set(REGISTRY["workflows"])
         problems = []
         for path in all_markdown():
@@ -2658,18 +2718,20 @@ class X07_SchemaFixtures(unittest.TestCase):
 
 class X08_PhaseBoundary(unittest.TestCase):
     def test_no_adapter_or_tool_implementation(self):
-        for d in ("adapters", "tools"):
-            self.assertEqual(sorted(p.name for p in (ROOT / d).iterdir()), ["README.md"], d)
+        self.assertEqual(phase_boundary_problems(), [])
 
     def test_no_code_outside_tests(self):
-        code = [p for p in ROOT.rglob("*") if p.suffix in {".py", ".js", ".ts", ".cs", ".sh", ".ps1"}
-                and "tests" not in p.relative_to(ROOT).parts and ".git" not in p.parts]
+        """Phase 2A: code lives only in tests/ and the production package gpos/ (see phase_boundary_problems)."""
+        code = [p for p in ROOT.rglob("*") if p.suffix in CODE_SUFFIXES and p.relative_to(ROOT).parts[0] not in CODE_ROOTS
+                and ".git" not in p.parts]
         self.assertEqual(code, [])
 
     def test_project_independent(self):
         forbidden = re.compile(r"inven" + r"igma", re.I)
+        # __pycache__ holds untracked, gitignored bytecode, whose constant folding re-joins the split pattern above.
         hits = [str(p.relative_to(ROOT)) for p in ROOT.rglob("*")
-                if p.is_file() and ".git" not in p.parts and forbidden.search(p.read_text(errors="ignore"))]
+                if p.is_file() and ".git" not in p.parts and "__pycache__" not in p.parts
+                and forbidden.search(p.read_text(errors="ignore"))]
         self.assertEqual(hits, [])
 
 

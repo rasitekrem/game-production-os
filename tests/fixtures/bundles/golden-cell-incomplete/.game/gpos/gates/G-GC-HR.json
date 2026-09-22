@@ -1,0 +1,28 @@
+{
+  "applied_conditions": [],
+  "assessed_by": {
+    "id": "creative-lead",
+    "kind": "HUMAN"
+  },
+  "blocking": true,
+  "evidence_refs": [
+    "EV-GC-HUMAN"
+  ],
+  "gate": "HUMAN_REVIEW",
+  "gate_id": "G-GC-HR",
+  "owner": "HUMAN",
+  "recorded_at": "2026-03-01T10:00:00Z",
+  "recorded_by": {
+    "id": "game-director",
+    "kind": "AGENT"
+  },
+  "review_policy": "HUMAN_REVIEW_REQUIRED",
+  "routing_ref": "GC-1",
+  "schema_version": "1.0",
+  "scope": {
+    "kind": "GOLDEN_CELL",
+    "ref": "cell-1",
+    "revision": "build-7"
+  },
+  "status": "PASS"
+}

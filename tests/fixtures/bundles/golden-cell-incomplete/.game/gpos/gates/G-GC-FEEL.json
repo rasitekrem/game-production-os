@@ -1,0 +1,28 @@
+{
+  "applied_conditions": [],
+  "assessed_by": {
+    "id": "game-feel-vfx",
+    "kind": "AGENT"
+  },
+  "blocking": true,
+  "evidence_refs": [
+    "EV-GC-FEEL"
+  ],
+  "gate": "GAME_FEEL_VFX",
+  "gate_id": "G-GC-FEEL",
+  "owner": "game-feel-vfx",
+  "recorded_at": "2026-03-01T10:00:00Z",
+  "required_changes": [
+    "Dash start needs more anticipation"
+  ],
+  "review_policy": "HUMAN_REVIEW_REQUIRED",
+  "routing_ref": "GC-1",
+  "schema_version": "1.0",
+  "scope": {
+    "kind": "GOLDEN_CELL",
+    "ref": "cell-1",
+    "revision": "build-7"
+  },
+  "specialist_assessment": "CHANGES_REQUIRED",
+  "status": "CHANGES_REQUIRED"
+}

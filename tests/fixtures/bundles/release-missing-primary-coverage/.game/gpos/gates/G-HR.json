@@ -1,0 +1,31 @@
+{
+  "assessed_by": {
+    "id": "creative-lead",
+    "kind": "HUMAN"
+  },
+  "blocking": true,
+  "evidence_refs": [
+    "H1"
+  ],
+  "gate": "HUMAN_REVIEW",
+  "gate_id": "G-HR",
+  "limitations": [
+    "Assessed on a development build, not the target runtime"
+  ],
+  "notes": "45-degree turns read well. Not ready to close.",
+  "owner": "HUMAN",
+  "recorded_at": "2026-01-01T13:00:00Z",
+  "recorded_by": {
+    "id": "game-director",
+    "kind": "AGENT"
+  },
+  "review_policy": "HUMAN_REVIEW_REQUIRED",
+  "routing_ref": "REL-1.0",
+  "schema_version": "1.0",
+  "scope": {
+    "kind": "RELEASE",
+    "ref": "rel-1.0",
+    "revision": "build-100"
+  },
+  "status": "PASS"
+}

@@ -1,0 +1,43 @@
+{
+  "artifacts": [
+    {
+      "description": "60 fps capture, gameplay camera",
+      "media_type": "video/mp4",
+      "uri": "evidence/TASK-0001/turns-after.mp4"
+    }
+  ],
+  "created_at": "2026-01-01T12:00:00Z",
+  "evidence_id": "PERF-W",
+  "limitations": [
+    "Development build on development hardware, not the target runtime",
+    "Placeholder environment lighting",
+    "No audio"
+  ],
+  "provenance": {
+    "build_id": "build-100",
+    "capture_context": "PERFORMANCE_RUNTIME",
+    "device": "Reference-PC-1",
+    "instrumentation": {
+      "description": "Sampling profiler",
+      "present": true,
+      "timing_impact": "NEGLIGIBLE"
+    },
+    "subject_revision": "build-100",
+    "target_platform": "WINDOWS"
+  },
+  "schema_version": "1.0",
+  "source": {
+    "id": "character-animation",
+    "kind": "AGENT"
+  },
+  "subject": {
+    "kind": "RELEASE",
+    "ref": "rel-1.0"
+  },
+  "summary": "Gameplay-camera recording of run-speed turns at 45, 90 and 180 degrees, including start, stop and settle, after the turn-blend correction.",
+  "superseded": false,
+  "supersedes": [
+    "EV-0000"
+  ],
+  "type": "PERFORMANCE_EVIDENCE"
+}

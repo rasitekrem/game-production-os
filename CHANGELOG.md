@@ -4,6 +4,33 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.8] — Phase 2A: production validator
+
+Builds on the frozen Phase-1 core (`v1.0.0-alpha.7`). No change to gate, evidence, authority, routing or lifecycle semantics; records valid under alpha.7 remain valid, but must pin `gpos_version` `1.0.0-alpha.8` to be validated.
+
+### Added
+
+- `gpos/`: deterministic, read-only, fail-closed production validator (standard library only). Library API `load_project_record_set`, `validate_project`, `validate_routing`, `evaluate_readiness`; CLI `python3 -m gpos.validator validate|readiness` with exit codes 0/1/2/3 and text or JSON output.
+- Project record bundle convention `.game/gpos/` (project config, decisions, routings, gates, evidence).
+- Structured diagnostics with stable codes, severities (`ERROR` for record validity, `BLOCKER` for routed readiness), JSON pointers, files, related ids and rule references.
+- Every GOVERNANCE §12 requirement (1–44) enforced and mapped to codes and tests ([tools/validator/README.md](tools/validator/README.md)).
+- Production tests: parity with the frozen reference model on every Phase-1 authority and record fixture, readiness parity, named adversarial regressions, read-only, determinism, CLI and performance tests; synthetic bundles; production mutation harness.
+
+### Changed
+
+- Phase-1 boundary tests assert the Phase-2A boundary (code only in `tests/` and `gpos/`; `tools/` documentation only; `adapters/` unchanged).
+- The vocabulary check accepts validator diagnostic codes and verdicts.
+
+### Human Review items
+
+- Production-only rules taken from the contract text: superseded negative cross-review needs a later review by the same reviewer (§12.6); `HUMAN_EVIDENCE` cited by a gate must come from a Human Review participant for that gate (§12.12); records pinned to another GPOS version are not validated (§12.7).
+- RFC 3339: production rejects lower-case `t`/`z`, as `rfc3339-validator` does; the Phase-1 oracle accepts them.
+- Readiness scope: production validates the whole project, then one routing; the Phase-1 reference evaluated `[routing]` alone.
+
+### Maturity
+
+- No skill promotions. All 13 skills `DRAFT`.
+
 ## [1.0.0-alpha.7] — Phase 1 freeze candidate
 
 Independent review of alpha.6: three production-level contract gaps closed. Incompatible with alpha.6 records.

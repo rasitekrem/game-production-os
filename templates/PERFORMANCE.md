@@ -1,6 +1,6 @@
 # Performance
 
-> **GPOS template** · `1.0.0-alpha.7` · copy to `.game/PERFORMANCE.md` · see [templates/README.md](README.md)
+> **GPOS template** · `1.0.0-alpha.8` · copy to `.game/PERFORMANCE.md` · see [templates/README.md](README.md)
 >
 > Document authority status: `PROPOSED` <!-- becomes LOCKED only by Human Decision; cite the DECISIONS.md entry -->
 > Locked by decision: `UNDECIDED`

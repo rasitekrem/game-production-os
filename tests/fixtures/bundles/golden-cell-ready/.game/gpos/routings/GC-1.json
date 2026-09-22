@@ -1,0 +1,157 @@
+{
+  "description": "First Golden Gameplay Cell: movement and dash loop at target quality on the reference device.",
+  "editor_write_lock": "NONE",
+  "human_review": {
+    "primary_question": "Does this cell meet the target quality bar to scale from?",
+    "required": true,
+    "timing": "After device validation of the cell build"
+  },
+  "lifecycle_stage": "GOLDEN_CELL",
+  "missing_decisions": [],
+  "omitted_gates": [
+    {
+      "gate": "LEVEL_DESIGN",
+      "reason": "Not part of the first cell: the cell has no characters, authored camera, level layout, UI or audio yet."
+    },
+    {
+      "gate": "ANIMATION",
+      "reason": "Not part of the first cell: the cell has no characters, authored camera, level layout, UI or audio yet."
+    },
+    {
+      "gate": "CAMERA_COMPOSITION",
+      "reason": "Not part of the first cell: the cell has no characters, authored camera, level layout, UI or audio yet."
+    },
+    {
+      "gate": "UI_UX",
+      "reason": "Not part of the first cell: the cell has no characters, authored camera, level layout, UI or audio yet."
+    },
+    {
+      "gate": "AUDIO",
+      "reason": "Not part of the first cell: the cell has no characters, authored camera, level layout, UI or audio yet."
+    }
+  ],
+  "out_of_scope": [
+    "Content beyond the first cell"
+  ],
+  "primary_specialist": "gameplay-design",
+  "rationale": "The Golden Cell proves the core loop at target quality before production scales.",
+  "required_gates": [
+    {
+      "blocking": true,
+      "gate": "TECHNICAL",
+      "owner": "qa-performance",
+      "required_evidence": [
+        "TEST_EVIDENCE"
+      ],
+      "review_policy": "ROUTINE",
+      "routine_basis": "Regression suite on the cell build",
+      "unapplied_conditions": [
+        {
+          "condition": "PERSISTENCE_AFFECTED",
+          "reason": "The cell has no save data."
+        }
+      ]
+    },
+    {
+      "applied_conditions": [
+        "REAL_TIME_BEHAVIOUR"
+      ],
+      "blocking": true,
+      "gate": "GAMEPLAY_DESIGN",
+      "owner": "gameplay-design",
+      "required_evidence": [
+        "MOTION_EVIDENCE"
+      ],
+      "review_policy": "HUMAN_REVIEW_REQUIRED"
+    },
+    {
+      "blocking": true,
+      "gate": "VISUAL_ART",
+      "owner": "art-direction",
+      "required_evidence": [
+        "VISUAL_EVIDENCE"
+      ],
+      "review_policy": "HUMAN_REVIEW_REQUIRED",
+      "unapplied_conditions": [
+        {
+          "condition": "ANIMATED_PRESENTATION",
+          "reason": "Static environment dressing only."
+        },
+        {
+          "condition": "TARGET_PRESENTATION_DIFFERS",
+          "reason": "Project parity decision: editor matches target presentation."
+        }
+      ]
+    },
+    {
+      "blocking": true,
+      "gate": "GAME_FEEL_VFX",
+      "owner": "game-feel-vfx",
+      "required_evidence": [
+        "MOTION_EVIDENCE"
+      ],
+      "review_policy": "HUMAN_REVIEW_REQUIRED",
+      "unapplied_conditions": [
+        {
+          "condition": "FEEDBACK_INCLUDES_SOUND",
+          "reason": "Audio is out of the first cell."
+        },
+        {
+          "condition": "TARGET_PRESENTATION_DIFFERS",
+          "reason": "Project parity decision: editor matches target presentation."
+        }
+      ]
+    },
+    {
+      "applied_conditions": [
+        "TARGET_PLATFORM_PERFORMANCE_CLAIM"
+      ],
+      "blocking": true,
+      "gate": "PERFORMANCE",
+      "owner": "qa-performance",
+      "required_evidence": [
+        "PERFORMANCE_EVIDENCE",
+        "DEVICE_EVIDENCE"
+      ],
+      "review_policy": "ROUTINE",
+      "routine_basis": "Measure against the locked budget"
+    },
+    {
+      "blocking": true,
+      "gate": "DEVICE",
+      "owner": "qa-performance",
+      "required_evidence": [
+        "DEVICE_EVIDENCE"
+      ],
+      "review_policy": "ROUTINE",
+      "routine_basis": "Run on the reference device"
+    },
+    {
+      "blocking": true,
+      "gate": "HUMAN_REVIEW",
+      "owner": "HUMAN",
+      "required_evidence": [
+        "HUMAN_EVIDENCE"
+      ],
+      "review_policy": "HUMAN_REVIEW_REQUIRED"
+    }
+  ],
+  "review_triggers": [
+    "GOLDEN_CELL_EXIT"
+  ],
+  "reviewers": [
+    "HUMAN"
+  ],
+  "schema_version": "1.0",
+  "secondary_specialists": [
+    "art-direction",
+    "game-feel-vfx",
+    "qa-performance"
+  ],
+  "subject": {
+    "kind": "GOLDEN_CELL",
+    "ref": "cell-1"
+  },
+  "task_id": "GC-1",
+  "workflow": "golden-gameplay-cell"
+}

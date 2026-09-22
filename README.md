@@ -1,6 +1,6 @@
 # Game Production OS
 
-Version `1.0.0-alpha.7` · Phase 1 (core architecture) · all skills `DRAFT`
+Version `1.0.0-alpha.8` · Phase 2A (production validator) on the frozen Phase-1 core · all skills `DRAFT`
 
 A model-independent production framework for AI-assisted professional game development. It makes AI agents work like a disciplined, multidisciplinary game studio — with clear creative authority, specialist ownership, independent quality gates and typed evidence — instead of like a generic software agent that calls a feature done once the tests pass.
 
@@ -17,7 +17,7 @@ A model-independent production framework for AI-assisted professional game devel
 ## What it is not
 
 - Not a prompt collection, and not a single giant prompt.
-- Not an engine integration, plugin or tool. Phase 1 contains no Unity, Blender, Claude or Codex integration.
+- Not an engine integration or plugin. It contains no Unity, Blender, Claude or Codex integration; its only tool is a read-only record validator.
 - Not tied to any one game, engine, genre or model.
 
 Game Production OS does **not** replace Unity, Blender, Claude, Codex, game designers, artists, or human creative direction. It coordinates production responsibility and evidence between them.
@@ -37,9 +37,10 @@ workflows/     13 production workflows (ENTRY CONDITIONS … POSTMORTEM)
 templates/     Authority skeletons for a project's .game/ directory
 schemas/       JSON Schemas for project config, task routing, gate, evidence and Human Decision records
 examples/      One minimal valid instance per schema (generic)
-adapters/      Phase-2+ boundary (placeholder only)
-tools/         Phase-2+ boundary (placeholder only)
-tests/         Standard-library framework validator and fixtures
+adapters/      Later-phase boundary (placeholder only)
+tools/         Tool documentation (production validator)
+gpos/          Production validator package (Phase 2A): library and CLI
+tests/         Framework validation, production-validator tests, fixtures and synthetic bundles
 ```
 
 | Core document | Defines |
@@ -136,8 +137,9 @@ Each game keeps its own authority in a `.game/` directory built from `templates/
 
 | Phase | Scope |
 |---|---|
-| 1 (this release) | Core architecture, `DRAFT` contracts, schemas, validation |
-| 2 | Pilot specialist pack and adapter foundations. Likely first deeply piloted skills: `game-director`, `character-animation`, `camera-composition`, `technical-art`, `game-feel-vfx`, `qa-performance` |
+| 1 (frozen, `v1.0.0-alpha.7`) | Core architecture, `DRAFT` contracts, schemas, validation |
+| 2A (this release) | Production validator: project record validity and routed readiness ([tools/validator/README.md](tools/validator/README.md)) |
+| 2 (remaining) | Pilot specialist pack and adapter foundations. Likely first deeply piloted skills: `game-director`, `character-animation`, `camera-composition`, `technical-art`, `game-feel-vfx`, `qa-performance` |
 | 3 | Tool adapters: Claude/Codex, Unity, Blender, FFmpeg, device, Git/GitHub |
 | 4 | Real-project pilot |
 | 5 | Expand remaining specialist maturity |
@@ -147,7 +149,7 @@ Adapter and tool boundaries: [adapters/README.md](adapters/README.md), [tools/RE
 
 ## Versioning
 
-Semantic Versioning, currently `1.0.0-alpha.7` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
+Semantic Versioning, currently `1.0.0-alpha.8` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
 
 | Bump | When |
 |---|---|
@@ -159,12 +161,12 @@ The repository remains alpha until piloted on a real game. Change process: [GOVE
 
 ## Known limitations
 
-- **Project record validation is not implemented.** Phase 1 validates the framework, not a project's actual routing, gate and evidence records against each other (revision match, linked Human Review, superseded evidence, evidence type and context per gate). This is a Phase-2 acceptance requirement ([GOVERNANCE.md §12](core/GOVERNANCE.md#12-phase-2-acceptance-requirement-record-validation)).
+- **Project record validation is implemented by the Phase-2A production validator** (`gpos/`, [tools/validator/README.md](tools/validator/README.md)) for every requirement of [GOVERNANCE.md §12](core/GOVERNANCE.md#12-phase-2-acceptance-requirement-record-validation). It verifies that qualified review, evidence and authority records exist and are internally valid; it does not judge creative quality. Its own limitations (authentication, routing history, free-text quality, one Golden Cell, licensing, hardware matrices) are listed there.
 - **Human evidence is not authenticated.** See [HUMAN-AUTHORITY.md §7](core/HUMAN-AUTHORITY.md#7-authenticity-of-human-evidence-trust-boundary).
 - **Applying evidence conditions is a routing judgement.** The conditions are fixed vocabulary; whether one applies to a task is decided and recorded by routing.
-- **Decision references are not yet resolved.** Schemas check that a reference looks like a decision id and that decisions carry structured values; resolving each reference to an authorized Human Decision whose value matches the configuration, rejecting duplicate ids and enforcing reviewer gate permissions are Phase-2 tooling (reference model in the test suite).
+- **Decision references are resolved by the production validator, not by the schemas.** Schemas check that a reference looks like a decision id; the validator resolves it to an authorized, `ACTIVE` Human Decision whose value matches the configuration.
 - **Device coverage is minimal by design.** Target-runtime evidence must be on a declared target platform and a declared reference device; Release needs every PRIMARY platform. Richer device-coverage planning (selected-device matrices, hardware catalogues) is left to Phase 2 if piloting needs it.
-- **Timestamps are validated as RFC 3339** by the framework validator and, when installed, by `jsonschema` with `rfc3339-validator`.
+- **Timestamps are validated as RFC 3339** by the framework validator, the production validator and, when installed, by `jsonschema` with `rfc3339-validator`.
 
 ## Future considerations (not Phase 1)
 
@@ -176,6 +178,7 @@ The repository remains alpha until piloted on a real game. Change process: [GOVE
 
 ```bash
 python3 tests/validate_framework.py
+python3 tests/test_production_validator.py
 ```
 
-Standard library only. Checks structure, contract sections, maturity, vocabulary consistency across every document and schema, internal links, schema behaviour against valid and invalid fixtures, and key ownership separations. It verifies consistency — it cannot and does not judge subjective framework quality. See [tests/README.md](tests/README.md).
+Standard library only. Checks structure, contract sections, maturity, vocabulary consistency across every document and schema, internal links, schema behaviour against valid and invalid fixtures, and key ownership separations. It verifies consistency — it cannot and does not judge subjective framework quality. The second command tests the production validator. See [tests/README.md](tests/README.md).

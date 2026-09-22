@@ -1,0 +1,52 @@
+{
+  "decision_authorities": [
+    {
+      "id": "creative-lead",
+      "may_decide": [
+        "ALL"
+      ],
+      "role": "Holds creative authority"
+    }
+  ],
+  "enabled_adapters": [],
+  "engine": {
+    "name": "UNDECIDED"
+  },
+  "golden_gameplay_cell": {
+    "required": true
+  },
+  "gpos_version": "1.0.0-alpha.8",
+  "human_review": {
+    "reviewers": [
+      {
+        "id": "creative-lead",
+        "role": "Holds creative authority"
+      }
+    ]
+  },
+  "project": {
+    "id": "example-project",
+    "name": "Example Project"
+  },
+  "schema_version": "1.0",
+  "target_platforms": [
+    {
+      "platform": "ANDROID",
+      "reference_devices": [
+        "Pixel-X"
+      ],
+      "tier": "PRIMARY"
+    },
+    {
+      "platform": "WINDOWS",
+      "tier": "PRIMARY"
+    },
+    {
+      "platform": "IOS",
+      "reference_devices": [
+        "Phone-Y"
+      ],
+      "tier": "SECONDARY"
+    }
+  ]
+}

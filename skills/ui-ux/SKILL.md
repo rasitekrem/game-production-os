@@ -1,7 +1,7 @@
 ---
 name: ui-ux
 maturity: DRAFT
-gpos_version: 1.0.0-alpha.7
+gpos_version: 1.0.0-alpha.8
 may_own_gates: [UI_UX]
 ---
 

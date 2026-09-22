@@ -1,0 +1,27 @@
+{
+  "affects": [
+    "project-config"
+  ],
+  "decided_at": "2026-03-01T10:00:00Z",
+  "decided_by": {
+    "id": "creative-lead",
+    "kind": "HUMAN"
+  },
+  "decision": {
+    "source_uri": ".game/reviews/HR-0001.md",
+    "verbatim": "Concept is locked. Move to pre-production."
+  },
+  "decision_id": "D-PARITY",
+  "kind": "PRESENTATION_PARITY",
+  "schema_version": "1.0",
+  "status": "ACTIVE",
+  "subject": {
+    "kind": "PROJECT",
+    "ref": "synthetic-project"
+  },
+  "transcribed_by": {
+    "id": "game-director",
+    "kind": "AGENT"
+  },
+  "value": "NO"
+}

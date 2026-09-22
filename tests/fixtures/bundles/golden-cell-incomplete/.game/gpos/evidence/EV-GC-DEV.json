@@ -1,0 +1,33 @@
+{
+  "artifacts": [
+    {
+      "description": "synthetic",
+      "media_type": "application/octet-stream",
+      "uri": "evidence/EV-GC-DEV.bin"
+    }
+  ],
+  "created_at": "2026-03-01T10:00:00Z",
+  "evidence_id": "EV-GC-DEV",
+  "limitations": [
+    "Synthetic record for validator tests"
+  ],
+  "provenance": {
+    "build_id": "build-build-7",
+    "capture_context": "TARGET_RUNTIME",
+    "device": "Pixel-X",
+    "subject_revision": "build-7",
+    "target_platform": "ANDROID"
+  },
+  "schema_version": "1.0",
+  "source": {
+    "id": "qa-performance",
+    "kind": "AGENT"
+  },
+  "subject": {
+    "kind": "GOLDEN_CELL",
+    "ref": "cell-1"
+  },
+  "summary": "Synthetic DEVICE_EVIDENCE for cell-1.",
+  "superseded": false,
+  "type": "DEVICE_EVIDENCE"
+}

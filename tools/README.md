@@ -1,17 +1,21 @@
-# Tools — placeholder (Phase 1)
+# Tools
 
-**No tools are implemented in Phase 1.** The only executable in this repository is the framework validator in `tests/`.
+**Phase 2A implements one tool: the production validator.** Its code is the Python package [`gpos/`](../gpos/__init__.py); its documentation is [validator/README.md](validator/README.md). This directory holds documentation only.
 
-## Planned concepts
+```bash
+python3 -m gpos.validator validate  --project PATH [--format text|json]
+python3 -m gpos.validator readiness --project PATH --routing ID [--format text|json]
+```
+
+The validator checks a project's records (project config, Human Decisions, routing, gates, evidence) against `schemas/`, `core/registry.json` and every record-validation requirement of [core/GOVERNANCE.md §12](../core/GOVERNANCE.md#12-phase-2-acceptance-requirement-record-validation). It is read-only: it reports and never changes gate statuses, records or decisions on its own. It does not judge creative quality; that stays with Human Review.
+
+## Planned concepts (not implemented)
 
 | Tool | Purpose | Constraints |
 |---|---|---|
 | Adapter sync | Regenerate agent-specific instruction files (see `adapters/`) from GPOS source | Output is generated, never hand-edited; source of truth stays in `core/`, `skills/`, `workflows/` |
 | Project bootstrap | Create a project's `.game/` directory from `templates/` and write a project config | Must leave every decision as a placeholder; must not invent game decisions |
-| Validation CLI | Validate a project's `.game/` records (routing, gates, evidence) against `schemas/` and cross-record rules (evidence type, context and revision per gate; linked Human Review; reviewer ≠ owner; supersession) | Reports; never changes gate statuses on its own |
 | Evidence collection | Capture and register evidence records with correct type, capture context, provenance (revision, build, hash, platform, tool version, instrumentation) and limitations | Cannot create `HUMAN_EVIDENCE`; provenance filled by the tool, not typed by the agent |
 | Framework upgrade / migration | Move a project from one GPOS version to another, with a report of changed semantics | MAJOR upgrades require Human Decision per project |
 
-**Phase-2 acceptance requirement.** Project record validation is not implemented in Phase 1. The requirements Phase 2 must meet are defined in [core/GOVERNANCE.md §12](../core/GOVERNANCE.md#12-phase-2-acceptance-requirement-record-validation).
-
-The reference implementation of the cross-record rules currently lives in `tests/validate_framework.py` (`gate_evidence_problems`, `routing_problems`, `scope_ready`) and is expected to move into the validation CLI in a later phase.
+The Phase-1 reference implementation of the cross-record rules remains in `tests/validate_framework.py` as the regression oracle for the production validator; production code does not import it.

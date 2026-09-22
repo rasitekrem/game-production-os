@@ -1,6 +1,6 @@
 # Project
 
-> **GPOS template** · `1.0.0-alpha.7` · copy to `.game/PROJECT.md` · see [templates/README.md](README.md)
+> **GPOS template** · `1.0.0-alpha.8` · copy to `.game/PROJECT.md` · see [templates/README.md](README.md)
 >
 > Document authority status: `PROPOSED` <!-- becomes LOCKED only by Human Decision; cite the DECISIONS.md entry -->
 > Locked by decision: `UNDECIDED`
@@ -29,7 +29,7 @@
 |---|---|---|
 | Lifecycle stage | `CONCEPT` | `PROPOSED` |
 | Quality target | polished professional indie (GPOS default) — confirm or override: `HUMAN_DECISION_REQUIRED` | `PROPOSED` |
-| GPOS version adopted | `1.0.0-alpha.7` | `PROPOSED` |
+| GPOS version adopted | `1.0.0-alpha.8` | `PROPOSED` |
 | Golden Gameplay Cell | required (GPOS default) — a waiver needs a Human Decision reference | `PROPOSED` |
 | Stateful editor concurrency | single writer (GPOS default) | `PROPOSED` |
 | Does the development environment represent target presentation? (drives `TARGET_PRESENTATION_DIFFERS`; `YES`/`NO` only with a Human Decision) | `HUMAN_DECISION_REQUIRED` | `PROPOSED` |

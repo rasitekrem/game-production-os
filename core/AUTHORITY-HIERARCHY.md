@@ -1,6 +1,6 @@
 # Authority Hierarchy
 
-Status: normative · GPOS `1.0.0-alpha.7` · Elaborates [P7](PRINCIPLES.md#p7--authority-hierarchy)
+Status: normative · GPOS `1.0.0-alpha.8` · Elaborates [P7](PRINCIPLES.md#p7--authority-hierarchy)
 
 ---
 

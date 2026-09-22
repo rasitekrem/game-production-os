@@ -1,0 +1,30 @@
+{
+  "applied_conditions": [],
+  "assessed_by": {
+    "id": "qa-performance",
+    "kind": "AGENT"
+  },
+  "blocking": true,
+  "evidence_refs": [
+    "DEV-A"
+  ],
+  "gate": "DEVICE",
+  "gate_id": "G-DEV",
+  "limitations": [
+    "Assessed on a development build, not the target runtime"
+  ],
+  "notes": "45-degree turns read well. Not ready to close.",
+  "owner": "qa-performance",
+  "recorded_at": "2026-01-01T13:00:00Z",
+  "review_policy": "ROUTINE",
+  "routine_basis": "release",
+  "routing_ref": "REL-1.0",
+  "schema_version": "1.0",
+  "scope": {
+    "kind": "RELEASE",
+    "ref": "rel-1.0",
+    "revision": "build-100"
+  },
+  "specialist_assessment": "PASS",
+  "status": "PASS"
+}

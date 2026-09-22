@@ -1,0 +1,113 @@
+{
+  "description": "Player character shows visible foot sliding and popping during 90-degree and 180-degree turns at run speed.",
+  "editor_write_lock": "NONE",
+  "human_review": {
+    "primary_question": "Is this candidate build accepted for release?",
+    "required": true,
+    "timing": "After device validation on the candidate build"
+  },
+  "lifecycle_stage": "RELEASE_CANDIDATE",
+  "missing_decisions": [],
+  "omitted_gates": [
+    {
+      "gate": "GAMEPLAY_DESIGN",
+      "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+    },
+    {
+      "gate": "LEVEL_DESIGN",
+      "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+    },
+    {
+      "gate": "ANIMATION",
+      "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+    },
+    {
+      "gate": "CAMERA_COMPOSITION",
+      "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+    },
+    {
+      "gate": "VISUAL_ART",
+      "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+    },
+    {
+      "gate": "GAME_FEEL_VFX",
+      "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+    },
+    {
+      "gate": "UI_UX",
+      "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+    },
+    {
+      "gate": "AUDIO",
+      "reason": "Dedicated-server build: no player-facing gameplay, space, motion, visuals, feedback, UI or sound change in this release."
+    }
+  ],
+  "out_of_scope": [],
+  "primary_specialist": "qa-performance",
+  "rationale": "Success depends on motion quality judged from the gameplay camera, so character-animation is primary; technical-art owns rig and blend setup causes. The fix stays inside the approved locomotion baseline, so the proportional policy is cross-review, not Human Review.",
+  "required_gates": [
+    {
+      "blocking": true,
+      "gate": "TECHNICAL",
+      "owner": "qa-performance",
+      "required_evidence": [
+        "TEST_EVIDENCE"
+      ],
+      "review_policy": "ROUTINE",
+      "routine_basis": "Full regression on the candidate build",
+      "unapplied_conditions": [
+        {
+          "condition": "PERSISTENCE_AFFECTED",
+          "reason": "Server build stores no player saves."
+        }
+      ]
+    },
+    {
+      "applied_conditions": [
+        "TARGET_PLATFORM_PERFORMANCE_CLAIM"
+      ],
+      "blocking": true,
+      "gate": "PERFORMANCE",
+      "owner": "qa-performance",
+      "required_evidence": [
+        "PERFORMANCE_EVIDENCE",
+        "DEVICE_EVIDENCE"
+      ],
+      "review_policy": "ROUTINE",
+      "routine_basis": "Measure against locked budgets"
+    },
+    {
+      "blocking": true,
+      "gate": "DEVICE",
+      "owner": "qa-performance",
+      "required_evidence": [
+        "DEVICE_EVIDENCE"
+      ],
+      "review_policy": "ROUTINE",
+      "routine_basis": "Run on every reference device"
+    },
+    {
+      "blocking": true,
+      "gate": "HUMAN_REVIEW",
+      "owner": "HUMAN",
+      "required_evidence": [
+        "HUMAN_EVIDENCE"
+      ],
+      "review_policy": "HUMAN_REVIEW_REQUIRED"
+    }
+  ],
+  "review_triggers": [
+    "RELEASE"
+  ],
+  "reviewers": [
+    "HUMAN"
+  ],
+  "schema_version": "1.0",
+  "secondary_specialists": [],
+  "subject": {
+    "kind": "RELEASE",
+    "ref": "rel-1.0"
+  },
+  "task_id": "REL-1.0",
+  "workflow": "release"
+}

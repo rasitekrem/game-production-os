@@ -1,0 +1,31 @@
+{
+  "artifacts": [
+    {
+      "description": "synthetic",
+      "media_type": "application/octet-stream",
+      "uri": "evidence/EV-GC-VISUAL.bin"
+    }
+  ],
+  "created_at": "2026-03-01T10:00:00Z",
+  "evidence_id": "EV-GC-VISUAL",
+  "limitations": [
+    "Synthetic record for validator tests"
+  ],
+  "provenance": {
+    "build_id": "build-build-7",
+    "capture_context": "DIAGNOSTIC_RUNTIME",
+    "subject_revision": "build-7"
+  },
+  "schema_version": "1.0",
+  "source": {
+    "id": "art-direction",
+    "kind": "AGENT"
+  },
+  "subject": {
+    "kind": "GOLDEN_CELL",
+    "ref": "cell-1"
+  },
+  "summary": "Synthetic VISUAL_EVIDENCE for cell-1.",
+  "superseded": false,
+  "type": "VISUAL_EVIDENCE"
+}

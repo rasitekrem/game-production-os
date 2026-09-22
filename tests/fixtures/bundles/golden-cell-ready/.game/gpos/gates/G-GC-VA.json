@@ -1,0 +1,27 @@
+{
+  "applied_conditions": [],
+  "assessed_by": {
+    "id": "art-direction",
+    "kind": "AGENT"
+  },
+  "blocking": true,
+  "disagreements_disclosed": true,
+  "evidence_refs": [
+    "EV-GC-VISUAL"
+  ],
+  "gate": "VISUAL_ART",
+  "gate_id": "G-GC-VA",
+  "human_review_ref": "G-GC-HR",
+  "owner": "art-direction",
+  "recorded_at": "2026-03-01T10:00:00Z",
+  "review_policy": "HUMAN_REVIEW_REQUIRED",
+  "routing_ref": "GC-1",
+  "schema_version": "1.0",
+  "scope": {
+    "kind": "GOLDEN_CELL",
+    "ref": "cell-1",
+    "revision": "build-7"
+  },
+  "specialist_assessment": "PASS",
+  "status": "PASS"
+}

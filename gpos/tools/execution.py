@@ -63,7 +63,9 @@ def vocabulary_problems(framework, request, capability):
             out.append(bad(f"actor id {actor.id!r} is not a usable cross-record identifier"))
     if request.target_platform is not None and request.target_platform not in reg["platforms"]:
         out.append(bad(f"target platform {request.target_platform!r} is not in registry platforms {reg['platforms']}"))
-    for field in ("build_revision", "build_id", "device", "routing_ref"):
+    if request.resource_id is not None and not capability.single_writer_required:
+        out.append(bad(f"{cap} takes no single-writer lease, so a resource_id has no meaning for it"))
+    for field in ("build_revision", "build_id", "device", "routing_ref", "resource_id"):
         value = getattr(request, field)
         if value is not None and (not isinstance(value, str) or not value.strip()):
             out.append(bad(f"{field} must be a non-empty string when supplied"))
@@ -671,8 +673,8 @@ def _sanitize_outcome(outcome, adapter_id, cap_id):
         notes, c = _redact_strings(candidate.notes)
         total += a + b + c
         evidence.append(dataclasses_replace(candidate, summary=summary, limitations=limitations, notes=notes))
-    detail = redact(outcome.detail)[0] if isinstance(outcome.detail, str) else ""
-    total += redact(outcome.detail)[1] if isinstance(outcome.detail, str) else 0
+    detail, n = redact(outcome.detail) if isinstance(outcome.detail, str) else ("", 0)
+    total += n
     plan, n = _redact_strings(outcome.plan)
     total += n
     return dataclasses_replace(

@@ -1844,6 +1844,11 @@ class N07_LeaseIntegrity(TmpCase):
                               resource_id="something", inputs={"text": "x"})
         self.assertEqual(result.status, tdg.INVALID_REQUEST)
 
+    def test_a_capability_that_takes_no_lease_refuses_a_resource_id(self):
+        result = self.run_cap(syn.INSPECT, project=self.project(), resource_id="device-1")
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+        self.assertTrue(any("takes no single-writer lease" in d.message for d in result.diagnostics))
+
     def test_different_resources_proceed_independently(self):
         p = self.project()
         held = lease_mod.acquire(p, "synthetic", "SYNTHETIC_TARGET:device-1", "writer-A", "2026-09-22T10:00:00Z")

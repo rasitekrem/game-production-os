@@ -1,33 +1,193 @@
-# Adapters — placeholder (Phase 1)
+# Adapters
 
-**Nothing in this directory is implemented in Phase 1.** This file defines the boundary so that later phases add adapters without changing GPOS semantics.
+Status: Phase 2B · GPOS `1.0.0-alpha.9` · agent adapter layer in [`gpos/adapters/`](../gpos/adapters/__init__.py)
 
-## What an adapter is
+An adapter connects GPOS contracts to a specific agent runtime or tool. Phase 2B implements **agent adapters** for two coding agents: [Claude Code](claude-code.md) and [Codex](codex.md). They render the same GPOS authority into each agent's native project instructions and skills. Engine, DCC, device and repository-hosting adapters are later phases.
 
-An adapter connects GPOS contracts to a specific agent runtime or tool. It may:
+> **Generated agent files are disposable projections. Canonical authority is GPOS plus Project Locked Authority.**
+
+## What an adapter may and may not do
+
+An adapter may:
 
 - generate agent-specific instruction files from GPOS sources,
-- expose tool capabilities (capture, render, profile, deploy) that produce GPOS-typed evidence,
-- read and write GPOS records (routing, gate, evidence) in the formats defined in `schemas/`, filling evidence provenance (capture context, revisions, build, hash, platform, tool version, instrumentation) from the tool itself wherever possible.
+- expose tool capabilities (capture, render, profile, deploy) that produce GPOS-typed evidence (later phases),
+- read and write GPOS records (routing, gate, evidence) in the formats defined in `schemas/`, filling evidence provenance from the tool itself wherever possible (later phases).
 
 An adapter may **not**:
 
 - redefine gates, statuses, evidence types, authority levels or lifecycle stages,
 - emit evidence in a capture context incompatible with its type (registry `evidence_context_compatibility`),
 - weaken any rule in `core/`,
-- synthesize Human Review or `HUMAN_EVIDENCE` (a future connector that captures a verdict the human enters themselves is the intended way to strengthen authenticity; see core/HUMAN-AUTHORITY.md §7),
+- synthesize Human Review or `HUMAN_EVIDENCE` (see [HUMAN-AUTHORITY.md §7](../core/HUMAN-AUTHORITY.md#7-authenticity-of-human-evidence-trust-boundary)),
 - bypass the single-writer rule for stateful editors unless a project has validated a workflow for it.
 
 ## Single source of authority
 
-Future Claude and Codex instructions **must be generated from the shared GPOS source** (`core/`, `skills/`, `workflows/`, `core/registry.json`) — not duplicated as hand-written, per-agent authority. Hand-maintained parallel copies drift; drift creates conflicting authority. Generated files are build artefacts; GPOS source is authority.
+There is one production authority: GPOS (`core/`, `core/registry.json`, `skills/`, `workflows/`) plus the project's own authority (`.game/`, `.game/gpos/`). There is no Claude GPOS and no Codex GPOS.
 
-## Planned adapter categories (Phase 2–3)
+```
+GPOS sources + project authority
+        │  compiler.py (explicit source selection, hashing)
+        ▼
+Adapter IR (model.py) ── one agent-independent model
+        │  content.py (all GPOS meaning, built from the IR)
+        ├───────────────────────┐
+        ▼                       ▼
+claude-code backend      codex backend        (backends.py: FORMAT only)
+CLAUDE.md                AGENTS.md
+.claude/skills/gpos-*/   .agents/skills/gpos-*/
+```
+
+- **Sources** (`sources.py`). Only these are read, each with a kind and a sha256:
+  - `NORMATIVE`: `core/registry.json`;
+  - `SPECIALIST_SKILL`: `skills/*/SKILL.md`;
+  - `WORKFLOW`: `workflows/*.md`;
+  - `PROJECT_AUTHORITY`: the registry `project_authority_files` present in `.game/`, `.game/gpos/project-config.json` and decision records.
+  - Manifests are `GENERATED_METADATA`, produced but never read as authority. Nothing is concatenated wholesale.
+- **IR** (`model.py`). Holds:
+  - GPOS version and project identity;
+  - authority order;
+  - Human Review boundaries (mandatory and project triggers, `never_cross_reviewer`, placeholders);
+  - gates;
+  - enabled specialist skills, each with every contract section, maturity, gates, cross-review eligibility and the project authority files its contract names as inputs;
+  - workflows with their registry gate requirements;
+  - project authority documents, row by row (`LOCKED` / `PROPOSED`, decision reference, whether the lock is backed by an `ACTIVE` decision record, placeholders);
+  - the validator contract;
+  - source hashes.
+- **Content** (`content.py`). Every generated statement of GPOS meaning is composed here from the IR, as blocks tagged with a semantic id.
+- **Backends** (`backends.py`). Supply only file locations, front matter, invocation syntax, discovery wording and a documented compatibility declaration. A backend cannot add, drop or reword a rule; a test checks that no rule text appears in backend code.
+
+### Semantic equivalence, not textual equality
+
+Claude Code and Codex outputs differ in text (file names, `/skill` vs `$skill`, discovery notes). They must not differ in meaning. Each manifest carries a `semantics` block derived from the IR only (authority order, project authority, enabled skills and their maturity, ownership, review eligibility, Human Review boundaries, validator contract, workflows). Bundle validation checks that each rendered file really contains its semantic blocks' required markers, in order: authority levels, Human Review triggers, validator commands, locked project rows, open decisions and every contract section. For one IR, the two manifests' `semantics` are identical (tested). Prose is never parsed back into rules.
+
+## Progressive disclosure
+
+| Layer | Loaded | Content | Budget |
+|---|---|---|---|
+| Root (`CLAUDE.md` / `AGENTS.md`) | every session | authority order, project authority summary, routing rule, specialist index, Human Review boundaries, validator contract, generated-file rules | 8,000 characters, 200 lines |
+| Skill description (front matter) | every session (skill listing) | role and domain boundary of one specialist | 600 characters each, 8,000 total |
+| Skill body (`gpos-<skill>/SKILL.md`) | when the skill is used | project authority for that discipline, the full generic contract, gates and reviews, validator use | 20,000 characters, 500 lines |
+| Workflow references (game-director only) | when routing into a workflow | one workflow contract | 12,000 characters each |
+
+Budgets are in characters and lines, so they do not depend on any tokenizer. They derive from the documented agent limits:
+- Claude Code: `CLAUDE.md` under 200 lines, `SKILL.md` under 500 lines.
+- Codex: `AGENTS.md` reads 32 KiB, and the skill list is about 8,000 characters.
+- Agent Skills: a body under about 5,000 tokens, descriptions of at most 1,024 characters.
+
+A render that exceeds a budget fails with `CONTEXT_BUDGET_EXCEEDED`; nothing is truncated. A root file that quotes any contract or workflow passage fails as monolithic. The whole of GPOS is never put in one file.
+
+Skills are triggered by domain intent. Each description is the contract's ROLE statement plus its gates and the boundary "not for work another GPOS specialist owns". There are no keyword lists: "animation" in a UI loading spinner task is not character animation.
+
+## Project-local layout
+
+```
+<project>/
+  .game/                        project authority (canonical; never generated)
+  .game/gpos/                   GPOS records (canonical; validated by the production validator)
+  .game/gpos-generated/         GPOS-owned generated metadata (not authority)
+    claude-code/manifest.json
+    codex/manifest.json
+  CLAUDE.md                     generated (Claude Code root)       } only when the adapter
+  .claude/skills/gpos-*/        generated (Claude Code skills)     } is enabled and synced
+  AGENTS.md                     generated (Codex root)             }
+  .agents/skills/gpos-*/        generated (Codex skills)           }
+```
+
+Generated metadata lives in `.game/gpos-generated/`, not inside `.game/gpos/`. The frozen alpha.8 record-bundle convention treats any unexpected entry in `.game/gpos/` as an error, and adapters must not change validator semantics.
+
+Enable adapters in the project config: `enabled_adapters: ["claude-code", "codex"]`. Optionally restrict the generated skills with `extensions` → `gpos-adapters` → `skills` (game-director is always required: it routes everything). Enabling an adapter is a project decision; sync refuses adapters the config does not enable.
+
+## Commands
+
+```bash
+python3 -m gpos.adapters render --project PATH [--agent claude-code|codex|all] [--out <dir>] [--format text|json]
+python3 -m gpos.adapters sync   --project PATH [--agent claude-code|codex|all] [--repair] [--format text|json]
+python3 -m gpos.adapters check  --project PATH [--agent claude-code|codex|all] [--format text|json]
+```
+
+- **render** compiles, renders and validates in memory and lists the files and their hashes. With `--out` it writes each bundle to `<dir>/<agent>/`. `<dir>` must be a new or empty directory outside `.game`, `.claude` and `.agents`. It never changes the project.
+- **sync** updates only GPOS-managed files for the enabled adapters (`--agent all`) or one adapter. It is deterministic and idempotent: a second sync changes nothing, and check right after sync is clean.
+- **check** is read-only. It reports drift and is suitable for CI; it never regenerates.
+
+| Exit | Meaning |
+|---|---|
+| 0 | OK: rendered, synced, or check clean |
+| 1 | INVALID: the project is INVALID by the production validator, adapter settings are invalid, or a budget is exceeded |
+| 2 | DRIFT: check found generated state out of date or edited |
+| 3 | ERROR: invocation or tool error, incompatible GPOS version, unknown adapter, internal error |
+| 4 | CONFLICT: sync refused because it would overwrite or delete a file GPOS does not own; nothing was written |
+
+## Validator precondition
+
+Every command first runs the frozen Phase-2A production validator on the project (`validate_project`). An INVALID project generates nothing (`PROJECT_INVALID`). Tasks do not need to be READY: a NOT_READY routing never blocks generation. A project pinned to another GPOS version fails closed (`GPOS_VERSION_INCOMPATIBLE`, exit 3).
+
+Generated instructions direct agents to the validator at workflow boundaries, and always before claiming READY, merge-ready, release-ready or Golden Cell exited. They say explicitly that agent reasoning is not GPOS validation. No validator logic is copied into prompts.
+
+## Ownership and sync rules
+
+A file is GPOS-owned only when the adapter's manifest lists it. The managed area of an adapter is its entry file, `<skill_root>/gpos-*`, and `.game/gpos-generated/<adapter>/`. Everything else, including other skills in `.claude/skills/` or `.agents/skills/`, is never touched.
+
+- **Human-owned entry file.** An existing `CLAUDE.md` or `AGENTS.md` that GPOS did not generate stops sync with `UNOWNED_ENTRYPOINT`, and nothing is written. There is no automatic adoption and no editing of human prose. To use GPOS, move or merge that file by hand first.
+- **Unowned file in the managed area** (for example a hand-made `.claude/skills/gpos-x/SKILL.md` or an extra file in a generated skill directory): `OUTPUT_CONFLICT`, nothing written.
+- **Edited generated file**: `MODIFIED_MANAGED_FILE_CONFLICT`. Sync keeps the edit unless `--repair` is given, in which case it is replaced. Change the sources, not the generated files.
+- **Stale generated files** (for example a skill that was disabled) are deleted only when the old manifest lists them, they lie in the managed area and they are unmodified. Empty generated skill directories are removed; nothing else is.
+- **Atomicity.** Sync first plans every change for every requested adapter. If any conflict exists, nothing is written. Each file is then written to a temporary sibling and atomically replaced, and the manifest is written last. A file that already has its new content is accepted, so an interrupted sync can simply be re-run.
+- **Paths.** Every managed path is relative, contains no `..`, `.` or backslash, and lies in the managed area. No existing component may be a symlink, and it must resolve inside the project. A manifest listing any other path is not trusted (`UNSAFE_PATH` on sync, `PATH_ESCAPE` on check), and such paths are never written or deleted.
+- **No global state.** Nothing is written to user or global agent directories (`~/.claude`, `~/.codex`, `~/.agents`, `$CODEX_HOME`). Nothing is installed, no hooks or settings are generated, no agent is run and no network is used.
+
+## Drift detection
+
+`check` compares, per adapter:
+
+| Code | Drift |
+|---|---|
+| `MANIFEST_MISSING` | never synced |
+| `MANIFEST_INVALID` | manifest unreadable, malformed or edited (its `semantic_hash` no longer matches) |
+| `ADAPTER_FORMAT_MISMATCH` | written by another adapter format version |
+| `GPOS_VERSION_MISMATCH` | generated from another GPOS version |
+| `SOURCE_CHANGED` | a GPOS or project source was added, removed or changed since generation |
+| `MANAGED_FILE_MISSING` | a generated file was deleted |
+| `MANAGED_FILE_MODIFIED` | a generated file was edited |
+| `UNEXPECTED_MANAGED_FILE` | a file appeared inside the managed area |
+| `GENERATED_STALE` | sources unchanged but the generator would now produce different files |
+| `PATH_ESCAPE` | the manifest names a path outside the managed area |
+
+## Manifest and provenance
+
+`.game/gpos-generated/<adapter>/manifest.json` records:
+- adapter id, format and target agent, with its compatibility declaration;
+- generator versions, GPOS version and project id;
+- the managed area and the enabled skills;
+- every source (`kind`, logical id such as `gpos:skills/character-animation/SKILL.md` or `project:.game/ANIMATION.md`, and sha256);
+- the IR hash and the `semantics` parity block;
+- for every generated file: path, sha256, bytes, role, skill, the source ids it derives from and its semantic blocks;
+- a `semantic_hash` over all of the above.
+
+There is no timestamp, so identical inputs give byte-identical manifests; git history records when a manifest changed.
+
+## Adding an adapter
+
+1. Verify the agent's current first-party documentation for its instruction file, skill format and discovery, and record the target in a compatibility declaration.
+2. Add a `Backend` subclass in `gpos/adapters/backends.py` with its entry file, skill root, front matter, invocation syntax and discovery and scope notes. Add no rule text.
+3. Register the id in `core/registry.json` `adapter_ids`.
+4. Extend `tests/test_adapters.py` (rendering, parity, sync) and `tests/mutate_adapters.py`.
+
+If an agent cannot express GPOS meaning in its format, stop and escalate. Do not add a backend-specific rule.
+
+## Known limitations (Phase 2B)
+
+- Agent behaviour is not benchmarked, and no agent is run: files are rendered, validated and synced only.
+- There is no adoption of an existing human-written entry file, and no global installation of skills.
+- Human authentication is out of scope ([HUMAN-AUTHORITY.md §7](../core/HUMAN-AUTHORITY.md#7-authenticity-of-human-evidence-trust-boundary)).
+- There are no engine, DCC, MCP, FFmpeg, device or repository-hosting adapters, no task orchestration or subagent spawning, and no project bootstrap.
+- Project authority is read from the template table format. Free prose in `.game/` files is not compiled; skills tell the agent to read the file.
+
+## Future adapter categories
 
 | Category | Intended role | Evidence it may produce |
 |---|---|---|
-| Claude Code | Generate skills / instructions from GPOS source; routing and gate bookkeeping | — (records only) |
-| Codex | Same as above for Codex | — (records only) |
 | Unity official agent / plugin integration | Engine operations through the vendor's supported path | `RUNTIME_EVIDENCE`, `VISUAL_EVIDENCE`, `MOTION_EVIDENCE`, `TEST_EVIDENCE`, `PERFORMANCE_EVIDENCE` |
 | Unity MCP | Engine inspection and mutation via MCP | as above |
 | Blender CLI | Headless DCC operations, asset validation, renders | `VISUAL_EVIDENCE` and `MOTION_EVIDENCE` in `DCC_RENDER`; asset-analysis `CODE_EVIDENCE` / `PERFORMANCE_EVIDENCE` in `OFFLINE_ANALYSIS`. Never game `RUNTIME_EVIDENCE` — Blender executing is not the game running. |
@@ -35,5 +195,3 @@ Future Claude and Codex instructions **must be generated from the shared GPOS so
 | FFmpeg | Recording, trimming, side-by-side comparisons, frame extraction | `MOTION_EVIDENCE`, `AUDIO_EVIDENCE`, `VISUAL_EVIDENCE` |
 | Android / device | Install, run, capture, profile on physical devices | `DEVICE_EVIDENCE`, `PERFORMANCE_EVIDENCE`, `MOTION_EVIDENCE` |
 | Git / GitHub | Provenance, review integration, gate status reporting | `CODE_EVIDENCE`, `TEST_EVIDENCE` (CI) |
-
-Adapter ids will be registered for `enabled_adapters` in `schemas/project-config.schema.json`. Adapter-specific settings belong under `extensions`.

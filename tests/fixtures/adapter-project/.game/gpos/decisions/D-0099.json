@@ -1,0 +1,31 @@
+{
+  "affects": [
+    ".game/PROJECT.md",
+    "project-config:/lifecycle_stage"
+  ],
+  "decided_at": "2026-01-02T09:00:00Z",
+  "decided_by": {
+    "id": "creative-lead",
+    "kind": "HUMAN"
+  },
+  "decision": {
+    "source_uri": ".game/reviews/HR-0001.md",
+    "verbatim": "Concept is locked. Move to pre-production."
+  },
+  "decision_id": "D-0099",
+  "kind": "LIFECYCLE_TRANSITION",
+  "schema_version": "1.0",
+  "status": "ACTIVE",
+  "subject": {
+    "kind": "PROJECT",
+    "ref": "synthetic-adapter-project"
+  },
+  "transcribed_by": {
+    "id": "game-director",
+    "kind": "AGENT"
+  },
+  "transition": {
+    "from": "CONCEPT",
+    "to": "PRE_PRODUCTION"
+  }
+}

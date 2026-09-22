@@ -4,6 +4,28 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.9] — Phase 2B: agent adapter layer
+
+Builds on the frozen Phase-1 core (`v1.0.0-alpha.7`) and the frozen Phase-2A validator (`v1.0.0-alpha.8`). No change to gate, evidence, authority, routing, lifecycle or validator semantics. Projects must pin `gpos_version` `1.0.0-alpha.9`.
+
+### Added
+
+- `gpos/adapters/`: model-independent agent adapter layer. Explicit source selection and hashing, one agent-independent IR, all GPOS meaning composed in one module, and format-only backends for Claude Code (`CLAUDE.md`, `.claude/skills/gpos-*/`) and Codex (`AGENTS.md`, `.agents/skills/gpos-*/`).
+- `python3 -m gpos.adapters render|sync|check` with exit codes 0 OK, 1 INVALID, 2 DRIFT, 3 ERROR, 4 CONFLICT.
+- Manifests with provenance (source ids and sha256, per-file sources and semantic blocks) and a `semantics` parity block; deterministic, without timestamps.
+- Strict ownership: human-written entry files are never overwritten or adopted, the managed area is limited, paths are safe, sync is atomic and idempotent, and drift is detected without regenerating.
+- Context budgets and progressive disclosure: a concise root, one skill per specialist, workflow references loaded on demand. Monolithic renders are rejected.
+- Registry `adapter_ids` and `adapter_extension_key`; `adapters/README.md`, `adapters/claude-code.md`, `adapters/codex.md`.
+- Tests (`tests/test_adapters.py`), a synthetic adapter project, layout and root snapshots, and an adapter mutation harness.
+
+### Changed
+
+- The Phase-2A/Phase-1 boundary allows `adapters/*.md` documentation; code stays in `gpos/` and `tests/`. The vocabulary check accepts registered adapter ids.
+
+### Maturity
+
+- No skill promotions. All 13 skills `DRAFT`; adapters copy maturity and never change it.
+
 ## [1.0.0-alpha.8] — Phase 2A: production validator
 
 Builds on the frozen Phase-1 core (`v1.0.0-alpha.7`). No change to gate, evidence, authority, routing or lifecycle semantics; records valid under alpha.7 remain valid, but must pin `gpos_version` `1.0.0-alpha.8` to be validated.

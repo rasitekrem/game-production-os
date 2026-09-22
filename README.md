@@ -1,6 +1,6 @@
 # Game Production OS
 
-Version `1.0.0-alpha.8` · Phase 2A (production validator) on the frozen Phase-1 core · all skills `DRAFT`
+Version `1.0.0-alpha.9` · Phase 2B (agent adapter layer) on the frozen Phase-1 core and Phase-2A validator · all skills `DRAFT`
 
 A model-independent production framework for AI-assisted professional game development. It makes AI agents work like a disciplined, multidisciplinary game studio — with clear creative authority, specialist ownership, independent quality gates and typed evidence — instead of like a generic software agent that calls a feature done once the tests pass.
 
@@ -17,7 +17,7 @@ A model-independent production framework for AI-assisted professional game devel
 ## What it is not
 
 - Not a prompt collection, and not a single giant prompt.
-- Not an engine integration or plugin. It contains no Unity, Blender, Claude or Codex integration; its only tool is a read-only record validator.
+- Not an engine integration or plugin. It contains no Unity or Blender integration. Its tools are a read-only record validator and agent adapters that render GPOS into Claude Code and Codex project instructions; it never runs an agent.
 - Not tied to any one game, engine, genre or model.
 
 Game Production OS does **not** replace Unity, Blender, Claude, Codex, game designers, artists, or human creative direction. It coordinates production responsibility and evidence between them.
@@ -37,9 +37,9 @@ workflows/     13 production workflows (ENTRY CONDITIONS … POSTMORTEM)
 templates/     Authority skeletons for a project's .game/ directory
 schemas/       JSON Schemas for project config, task routing, gate, evidence and Human Decision records
 examples/      One minimal valid instance per schema (generic)
-adapters/      Later-phase boundary (placeholder only)
+adapters/      Agent adapter documentation (Claude Code, Codex) and later-phase boundaries
 tools/         Tool documentation (production validator)
-gpos/          Production validator package (Phase 2A): library and CLI
+gpos/          Production validator (Phase 2A) and agent adapter layer (Phase 2B): libraries and CLIs
 tests/         Framework validation, production-validator tests, fixtures and synthetic bundles
 ```
 
@@ -138,18 +138,19 @@ Each game keeps its own authority in a `.game/` directory built from `templates/
 | Phase | Scope |
 |---|---|
 | 1 (frozen, `v1.0.0-alpha.7`) | Core architecture, `DRAFT` contracts, schemas, validation |
-| 2A (this release) | Production validator: project record validity and routed readiness ([tools/validator/README.md](tools/validator/README.md)) |
-| 2 (remaining) | Pilot specialist pack and adapter foundations. Likely first deeply piloted skills: `game-director`, `character-animation`, `camera-composition`, `technical-art`, `game-feel-vfx`, `qa-performance` |
+| 2A (frozen, `v1.0.0-alpha.8`) | Production validator: project record validity and routed readiness ([tools/validator/README.md](tools/validator/README.md)) |
+| 2B (this release) | Agent adapter layer: one IR rendered into Claude Code and Codex project instructions and skills ([adapters/README.md](adapters/README.md)) |
+| 2 (remaining) | Pilot specialist pack. Likely first deeply piloted skills: `game-director`, `character-animation`, `camera-composition`, `technical-art`, `game-feel-vfx`, `qa-performance` |
 | 3 | Tool adapters: Claude/Codex, Unity, Blender, FFmpeg, device, Git/GitHub |
 | 4 | Real-project pilot |
 | 5 | Expand remaining specialist maturity |
 | 6 | Bootstrap, distribution, version migration |
 
-Adapter and tool boundaries: [adapters/README.md](adapters/README.md), [tools/README.md](tools/README.md). Future Claude and Codex instructions will be generated from this shared source, not maintained as duplicated hand-written authority.
+Adapter and tool boundaries: [adapters/README.md](adapters/README.md), [tools/README.md](tools/README.md). Claude Code and Codex instructions are generated from this shared source (`python3 -m gpos.adapters`), never maintained as duplicated hand-written authority; generated agent files are disposable projections.
 
 ## Versioning
 
-Semantic Versioning, currently `1.0.0-alpha.8` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
+Semantic Versioning, currently `1.0.0-alpha.9` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
 
 | Bump | When |
 |---|---|

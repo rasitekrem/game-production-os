@@ -1365,10 +1365,15 @@ class E01_NoReferenceImport(unittest.TestCase):
 
     def test_boundary(self):
         self.assertEqual(vf.phase_boundary_problems(), [])
+        # The validator names no agent or tool. (Phase 2B: the adapter layer in gpos/adapters/ legitimately names
+        # Claude Code and Codex; engine and tool integrations stay out of gpos/ entirely.)
         for p in (ROOT / "gpos").rglob("*.py"):
-            text = p.read_text()
-            for word in ("unity", "blender", "ffmpeg", "adb ", "github", "anthropic", "openai", "codex"):
-                self.assertNotIn(word, text.lower(), f"{p.relative_to(ROOT)} mentions {word}")
+            text = p.read_text().lower()
+            words = ("unity", "blender", "ffmpeg", "adb ", "github")
+            if "adapters" not in p.relative_to(ROOT).parts:
+                words += ("anthropic", "openai", "codex")
+            for word in words:
+                self.assertNotIn(word, text, f"{p.relative_to(ROOT)} mentions {word}")
 
 
 # ---------------------------------------------------------------- L  loading

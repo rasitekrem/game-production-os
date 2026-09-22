@@ -46,7 +46,7 @@ GATES = REGISTRY["gates"]
 SUBJECTIVE_DISCIPLINE_GATES = sorted(g for g, d in GATES.items() if d["subjective"] and g != "HUMAN_REVIEW")
 TRIGGERS = list(REGISTRY["mandatory_human_review_triggers"])
 CONDITIONS = list(REGISTRY["evidence_conditions"])
-VERSION = "1.0.0-alpha.8"
+VERSION = "1.0.0-alpha.9"
 GATE_OWNERS = [s for s in REGISTRY["skills"] if any(s in d["permitted_owners"] for d in GATES.values())] + ["HUMAN"]
 
 
@@ -794,11 +794,12 @@ def scope_ready(gate_records):
 # ---------------------------------------------------------------- phase boundary (Phase 2A)
 #
 # Phase 1 allowed no code outside tests/ and only README.md in adapters/ and tools/.
-# Phase 2A (alpha.8) adds exactly one thing: the production validator package gpos/ and its
-# Markdown documentation under tools/validator/. The boundary tests of alpha.4–alpha.7
-# (B09, C14, D10, E06, X08) asserted the Phase-1 file layout; they now assert this single
-# Phase-2A boundary instead, so the protection (no adapters, no tool code outside the
-# validator, production code independent of tests and of the network) is preserved.
+# Phase 2A (alpha.8) added the production validator package gpos/ and its Markdown
+# documentation under tools/validator/. Phase 2B (alpha.9) adds the agent adapter layer as
+# code in gpos/adapters/ and its documentation in adapters/*.md. The boundary tests of
+# alpha.4–alpha.7 (B09, C14, D10, E06, X08) asserted the Phase-1 file layout; they now assert
+# this single boundary instead, so the protection (no code outside gpos/ and tests/, docs-only
+# adapters/ and tools/, production code independent of tests and of the network) is preserved.
 
 CODE_SUFFIXES = {".py", ".js", ".ts", ".cs", ".sh", ".ps1"}
 CODE_ROOTS = ("tests", "gpos")
@@ -824,8 +825,11 @@ def phase_boundary_problems():
     problems = []
     files = lambda d: sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / d).rglob("*")  # untracked OS/bytecode files ignored
                              if p.is_file() and "__pycache__" not in p.parts and not p.name.startswith("."))
-    if files("adapters") != ["adapters/README.md"]:
-        problems.append(f"adapters/ must contain only README.md: {files('adapters')}")
+    if "adapters/README.md" not in files("adapters"):
+        problems.append("adapters/README.md is missing")
+    for f in files("adapters"):
+        if not f.endswith(".md"):
+            problems.append(f"adapters/ holds documentation only (adapter code lives in gpos/adapters/): {f}")
     for f in files("tools"):
         if not f.endswith(".md"):
             problems.append(f"tools/ holds documentation only (the validator lives in gpos/): {f}")
@@ -2616,8 +2620,9 @@ class X02_GateOwnershipConsistent(unittest.TestCase):
 
 
 def validator_vocabulary():
-    """Terms the Phase-2A production validator emits: diagnostic codes, severities, categories, verdicts,
-    tool error codes and readiness-overview states. Taken from gpos/ itself (Phase 2A added it to X03)."""
+    """Terms the production validator and the agent adapters emit: diagnostic codes, severities, categories,
+    verdicts, tool error codes, readiness-overview states, adapter codes and source kinds. Taken from gpos/
+    itself (Phase 2A added this to X03; Phase 2B extended it)."""
     sys.dont_write_bytecode = True
     sys.path.insert(0, str(ROOT))
     from gpos import cli, diagnostics, errors
@@ -2629,6 +2634,9 @@ def validator_vocabulary():
         cls = pending.pop()
         words.add(cls.code)
         pending += cls.__subclasses__()
+    # Phase 2B: adapter diagnostic codes, result classes and source kinds
+    from gpos.adapters import diagnostics as adapter_diagnostics, sources as adapter_sources
+    words |= set(adapter_diagnostics.CODES) | set(adapter_diagnostics.EXIT_FOR) | set(adapter_sources.SOURCE_KINDS)
     return words
 
 
@@ -2637,7 +2645,9 @@ class X03_VocabularyConsistent(unittest.TestCase):
 
     def test_backticked_terms(self):
         upper_vocab = registry_vocabulary() | schema_vocabulary() | validator_vocabulary()
-        lower_vocab = set(REGISTRY["skills"]) | set(REGISTRY["workflows"])
+        # Phase 2B: registered adapter ids and the adapter-settings key are lower-case vocabulary too.
+        lower_vocab = set(REGISTRY["skills"]) | set(REGISTRY["workflows"]) | set(REGISTRY.get("adapter_ids", [])) \
+            | {REGISTRY.get("adapter_extension_key")}
         problems = []
         for path in all_markdown():
             if path.name == "CHANGELOG.md":

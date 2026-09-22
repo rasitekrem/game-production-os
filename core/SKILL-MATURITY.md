@@ -1,6 +1,6 @@
 # Skill Maturity
 
-Status: normative · GPOS `1.0.0-alpha.8`
+Status: normative · GPOS `1.0.0-alpha.9`
 
 Machine-readable source: [`registry.json`](registry.json) → `maturity_levels`.
 
@@ -16,7 +16,7 @@ Machine-readable source: [`registry.json`](registry.json) → `maturity_levels`.
 
 Maturity describes **how much the contract has been validated**, not how capable the underlying model is. A `DRAFT` contract may be excellent; it simply has not been tested against real production.
 
-Every skill in GPOS `1.0.0-alpha.8` is `DRAFT`. No Phase-1 skill is `PILOTED` or `PROVEN`.
+Every skill in GPOS `1.0.0-alpha.9` is `DRAFT`. No Phase-1 skill is `PILOTED` or `PROVEN`.
 
 ## 2. Declaration
 

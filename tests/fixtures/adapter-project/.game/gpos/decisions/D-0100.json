@@ -1,0 +1,25 @@
+{
+  "affects": [
+    ".game/PROJECT.md"
+  ],
+  "decided_at": "2026-01-02T09:00:00Z",
+  "decided_by": {
+    "id": "creative-lead",
+    "kind": "HUMAN"
+  },
+  "decision": {
+    "verbatim": "The project id and working title are fixed."
+  },
+  "decision_id": "D-0100",
+  "kind": "LOCK",
+  "schema_version": "1.0",
+  "status": "ACTIVE",
+  "subject": {
+    "kind": "PROJECT",
+    "ref": "synthetic-adapter-project"
+  },
+  "transcribed_by": {
+    "id": "game-director",
+    "kind": "AGENT"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "decision_authorities": [
+    {
+      "id": "creative-lead",
+      "may_decide": [
+        "ALL"
+      ],
+      "role": "Holds creative authority"
+    }
+  ],
+  "enabled_adapters": [
+    "claude-code",
+    "codex"
+  ],
+  "engine": {
+    "name": "UNDECIDED"
+  },
+  "extensions": {
+    "gpos-adapters": {
+      "skills": [
+        "game-director",
+        "gameplay-design",
+        "character-animation",
+        "camera-composition",
+        "qa-performance",
+        "game-engineering"
+      ]
+    }
+  },
+  "golden_gameplay_cell": {
+    "required": true
+  },
+  "gpos_version": "1.0.0-alpha.9",
+  "human_review": {
+    "reviewers": [
+      {
+        "id": "creative-lead",
+        "role": "Holds creative authority"
+      }
+    ]
+  },
+  "lifecycle_decision_ref": "D-0099",
+  "lifecycle_stage": "PRE_PRODUCTION",
+  "project": {
+    "id": "synthetic-adapter-project",
+    "name": "Synthetic Adapter Project"
+  },
+  "schema_version": "1.0",
+  "target_platforms": [
+    {
+      "platform": "UNDECIDED",
+      "tier": "PRIMARY"
+    }
+  ]
+}

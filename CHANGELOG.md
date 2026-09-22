@@ -4,6 +4,34 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.10] — Phase 2C-0: tool adapter foundation
+
+Builds on the frozen Phase-1 core (`v1.0.0-alpha.7`), the frozen Phase-2A validator (`v1.0.0-alpha.8`) and the frozen Phase-2B agent adapter layer (`v1.0.0-alpha.9`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. Projects must pin `gpos_version` `1.0.0-alpha.10`.
+
+This phase integrates **no** real production tool. It creates the shared layer that future tool adapters — Git, FFmpeg, target device, Blender, Unity — must use, so that none of them invents its own execution model, capability vocabulary, result structure, provenance model, mutation semantics, single-writer behaviour, timeout behaviour, evidence semantics or failure model.
+
+### Added
+
+- `gpos/tools/`: the tool adapter foundation. Adapter identity and lifecycle (`REGISTERED` to `PROBED` to `READY`, or `UNAVAILABLE` / `INCOMPATIBLE`), a structured capability model, a typed execution request and result, artifacts with streamed hashing and derivation, provenance, evidence candidates, single-writer leases, and one audited process boundary.
+- Nine distinct result statuses (`SUCCESS`, `FAILED`, `TIMED_OUT`, `CANCELLED`, `UNAVAILABLE`, `CONFLICT`, `INVALID_REQUEST`, `INCOMPATIBLE`, `INTERNAL_ERROR`), each with its own exit code; a library caller distinguishes them without reading a message, and success is never inferred from an exit code alone.
+- The authority boundary in code: a tool adapter offers an evidence candidate, never a gate result. `HUMAN_EVIDENCE` can never be produced by a tool, a dry run may only produce the registry's `dry_run_evidence_types`, and the layer has no field anywhere for a gate, a status, a reviewer or an approval.
+- Evidence type and capture context are checked against the frozen registry `evidence_context_compatibility`; the foundation keeps no duplicate matrix and no adapter can override it. A derived artifact inherits its origin's capture context, so processing a capture never upgrades its authority.
+- A safe process boundary: resolved executable plus argument vector, no shell, explicit working directory inside the permitted scope, bounded output capture with truncation reporting, monotonic timing, process-tree termination on timeout, an environment allowlist and credential redaction.
+- Single-writer leases for `MUTATING` and `STATEFUL` capabilities, atomic and project-local under `.game/gpos-runtime/`, never in the canonical record area. A held lease is never broken automatically; recovery is an explicit, attributable operation.
+- `python3 -m gpos.tools list|describe|capabilities|probe|execute` with text and JSON output. There is no command, argv or shell option: only a declared adapter and capability.
+- Registry tool vocabulary: `tool_adapter_kinds`, `tool_families`, `tool_operation_classes`, `tool_state_models`, `tool_capability_categories`, `tool_artifact_kinds`, `tool_artifact_classifications`, `tool_probe_statuses`, `tool_adapter_states`, `tool_result_statuses` and `tool_adapter_policy`.
+- A `TEST_ONLY` synthetic reference adapter (`gpos/tools/synthetic/`) that exercises the whole foundation without Git, FFmpeg, Android, Blender, Unity or a network. The production registry refuses it, and it is never an enabled adapter.
+- [tools/adapter-foundation.md](tools/adapter-foundation.md); tests (`tests/test_tool_foundation.py`) and a bounded mutation harness (`tests/mutate_tools.py`).
+
+### Changed
+
+- The Phase-1 production boundary now names one audited location for process execution (`gpos/tools/process.py`) instead of forbidding it everywhere in `gpos/`. The ban on depending on tests or on network modules is unchanged and still applies to every module.
+
+### Notes
+
+- No Git, GitHub, FFmpeg, Android/ADB, Blender, Unity or MCP adapter exists. No agent is invoked and no network is used at runtime.
+- `RUNTIME_NOT_YET_SMOKE_TESTED` continues to apply to the Phase-2B agent adapters.
+
 ## [1.0.0-alpha.9] — Phase 2B: agent adapter layer
 
 Builds on the frozen Phase-1 core (`v1.0.0-alpha.7`) and the frozen Phase-2A validator (`v1.0.0-alpha.8`). No change to gate, evidence, authority, routing, lifecycle or validator semantics. Projects must pin `gpos_version` `1.0.0-alpha.9`.

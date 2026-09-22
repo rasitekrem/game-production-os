@@ -11,12 +11,18 @@ The validator checks a project's records (project config, Human Decisions, routi
 
 Agent adapters (render, sync and check generated Claude Code and Codex instructions) are implemented in Phase 2B as `python3 -m gpos.adapters`; see [adapters/README.md](../adapters/README.md).
 
+The **tool adapter foundation** is implemented in Phase 2C-0 as `python3 -m gpos.tools`; see [adapter-foundation.md](adapter-foundation.md). It is the shared execution, capability, provenance, safety and evidence layer that future tool adapters must use. Phase 2C-0 integrates no real production tool: the only executable adapter in the tree is a `TEST_ONLY` synthetic reference adapter, and the production registry is empty.
+
+```bash
+python3 -m gpos.tools list|describe|capabilities|probe|execute
+```
+
 ## Planned concepts (not implemented)
 
 | Tool | Purpose | Constraints |
 |---|---|---|
 | Project bootstrap | Create a project's `.game/` directory from `templates/` and write a project config | Must leave every decision as a placeholder; must not invent game decisions |
-| Evidence collection | Capture and register evidence records with correct type, capture context, provenance (revision, build, hash, platform, tool version, instrumentation) and limitations | Cannot create `HUMAN_EVIDENCE`; provenance filled by the tool, not typed by the agent |
+| Evidence collection | Capture and register evidence records with correct type, capture context, provenance (revision, build, hash, platform, tool version, instrumentation) and limitations | Cannot create `HUMAN_EVIDENCE`; provenance filled by the tool, not typed by the agent. Phase 2C-0 builds the candidate and record-materialization half of this; registering records into a project stays a separate, human-authorized step |
 | Framework upgrade / migration | Move a project from one GPOS version to another, with a report of changed semantics | MAJOR upgrades require Human Decision per project |
 
 The Phase-1 reference implementation of the cross-record rules remains in `tests/validate_framework.py` as the regression oracle for the production validator; production code does not import it.

@@ -1,6 +1,6 @@
 # GPOS production validator (Phase 2A)
 
-Status: Phase 2A · GPOS `1.0.0-alpha.9` · implementation in [`gpos/`](../../gpos/__init__.py)
+Status: Phase 2A · GPOS `1.0.0-alpha.10` · implementation in [`gpos/`](../../gpos/__init__.py)
 
 The production validator checks a project's GPOS records (project config, Human Decisions, task routings, gate records, evidence records) against the frozen GPOS contracts: [core/registry.json](../../core/registry.json), [schemas/](../../schemas/) and the record-validation requirements of [core/GOVERNANCE.md §12](../../core/GOVERNANCE.md#12-phase-2-acceptance-requirement-record-validation). It is deterministic, read-only, fail-closed, standard-library only, and independent of any model, engine or tool.
 

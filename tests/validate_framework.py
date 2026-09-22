@@ -46,7 +46,7 @@ GATES = REGISTRY["gates"]
 SUBJECTIVE_DISCIPLINE_GATES = sorted(g for g, d in GATES.items() if d["subjective"] and g != "HUMAN_REVIEW")
 TRIGGERS = list(REGISTRY["mandatory_human_review_triggers"])
 CONDITIONS = list(REGISTRY["evidence_conditions"])
-VERSION = "1.0.0-alpha.9"
+VERSION = "1.0.0-alpha.10"
 GATE_OWNERS = [s for s in REGISTRY["skills"] if any(s in d["permitted_owners"] for d in GATES.values())] + ["HUMAN"]
 
 
@@ -805,8 +805,14 @@ CODE_SUFFIXES = {".py", ".js", ".ts", ".cs", ".sh", ".ps1"}
 CODE_ROOTS = ("tests", "gpos")
 PRODUCTION_FORBIDDEN_IMPORTS = {
     "tests", "validate_framework", "schema_lite", "jsonschema", "unittest",
-    "socket", "ssl", "http", "urllib", "urllib3", "requests", "ftplib", "smtplib", "asyncio", "subprocess",
+    "socket", "ssl", "http", "urllib", "urllib3", "requests", "ftplib", "smtplib", "asyncio",
 }
+# Starting an operating-system process is what the Phase-2C tool adapter foundation exists to do, so it
+# cannot be banned outright any more. It is confined instead: exactly one audited module in gpos/ may
+# import it, and the boundary test names that module. Everywhere else in gpos/ the ban still holds, and
+# the ban on tests and network modules above is unchanged and applies to every module including this one.
+PROCESS_EXECUTION_IMPORTS = {"subprocess", "multiprocessing", "pty"}
+PROCESS_BOUNDARY = "gpos/tools/process.py"
 
 
 def _imports(path):
@@ -838,9 +844,13 @@ def phase_boundary_problems():
         if p.suffix in CODE_SUFFIXES and rel.parts[0] not in CODE_ROOTS and ".git" not in p.parts:
             problems.append(f"code outside {CODE_ROOTS}: {rel}")
     for p in sorted((ROOT / "gpos").rglob("*.py")):
+        rel = p.relative_to(ROOT).as_posix()
         bad = _imports(p) & PRODUCTION_FORBIDDEN_IMPORTS
         if bad:
-            problems.append(f"{p.relative_to(ROOT)} imports {sorted(bad)} (production code must not depend on tests or the network)")
+            problems.append(f"{rel} imports {sorted(bad)} (production code must not depend on tests or the network)")
+        spawning = _imports(p) & PROCESS_EXECUTION_IMPORTS
+        if spawning and rel != PROCESS_BOUNDARY:
+            problems.append(f"{rel} imports {sorted(spawning)}: only {PROCESS_BOUNDARY} may start a process")
     return problems
 
 
@@ -2638,6 +2648,11 @@ def validator_vocabulary():
     from gpos.adapters import diagnostics as adapter_diagnostics, sources as adapter_sources
     words |= set(adapter_diagnostics.CODES) | set(adapter_diagnostics.EXIT_FOR) | set(adapter_sources.SOURCE_KINDS)
     words |= set(adapter_diagnostics.RUNTIME_STATUSES)
+    # Phase 2C-0: tool foundation diagnostic codes, result statuses, lifecycle and probe states
+    from gpos.tools import diagnostics as tool_diagnostics, model as tool_model
+    words |= set(tool_diagnostics.CODES) | set(tool_diagnostics.STATUSES) | {tool_diagnostics.INFO}
+    words |= set(tool_model.ADAPTER_STATES) | set(tool_model.PROBE_STATUSES)
+    words |= {"CANONICAL", "DERIVED"}
     return words
 
 

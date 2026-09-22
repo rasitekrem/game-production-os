@@ -1,6 +1,6 @@
 # Game Feel
 
-> **GPOS template** · `1.0.0-alpha.9` · copy to `.game/GAME-FEEL.md` · see [templates/README.md](README.md)
+> **GPOS template** · `1.0.0-alpha.10` · copy to `.game/GAME-FEEL.md` · see [templates/README.md](README.md)
 >
 > Document authority status: `PROPOSED` <!-- becomes LOCKED only by Human Decision; cite the DECISIONS.md entry -->
 > Locked by decision: `UNDECIDED`

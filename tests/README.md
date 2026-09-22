@@ -26,7 +26,7 @@ JSON Schema validation normally uses the `jsonschema` package. GPOS schemas are 
 | C01–C14 | Alpha.5 binding and readiness: evidence subject binding and explicit applicability, decision references resolved in gate and routing records, blocking-downgrade binding, routing↔gate linkage, routing-aware readiness (missing gates), routing uniqueness/disjointness, revision-bound cross-reviews, multi-routing authority checks, project triggers, character-production trigger semantics, `ROUTINE` owner assessment, config-decision subject rules, Human Review scope kind |
 | D01–D10 | Alpha.6 routing authority closure: effective review policy (overrides, scoped overrides, ambiguity, trigger precedence), workflow always-required gates, routing evidence contract (validity and fulfilment), routed cross-reviewers, complete condition accounting and presentation parity `YES`, Golden Cell 12-gate accounting, Phase-2 contract, maturity and boundary |
 | E01–E06 | Alpha.7 freeze closures: machine-readable cross-review eligibility (game-director never counts), Release 12-gate accounting, target-platform and reference-device binding, Release PRIMARY-platform coverage, Phase-2 contract, maturity and boundary |
-| P (helper) | Phase-2A boundary (`phase_boundary_problems`): code only in `tests/` and `gpos/`, `adapters/` only README, `tools/` documentation only, production code imports neither tests nor network modules. The Phase-1 boundary tests (B09, C14, D10, E06, X08) asserted the Phase-1 file layout; they now assert this boundary, so their protection is preserved |
+| P (helper) | Phase-2A boundary (`phase_boundary_problems`): code only in `tests/` and `gpos/`, `adapters/` only README, `tools/` documentation only, production code imports neither tests nor network modules, and only `gpos/tools/process.py` may start a process (Phase 2C-0). The Phase-1 boundary tests (B09, C14, D10, E06, X08) asserted the Phase-1 file layout; they now assert this boundary, so their protection is preserved |
 | X00–X10 | Consistency: gate-evidence table vs registry, schema enums and per-gate owner/condition rules vs registry, backticked vocabulary in every Markdown file, internal links and anchors, versions, examples, schema fixtures, Phase-1 boundary, templates contain no decisions, cross-review sections vs the routing table |
 
 ## Production validator tests
@@ -46,6 +46,16 @@ python3 tests/test_adapters.py
 ```
 
 Tests for the Phase-2B agent adapter layer (`gpos/adapters/`): the IR (all 13 skills, authority order, project authority rows, placeholders preserved, maturity never promoted), Claude Code and Codex rendering (layout, budgets, front matter, determinism, no global paths), semantic parity of the two manifests, drift detection, sync ownership and idempotency, path security (traversal, manifest injection, symlinks), the validator precondition, context budgets and monolith rejection, the CLI and layout snapshots (`fixtures/adapter-snapshots/`, updated deliberately with `GPOS_UPDATE_SNAPSHOTS=1`). `fixtures/adapter-project/` is the synthetic project; `mutate_adapters.py` is a bounded mutation harness for `gpos/adapters/`.
+
+## Tool adapter foundation tests
+
+```bash
+python3 tests/test_tool_foundation.py
+```
+
+Tests for the Phase-2C-0 tool adapter foundation (`gpos/tools/`): adapter identity, registration validation and deterministic listing; the capability model (read-only vs mutating, stateless vs stateful, contradictory declarations); probe states (`AVAILABLE`, `UNAVAILABLE`, `VERSION_UNSUPPORTED`) and lifecycle; execution (success, failure, dry run, mutation consent, unavailable and incompatible tools, adapter defects); process safety (no shell, executable and argv separated, unsafe working directories, path traversal, symlink escape, timeout and process-tree termination, output truncation, secret redaction, environment policy); single-writer leases; artifacts, streamed hashing and derivation; provenance (observed values recorded, unknown values absent and named); evidence candidates (registry compatibility, `HUMAN_EVIDENCE` refused, dry-run limits, derivation never upgrading a source, no gate vocabulary at all); proportional project preconditions; determinism; and the phase boundary. `mutate_tools.py` is a bounded mutation harness for `gpos/tools/`.
+
+No real production tool is required or invoked: everything runs against the `TEST_ONLY` synthetic reference adapter.
 
 ## Fixtures
 

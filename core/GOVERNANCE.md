@@ -1,6 +1,6 @@
 # Governance
 
-Status: normative · GPOS `1.0.0-alpha.9`
+Status: normative · GPOS `1.0.0-alpha.10`
 
 How Game Production OS itself changes. Project authority (`.game/`) is governed by [AUTHORITY-HIERARCHY.md](AUTHORITY-HIERARCHY.md); this document governs the framework.
 

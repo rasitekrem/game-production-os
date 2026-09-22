@@ -664,8 +664,12 @@ def _sanitize_outcome(outcome, adapter_id, cap_id):
 
     diagnostics, n = sanitize_all(outcome.diagnostics)
     total += n
-    artifacts = tuple(dataclasses_replace(a, description=redact(a.description)[0] if a.description else a.description)
-                      for a in outcome.artifacts)
+    artifacts = []
+    for spec in outcome.artifacts:
+        description, n = redact(spec.description) if isinstance(spec.description, str) else (spec.description, 0)
+        total += n
+        artifacts.append(dataclasses_replace(spec, description=description))
+    artifacts = tuple(artifacts)
     evidence = []
     for candidate in outcome.evidence:
         summary, a = redact(candidate.summary) if isinstance(candidate.summary, str) else (candidate.summary, 0)

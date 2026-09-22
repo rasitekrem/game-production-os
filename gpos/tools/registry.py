@@ -15,6 +15,7 @@ registered deliberately, into a registry that was explicitly told to allow test-
 
 from . import diagnostics as dg
 from . import model
+from .redaction import redact, sanitize_all
 from .errors import AdapterRegistrationError
 from .validation import validate_descriptor
 
@@ -96,13 +97,14 @@ class ToolRegistry:
             result = model.ProbeResult(adapter_id, model.UNAVAILABLE,
                                        detail=f"probe raised {type(exc).__name__}",
                                        diagnostics=(dg.make("ADAPTER_INTERNAL_ERROR",
-                                                            f"{adapter_id}.probe() raised {type(exc).__name__}: {exc}",
-                                                            adapter_id),))
+                                                            f"{adapter_id}.probe() raised {type(exc).__name__}: "
+                                                            f"{redact(str(exc))[0]}", adapter_id),))
         if not isinstance(result, model.ProbeResult) or result.status not in model.PROBE_STATUSES:
             result = model.ProbeResult(adapter_id, model.UNAVAILABLE, detail="probe returned no ProbeResult",
                                        diagnostics=(dg.make("ADAPTER_INTERNAL_ERROR",
                                                             f"{adapter_id}.probe() must return a ProbeResult with a "
                                                             f"status in {list(model.PROBE_STATUSES)}", adapter_id),))
+        result = _sanitized_probe(result)
         previous = self._states[adapter_id]
         self._states[adapter_id] = model.AdapterState(
             adapter_id, result.state, result, now, tuple(previous.history) + (previous.state,))
@@ -128,6 +130,19 @@ class ToolRegistry:
         return {"adapters": [d.to_dict() for d in self.list_adapters()],
                 "states": {a: self._states[a].state for a in self.adapter_ids()},
                 "allow_test_only": self.allow_test_only}
+
+
+def _sanitized_probe(result):
+    """Redact the free text an adapter controls in a probe result before any caller sees it."""
+    import dataclasses
+    diagnostics, _ = sanitize_all(result.diagnostics)
+    availability = tuple((c, a, redact(r)[0] if isinstance(r, str) else r)
+                         for c, a, r in result.capability_availability)
+    return dataclasses.replace(result, detail=redact(result.detail)[0] if result.detail else result.detail,
+                               tool_path=redact(result.tool_path)[0] if result.tool_path else result.tool_path,
+                               tool_version=redact(result.tool_version)[0] if result.tool_version
+                               else result.tool_version,
+                               capability_availability=availability, diagnostics=tuple(diagnostics))
 
 
 def default_registry(framework=None):

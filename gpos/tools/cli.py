@@ -68,9 +68,12 @@ def build_parser():
     ex.add_argument("--subject-revision", help="the exact revision captured; omitted stays unknown, never invented")
     ex.add_argument("--input", action="append", default=[], metavar="NAME=VALUE",
                     help="a declared capability input; repeatable")
-    ex.add_argument("--input-artifact", action="append", default=[], metavar="ID=PATH[:CONTEXT]",
-                    help="an existing artifact this execution consumes, and the capture context it came from")
+    ex.add_argument("--input-artifact", action="append", default=[], metavar="ID=PATH",
+                    help="an existing artifact this execution consumes; repeatable")
+    ex.add_argument("--input-artifact-context", action="append", default=[], metavar="ID=CONTEXT",
+                    help="the capture context an input artifact came from, e.g. gameplay=TARGET_RUNTIME")
     ex.add_argument("--output-dir")
+    ex.add_argument("--resource", help="the single-writer target, for a capability that leases one the request names")
     ex.add_argument("--routing", dest="routing_ref")
     ex.add_argument("--actor", help="KIND:ID, e.g. HUMAN:ekrem or AGENT:reviewer-1")
     ex.add_argument("--timeout", type=float)
@@ -99,16 +102,27 @@ def _pairs(items, what):
     return out
 
 
-def _input_artifacts(items):
-    out = []
+def _input_artifacts(items, contexts):
+    """Input artifacts from `ID=PATH` plus separate `ID=CONTEXT` pairs.
+
+    Path and capture context are separate options on purpose: packing them into one colon-separated
+    value cannot be parsed unambiguously for a Windows path such as `C:\\capture.mp4`, and guessing by
+    operating system would make the same command mean different things on different machines.
+    """
+    contexts = _pairs(contexts, "--input-artifact-context")
+    out, seen = [], set()
     for item in items:
         if "=" not in item:
-            raise UsageError(f"--input-artifact {item!r} must be ID=PATH[:CONTEXT]")
-        artifact_id, rest = item.split("=", 1)
-        path, _, context = rest.rpartition(":")
-        if not path:
-            path, context = rest, None
-        out.append(InputArtifact(artifact_id, path, capture_context=context or None))
+            raise UsageError(f"--input-artifact {item!r} must be ID=PATH")
+        artifact_id, path = item.split("=", 1)
+        if not artifact_id or not path:
+            raise UsageError(f"--input-artifact {item!r} must be ID=PATH with both parts present")
+        if artifact_id in seen:
+            raise UsageError(f"--input-artifact {artifact_id!r} is given more than once")
+        seen.add(artifact_id)
+        out.append(InputArtifact(artifact_id, path, capture_context=contexts.pop(artifact_id, None)))
+    if contexts:
+        raise UsageError(f"--input-artifact-context names artifacts that were not supplied: {sorted(contexts)}")
     return tuple(out)
 
 
@@ -245,7 +259,8 @@ def _execute(args, registry, fmt, stdout):
         adapter_id=args.adapter, capability_id=args.capability,
         subject=Subject(args.subject_kind, args.subject_ref, args.subject_revision),
         project_root=args.project, inputs=_pairs(args.input, "--input"),
-        input_artifacts=_input_artifacts(args.input_artifact), output_dir=args.output_dir,
+        input_artifacts=_input_artifacts(args.input_artifact, args.input_artifact_context),
+        output_dir=args.output_dir, resource_id=args.resource,
         dry_run=args.dry_run, allow_mutation=args.allow_mutation, timeout=args.timeout,
         actor=actor, routing_ref=args.routing_ref)
     result = execute(registry, request)

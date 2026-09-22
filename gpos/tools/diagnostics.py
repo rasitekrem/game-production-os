@@ -55,6 +55,8 @@ CODES = {
     "EVIDENCE_CONTEXT_NOT_OBSERVED": (INVALID_REQUEST, "the candidate claims a capture context this execution did not observe"),
     "EVIDENCE_NOT_AVAILABLE_IN_DRY_RUN": (INVALID_REQUEST, "a dry run observed nothing and cannot produce this evidence type"),
     "EVIDENCE_ARTIFACT_UNKNOWN": (INVALID_REQUEST, "the candidate references an artifact this execution did not produce"),
+    "INVALID_ARTIFACT_CLAIM": (INVALID_REQUEST, "an output artifact contradicts the registered capability"),
+    "UNSUPPORTED_RESULT_VALUE": (INVALID_REQUEST, "an adapter offered a value a ToolResult cannot carry"),
     "PROVENANCE_INCOMPLETE": (INVALID_REQUEST, "provenance is missing a value the foundation requires and must not invent"),
     "PROJECT_LAYOUT": (INVALID_REQUEST, "the path is not a GPOS project root"),
     "PROJECT_INVALID": (INVALID_REQUEST, "the Phase-2A validator reports the project INVALID"),
@@ -70,6 +72,7 @@ CODES = {
     "LEASE_CONFLICT": (CONFLICT, "another owner holds the single-writer lease for this resource"),
     "LEASE_INVALID": (CONFLICT, "the lease file is unreadable, malformed or owned by an unknown owner"),
     "LEASE_NOT_HELD": (CONFLICT, "the lease required for this operation is not held"),
+    "LEASE_RELEASE_FAILED": (CONFLICT, "the single-writer lease this execution held could not be released"),
     # execution (FAILED / TIMED_OUT / CANCELLED)
     "EXECUTION_FAILED": (FAILED, "the tool executed and reported failure"),
     "ARTIFACT_MISSING": (FAILED, "a declared artifact does not exist on disk"),

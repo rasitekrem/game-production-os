@@ -64,3 +64,98 @@ def redact_all(values):
         out.append(text)
         total += n
     return out, total
+
+
+# ---------------------------------------------------------------- adapter-supplied metadata
+
+# A key or command-line flag that names a credential. In a JSON structure or an argument vector the
+# name and the value are separate elements, so the string patterns above never see them together:
+# these two rules cover `{"token": "..."}` and `["--password", "..."]`.
+CREDENTIAL_NAME = re.compile(rf"(?i)^-{{0,2}}{_KEY}$")
+
+MAX_DEPTH = 12
+# What a ToolResult may carry from an adapter: JSON-shaped data only. Anything else (a file object, a
+# byte buffer, a live handle) is refused rather than stringified into the result.
+JSON_SCALARS = (str, int, float, bool, type(None))
+
+
+class UnsupportedValue(Exception):
+    """An adapter offered a value a ToolResult cannot carry."""
+
+
+def sanitize(value, _depth=0):
+    """Recursively redact every string inside a JSON-shaped value. Returns (value, redactions).
+
+    This is the foundation's boundary for *adapter-supplied* metadata — diagnostics, outcome data,
+    recorded commands and environment names, artifact descriptions, evidence summaries and
+    limitations, probe text. Captured process output is already redacted by the process boundary;
+    this makes the same promise true for everything else an adapter can put in front of a caller,
+    including an adapter that never called the boundary helpers.
+
+    Raises UnsupportedValue for a shape a result cannot carry, so nothing is silently stringified.
+    """
+    if _depth > MAX_DEPTH:
+        raise UnsupportedValue(f"value nests deeper than {MAX_DEPTH} levels")
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, bool) or value is None or isinstance(value, int):
+        return value, 0
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):  # NaN / infinity are not JSON
+            raise UnsupportedValue(f"{value!r} is not representable in a result")
+        return value, 0
+    if isinstance(value, dict):
+        out, total = {}, 0
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise UnsupportedValue(f"mapping key {key!r} is not a string")
+            clean_key, key_n = redact(key)
+            if CREDENTIAL_NAME.match(key.strip()) and isinstance(item, str):
+                clean_item, item_n = PLACEHOLDER, 1  # the key names a credential; the value is one
+            else:
+                clean_item, item_n = sanitize(item, _depth + 1)
+            out[clean_key] = clean_item
+            total += key_n + item_n
+        return out, total
+    if isinstance(value, (list, tuple)):
+        out, total, flagged = [], 0, False
+        for item in value:
+            if flagged and isinstance(item, str):
+                clean, n = PLACEHOLDER, 1  # the previous element named a credential (e.g. --password)
+            else:
+                clean, n = sanitize(item, _depth + 1)
+            flagged = isinstance(item, str) and bool(CREDENTIAL_NAME.match(item.strip()))
+            out.append(clean)
+            total += n
+        return out, total
+    raise UnsupportedValue(f"{type(value).__name__} is not a value a ToolResult can carry")
+
+
+def sanitize_or_none(value):
+    """(sanitized value or None, redactions, problem or None) — never raises."""
+    try:
+        clean, n = sanitize(value)
+        return clean, n, None
+    except UnsupportedValue as exc:
+        return None, 0, str(exc)
+
+
+def sanitize_diagnostic(diagnostic):
+    """A diagnostic with its message, path and details redacted. (diagnostic, redactions)."""
+    message, m = redact(diagnostic.message)
+    path, p = redact(diagnostic.path) if diagnostic.path else (diagnostic.path, 0)
+    details, d = redact(diagnostic.details)
+    if (message, path, details) == (diagnostic.message, diagnostic.path, diagnostic.details):
+        return diagnostic, 0
+    return type(diagnostic)(diagnostic.code, diagnostic.cls, message, diagnostic.adapter,
+                            diagnostic.capability, path, details), m + p + d
+
+
+def sanitize_all(diagnostics):
+    """(list of redacted diagnostics, total redactions)."""
+    out, total = [], 0
+    for d in diagnostics:
+        clean, n = sanitize_diagnostic(d)
+        out.append(clean)
+        total += n
+    return out, total

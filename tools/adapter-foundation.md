@@ -85,6 +85,7 @@ A capability is a declaration the foundation reads before it lets anything run:
 | `operation_class` | `READ_ONLY` or `MUTATING` |
 | `state_model` | `STATELESS` or `STATEFUL` |
 | `execution_context` | the capture context this execution actually observes |
+| `resource_from_request` | the single-writer target is named by the request, not the project |
 | `single_writer_required`, `resource_kind` | the lease it needs, and on what |
 | `dry_run_supported` | whether a plan-only run is possible |
 | `requires_tool`, `requires_project`, `requires_ready_routing` | its preconditions |
@@ -113,7 +114,9 @@ The lifecycle is `REGISTERED` → `PROBED` → `READY`, with `UNAVAILABLE` and `
 
 ## Execution request and result
 
-A request names the adapter, the capability and the subject, and may carry a project root, inputs, input artifacts, an output directory, a dry-run flag, mutation consent, a timeout, an actor, a routing reference, a build revision or id, a target platform and a device. Low-level tool calls do not require routing or task records; a request links to them when they exist. Nothing missing is synthesized.
+A request names the adapter, the capability and the subject, and may carry a project root, inputs, input artifacts, an output directory, a resource id, a dry-run flag, mutation consent, a timeout, an actor, a routing reference, a build revision or id, a target platform and a device. Low-level tool calls do not require routing or task records; a request links to them when they exist. Nothing missing is synthesized.
+
+Canonical request fields are checked against the registry **before any adapter runs**: the subject kind against the scope-kind vocabulary, a non-empty subject reference, a non-empty revision when one is supplied, the actor kind and a usable actor id, the target platform, and any expected evidence as a compatible pair the capability actually declares. An invalid subject can therefore never reach an accepted evidence candidate and surface much later as a schema failure.
 
 A result always carries a status, the request and adapter ids, start and finish times, a duration, dry-run and mutation flags, artifacts, provenance, diagnostics and evidence candidates, plus an exit code and captured output when a process was involved.
 
@@ -156,6 +159,8 @@ The child environment is built from a declared policy: a positive allowlist of i
 
 The foundation default is **project-root bounded**. A project-bound capability may touch the project tree and any extra absolute scopes its adapter contract explicitly declares; a capability that declares `requires_project = False` is scoped to the output directory the caller named, and nothing else. Nothing is granted implicitly, and no scope ever comes from something a tool produced.
 
+A project-less capability never gains filesystem authority over a project tree by being handed one: supplying `project_root` to a capability that does not require a project is refused as an invalid request, rather than quietly becoming an unvalidated scope. Ambiguity is rejected, not resolved.
+
 Every execution path and every declared artifact is checked before use: `..` cannot walk out, a symlink planted anywhere below the scope is refused before the target is opened, and the resolved path must still be inside a scope. The canonical record area `.game/gpos/` is never a write target for tool execution.
 
 A limitation worth stating plainly: the foundation cannot stop an external tool from writing wherever the operating system permits. What it guarantees is that GPOS itself writes and deletes nothing outside a permitted scope, and that a path outside one is refused as an artifact — it is never hashed, recorded, offered as evidence or carried into provenance.
@@ -172,6 +177,8 @@ Artifact files stay files. An artifact record holds metadata and a `sha256`; it 
 
 An artifact from an execution that did not finish is recorded with `complete = false` and reported as `ARTIFACT_INCOMPLETE`. Incomplete artifacts are surfaced, never silently promoted into evidence.
 
+The capability declaration stays authoritative at execution time, not only at registration: every output artifact must be one of the kinds the capability registered and a kind the registry knows, its id must be structural and unique, and it may not shadow an input artifact the caller supplied. An invalid claim is refused and the artifact is dropped — nothing is silently renamed or reclassified.
+
 ### Derivation
 
 An execution may consume input artifacts the caller supplies, each with the capture context the caller vouches for — usually taken from the evidence that artifact already belongs to. An artifact derived from one is classified `DERIVED`, points at its source and **inherits the origin's capture context**.
@@ -182,7 +189,9 @@ So a still extracted from a gameplay capture made in `TARGET_RUNTIME` is visual 
 
 Provenance is built by the foundation from what it observed, not by the adapter from what it would like to claim. It records the GPOS version, project id, adapter id and version, tool name, version and path, capability and request ids, subject, routing reference, actor, the redacted command and environment names, input and output artifact hashes, execution context, start and finish times, a monotonic duration, mutation state, dry-run state and output truncation.
 
-The rule for unknown values is mechanical: values the foundation observed are always recorded; values only the caller can know — subject revision, build revision, build id, target platform, device — are recorded when supplied and are otherwise **absent** and listed in `unknown`. Nothing is guessed or defaulted. Phase 2C-0 does not infer a repository revision; that is the Git adapter's job in Phase 2C-1.
+The rule for unknown values is mechanical: values the foundation observed are always recorded; values only the caller can know — subject revision, build revision, build id, target platform, device — are recorded when supplied and are otherwise **absent** and listed in `unknown`. Nothing is guessed or defaulted. Phase 2C-0 does not infer a repository revision; that is a later adapter's job.
+
+The project id comes from the record set the Phase-2A validator already produced, not from a second reading of the raw configuration file. Timing is one interval: the foundation takes a single finish timestamp and one monotonic duration for the whole execution, and the result, the provenance and every accepted candidate share them. The duration is never the inner process interval — a future editor or library adapter may run with no process at all — and it is never a subtraction of wall-clock timestamps.
 
 ## Evidence candidates
 
@@ -197,7 +206,8 @@ The foundation validates every candidate against the frozen registry — it keep
 - a derived candidate inherits its origin's context;
 - a dry run is limited to `dry_run_evidence_types`;
 - referenced artifacts must exist in this result and be complete;
-- a candidate whose subject revision is unknown is kept, marked `materializable = false` and given an explicit limitation. Evidence is never labelled current for a revision nobody can prove.
+- a candidate whose subject revision is unknown is kept, marked `materializable = false` and given an explicit limitation. Evidence is never labelled current for a revision nobody can prove;
+- the foundation owns `generated_at`: an accepted candidate carries the foundation-observed execution time, because freshness is exactly the kind of claim a tool must not be trusted to make about itself.
 
 An invalid declaration is checked at registration too: an adapter that declares an impossible `(type, context)` pair never enters the registry.
 
@@ -205,14 +215,16 @@ An invalid declaration is checked at registration too: an adapter that declares 
 
 `materialize()` converts a validated candidate into a GPOS evidence record value. It is explicit, deterministic and schema-validated; it refuses `HUMAN_EVIDENCE`; it fills no gate, reviewer or assessor field; and it **writes nothing**. Ordinary tool execution never writes into `.game/gpos/evidence/`. Attaching a record to a gate stays a separate, human-authorized step.
 
+Provenance in a materialized record comes from the execution, never from the caller. Everything the foundation observed — capture context, subject revision, build revision and id, target platform, device, tool version — flows automatically out of the candidate into the record, so a caller never restates known truth. A caller may add only the schema-supported fields the foundation cannot observe (`artifact_hash`, `instrumentation`); setting a foundation-owned field to a different value, or to a value this execution never observed, fails closed. A materialized record therefore always describes the validated candidate, and there is no second provenance schema — the frozen evidence schema is the only one.
+
 ## Single-writer leases
 
 A small local mechanism, not a lock service: no daemon, no distributed consensus, no network.
 
 - the lease is a file under `.game/gpos-runtime/leases/`, non-authoritative generated state; no mutable lease state is ever written into `.game/gpos/`, and nothing is written outside the project;
-- the file name is a deterministic hash of (adapter id, resource id), so the same target always maps to the same lease;
+- the file name is a deterministic hash of (adapter id, resource id), so the same target always maps to the same lease. A capability that leases the project leases its **resolved** root, so two spellings of the same directory always collide as they should; a capability that leases something else declares `resource_from_request` and the request names it through an explicit `resource_id`, so there is no magic input name acting as an undocumented lease protocol;
 - acquisition is atomic (`O_CREAT | O_EXCL`); if the lease is held, acquisition fails immediately with `LEASE_CONFLICT` and the holder's metadata. There is no waiting, no retry loop and no force;
-- release only ever removes a lease this process owns, verified by owner id and token;
+- release only ever removes a lease this process owns, verified by owner id and token. A release that fails is blocking (`LEASE_RELEASE_FAILED`): an execution never reports a clean `SUCCESS` while the writer lease it took is still lying in the project, and the unverified lease is still not deleted;
 - a lease that looks abandoned is reported as `LEASE_STALE` and **never** broken automatically. Recovery is an explicit operation that records who broke what and why;
 - read-only operations take no lease; a dry run takes none either, because it mutates nothing;
 - an unreadable lease file is `LEASE_INVALID` and fails closed rather than being treated as free.
@@ -226,7 +238,8 @@ The foundation cannot make arbitrary external tools transactional, and does not 
 - result, provenance and metadata construction is fail-closed: a blocking diagnostic always downgrades the status, so `SUCCESS` is never recorded for an execution that failed;
 - an incomplete artifact is never registered as valid evidence;
 - a timeout is `TIMED_OUT`, never a partial success, and partial outputs are surfaced as incomplete artifacts rather than evidence;
-- leases are released whenever the foundation can release them, including on adapter exceptions;
+- leases are released whenever the foundation can release them, including on adapter exceptions and on a defect during result assembly; a release that fails downgrades the status rather than being ignored;
+- a process that cannot be started after its spec validated — the executable vanished, lost its permission bit or cannot be exec'd — is reported as a tool availability problem, not as an opaque foundation defect;
 - an adapter defect is `INTERNAL_ERROR`, never a clean verdict.
 
 A mutating real tool may still leave partial external state. Each future adapter contract must document its own recovery and rollback guarantees.
@@ -236,7 +249,7 @@ A mutating real tool may still leave partial external state. Each future adapter
 - **Authority**: a tool adapter never becomes creative or production authority. See above.
 - **Filesystem**: project-root bounded by default; extra scopes only by explicit adapter contract.
 - **Process**: one audited boundary; no shell; no agent-facing command execution.
-- **Secrets**: environment values are never copied into results; captured text is redacted. This is deliberately not a universal secret scanner.
+- **Secrets**: environment values are never copied into results, and every string a caller can see is redacted — not only captured process output but every surface an adapter controls: diagnostics and their details, parsed result data, the recorded command and environment, artifact descriptions, evidence summaries, limitations and notes, and probe text including an exception message. A credential-named key (`{"token": "…"}`) or command-line flag (`["--password", "…"]`) redacts its value even though the name and the value are separate elements. A value a result cannot carry is refused rather than stringified. This is deliberately not a universal secret scanner.
 - **Network**: off. The foundation makes no network call, discovers no plugin, downloads nothing and installs nothing. Registration is explicit Python. A future adapter may one day declare a network capability; the default stays off.
 - **Records**: tool execution never writes to `.game/gpos/`.
 
@@ -258,11 +271,13 @@ python3 -m gpos.tools execute --adapter A --capability C --subject-ref REF [--pr
 
 `list`, `describe`, `capabilities` and `probe` need no project and are never blocked on task readiness. `execute` takes a declared adapter and capability plus structured request fields; there is no way to ask it to run something the adapter has not declared. Text and JSON output; exit codes are the statuses above.
 
+An input artifact is given as `--input-artifact ID=PATH`, and its capture context separately as `--input-artifact-context ID=CONTEXT`. They are separate options because packing a path and a context into one colon-separated value cannot be parsed unambiguously for a Windows path such as `C:\media\gameplay.mp4`, and guessing by operating system would make the same command mean different things on different machines. The library `InputArtifact` API is unchanged.
+
 ## Future adapter sequence
 
 | Phase | Adapter | Notes |
 |---|---|---|
-| 2C-1 | Git / provenance | supplies repository revisions the foundation deliberately does not infer |
+| 2C-1 | version control / provenance | supplies repository revisions the foundation deliberately does not infer |
 | 2C-2 | FFmpeg / media evidence | derived visual evidence from motion captures |
 | 2C-3 | Target device / Android ADB | device and performance evidence from real hardware |
 | 2C-4 | Blender | DCC render evidence |

@@ -63,6 +63,7 @@ class Capability:
     timeout: TimeoutPolicy = field(default_factory=TimeoutPolicy)
     side_effect_scope: str = "NONE"      # prose: what MUTATING touches; "NONE" for READ_ONLY
     resource_kind: str = None            # what a single-writer lease is taken on, e.g. EDITOR_PROJECT
+    resource_from_request: bool = False  # the lease target is named by the request, not by the project
     notes: tuple = ()
 
     @property
@@ -87,4 +88,5 @@ class Capability:
                 "potential_evidence": [{"evidence_type": t, "capture_context": c} for t, c in self.potential_evidence],
                 "timeout": {"default": self.timeout.default, "maximum": self.timeout.maximum},
                 "side_effect_scope": self.side_effect_scope, "resource_kind": self.resource_kind,
+                "resource_from_request": self.resource_from_request,
                 "notes": list(self.notes)}

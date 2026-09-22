@@ -101,6 +101,9 @@ def validate_capability(framework, adapter_id, cap):
     if cap.single_writer_required and not cap.resource_kind:
         _problem(problems, adapter_id, f"{cap.id} requires a single writer but names no resource_kind to take the "
                                        f"lease on", cap.id)
+    if cap.resource_from_request and not cap.single_writer_required:
+        _problem(problems, adapter_id, f"{cap.id} declares resource_from_request but takes no single-writer lease",
+                 cap.id)
     if cap.single_writer_required and cap.operation_class == "READ_ONLY":
         _problem(problems, adapter_id, f"{cap.id} is READ_ONLY and must not take a writer lease", cap.id)
     if cap.mutating and cap.side_effect_scope in (None, "", "NONE"):

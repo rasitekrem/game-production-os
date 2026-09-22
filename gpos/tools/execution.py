@@ -16,6 +16,7 @@ code, because not every adapter drives a command-line process.
 
 import datetime
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -29,7 +30,57 @@ from . import model
 from . import paths as tp
 from . import process as proc
 from .capabilities import Capability
-from .redaction import redact
+from .redaction import redact, sanitize_all, sanitize_or_none
+
+
+# The cross-record identifier shape the frozen evidence and gate schemas use for an actor id.
+ACTOR_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]*$")
+
+
+def vocabulary_problems(framework, request, capability):
+    """[ToolDiagnostic] for canonical request fields that are not GPOS vocabulary.
+
+    Checked at the boundary, before any adapter runs: an invalid subject must never reach an accepted
+    evidence candidate and surface much later as a schema failure during materialization.
+    """
+    reg = framework.registry
+    adapter, cap = request.adapter_id, request.capability_id
+    bad = lambda message: dg.make("INVALID_TOOL_REQUEST", message, adapter, cap)
+    out = []
+    subject = request.subject
+    if subject is not None:
+        if subject.kind not in reg["gate_scope_kinds"]:
+            out.append(bad(f"subject kind {subject.kind!r} is not a GPOS scope kind {reg['gate_scope_kinds']}"))
+        if not isinstance(subject.ref, str) or not subject.ref.strip():
+            out.append(bad("the subject reference must be a non-empty string"))
+        if subject.revision is not None and (not isinstance(subject.revision, str) or not subject.revision.strip()):
+            out.append(bad("a supplied subject revision must be a non-empty string; omit it when it is unknown"))
+    actor = request.actor
+    if actor is not None:
+        if actor.kind not in reg["actor_kinds"]:
+            out.append(bad(f"actor kind {actor.kind!r} is not a GPOS actor kind {reg['actor_kinds']}"))
+        if not isinstance(actor.id, str) or not ACTOR_ID.match(actor.id or ""):
+            out.append(bad(f"actor id {actor.id!r} is not a usable cross-record identifier"))
+    if request.target_platform is not None and request.target_platform not in reg["platforms"]:
+        out.append(bad(f"target platform {request.target_platform!r} is not in registry platforms {reg['platforms']}"))
+    for field in ("build_revision", "build_id", "device", "routing_ref"):
+        value = getattr(request, field)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            out.append(bad(f"{field} must be a non-empty string when supplied"))
+    for pair in request.expected_evidence or ():
+        if not (isinstance(pair, (tuple, list)) and len(pair) == 2):
+            out.append(bad(f"expected evidence {pair!r} must be (evidence type, capture context)"))
+            continue
+        etype, context = pair
+        if etype not in reg["evidence_types"] or context not in reg["capture_contexts"]:
+            out.append(bad(f"expected evidence {etype!r} in {context!r} is not GPOS vocabulary"))
+        elif context not in reg["evidence_context_compatibility"][etype]:
+            out.append(bad(f"expected evidence {etype} cannot be captured in {context} "
+                           f"(registry evidence_context_compatibility)"))
+        elif (etype, context) not in capability.evidence_pairs():
+            out.append(bad(f"{cap} never produces {etype} captured in {context}; it declares "
+                           f"{[list(p) for p in capability.evidence_pairs()]}"))
+    return out
 
 
 def rfc3339(moment=None):
@@ -55,6 +106,7 @@ class ExecutionRequest:
     project_root: str = None
     inputs: dict = field(default_factory=dict)
     input_artifacts: tuple = ()       # model.InputArtifact: existing artifacts this execution consumes
+    resource_id: str = None           # the single-writer target, for a capability that declares one
     output_dir: str = None            # where artifacts may be written; defaults to the runtime area
     dry_run: bool = False
     allow_mutation: bool = False      # a MUTATING capability runs only with explicit consent
@@ -78,7 +130,8 @@ class ExecutionRequest:
                "input_artifacts": [a.to_dict() for a in self.input_artifacts], "dry_run": self.dry_run,
                "allow_mutation": self.allow_mutation, "timeout": self.timeout,
                "expected_evidence": [{"evidence_type": t, "capture_context": c} for t, c in self.expected_evidence]}
-        for name in ("output_dir", "routing_ref", "build_revision", "build_id", "target_platform", "device"):
+        for name in ("output_dir", "resource_id", "routing_ref", "build_revision", "build_id",
+                     "target_platform", "device"):
             if getattr(self, name) is not None:
                 out[name] = getattr(self, name)
         if self.actor is not None:
@@ -196,6 +249,11 @@ def project_problems(framework, request, capability):
     from ..validation.project import evaluate_readiness, validate_project
     adapter, cap = request.adapter_id, request.capability_id
     if not capability.requires_project:
+        if request.project_root:
+            return None, [dg.make("INVALID_TOOL_REQUEST",
+                                  f"{cap} is not project-bound, so it never receives filesystem authority over a "
+                                  f"project tree: remove project_root and name an output_dir (or declare an adapter "
+                                  f"filesystem scope) instead", adapter, cap)]
         return None, []
     if not request.project_root:
         return None, [dg.make("INVALID_TOOL_REQUEST", f"{cap} is project-bound and needs project_root", adapter, cap)]
@@ -297,9 +355,14 @@ def execute(registry, request, clock=None, now=None):
     if problems:
         return finish(dg.INVALID_REQUEST, problems)
 
+    problems = vocabulary_problems(framework, request, capability)
+    if problems:
+        return finish(dg.INVALID_REQUEST, problems)
+
     record_set, problems = project_problems(framework, request, capability)
     if problems:
         return finish(dg.INVALID_REQUEST, problems)
+    project_id = record_set.project_id if record_set is not None else None
 
     probe = None
     if capability.requires_tool:
@@ -325,9 +388,7 @@ def execute(registry, request, clock=None, now=None):
         lease, problems = _acquire(root, adapter, capability, request, started_at)
         if problems:
             return finish(dg.CONFLICT, problems)
-        diagnostics.append(dg.make("LEASE_ACQUIRED",
-                                   f"single-writer lease held on {capability.resource_kind}:"
-                                   f"{_resource_id(request, capability)}",
+        diagnostics.append(dg.make("LEASE_ACQUIRED", f"single-writer lease held on {lease.resource_id}",
                                    request.adapter_id, request.capability_id))
 
     timeout, _ = capability.timeout.resolve(request.timeout)
@@ -340,29 +401,52 @@ def execute(registry, request, clock=None, now=None):
         if not isinstance(outcome, AdapterOutcome):
             raise TypeError(f"{request.adapter_id}.execute() must return an AdapterOutcome, not {type(outcome).__name__}")
     except proc.ProcessSpecError as exc:
-        return _release_and_finish(root, lease, finish, dg.INVALID_REQUEST, diagnostics + [
-            dg.make(exc.code if exc.code in dg.CODES else "UNSAFE_PROCESS_SPEC", str(exc),
-                    request.adapter_id, request.capability_id)])
+        code = exc.code if exc.code in dg.CODES else "UNSAFE_PROCESS_SPEC"
+        return _release_and_finish(root, lease, finish, dg.CODES[code][0], diagnostics + [
+            dg.make(code, redact(str(exc))[0], request.adapter_id, request.capability_id)],
+            request.adapter_id, request.capability_id)
     except Exception as exc:
         return _release_and_finish(root, lease, finish, dg.INTERNAL_ERROR, diagnostics + [
             dg.make("ADAPTER_INTERNAL_ERROR",
                     f"{request.adapter_id}.execute() raised {type(exc).__name__}: {redact(str(exc))[0]}",
-                    request.adapter_id, request.capability_id)])
+                    request.adapter_id, request.capability_id)], request.adapter_id, request.capability_id)
 
     try:
         result = _assemble(framework, registry, request, adapter, capability, context, outcome,
-                           diagnostics, probe, root, started_at, started, clock, inputs)
+                           diagnostics, probe, root, started_at, started, clock, inputs, project_id)
     except Exception as exc:  # assembling the result must never strand a lease
         return _release_and_finish(root, lease, finish, dg.INTERNAL_ERROR, diagnostics + [
             dg.make("ADAPTER_INTERNAL_ERROR",
                     f"the foundation could not assemble a result for {request.capability_id}: "
-                    f"{type(exc).__name__}: {redact(str(exc))[0]}", request.adapter_id, request.capability_id)])
-    _release(root, lease)
+                    f"{type(exc).__name__}: {redact(str(exc))[0]}", request.adapter_id, request.capability_id)],
+            request.adapter_id, request.capability_id)
+    problems = _release(root, lease, request.adapter_id, request.capability_id)
+    if problems:  # the status is recomputed: a stranded lease is never a clean SUCCESS
+        diagnostics = dg.sort(list(result.diagnostics) + problems)
+        return dataclasses_replace(result, diagnostics=tuple(diagnostics),
+                                   status=dg.result_status(diagnostics, default=result.status))
     return result
 
 
-def _resource_id(request, capability):
-    return request.inputs.get("resource") or request.project_root or request.subject.ref
+def _resource(request, capability, root):
+    """(resource string, problem or None) — the deterministic identity a single-writer lease is taken on.
+
+    A capability that leases the project leases the *resolved* project root, so two spellings of the
+    same directory always map to the same lease. A capability that leases something else declares
+    `resource_from_request`, and the request names it explicitly: there is no magic input name acting
+    as an undocumented lease protocol.
+    """
+    if capability.resource_from_request:
+        if not isinstance(request.resource_id, str) or not request.resource_id.strip():
+            return None, (f"{capability.id} takes a single-writer lease on a resource the request names; "
+                          f"supply resource_id")
+        return f"{capability.resource_kind}:{request.resource_id.strip()}", None
+    if request.resource_id is not None:
+        return None, (f"{capability.id} leases the project itself, so it does not take a resource_id; "
+                      f"remove it")
+    if root is None:
+        return None, f"{capability.id} leases the project, so it needs project_root"
+    return f"{capability.resource_kind}:{Path(root).resolve()}", None
 
 
 def _acquire(root, adapter, capability, request, now):
@@ -370,7 +454,9 @@ def _acquire(root, adapter, capability, request, now):
         return None, [dg.make("INVALID_TOOL_REQUEST",
                               f"{capability.id} needs a single-writer lease, which lives in the project runtime area, "
                               f"so it needs project_root", request.adapter_id, request.capability_id)]
-    resource = f"{capability.resource_kind}:{_resource_id(request, capability)}"
+    resource, problem = _resource(request, capability, root)
+    if problem:
+        return None, [dg.make("INVALID_TOOL_REQUEST", problem, request.adapter_id, request.capability_id)]
     owner = request.actor.id if request.actor else f"pid-{os.getpid()}"
     try:
         lease = lease_mod.acquire(root, request.adapter_id, resource, owner, now, request.request_id)
@@ -386,14 +472,25 @@ def _acquire(root, adapter, capability, request, now):
     return lease, []
 
 
-def _release(root, lease):
-    if lease is not None and root is not None:
-        lease_mod.release(root, lease)
+def _release(root, lease, adapter_id=None, capability_id=None):
+    """Release a held lease. [ToolDiagnostic] — non-empty when the foundation could not release it.
+
+    A failed release is blocking: an execution must never report a clean SUCCESS while the writer
+    lease it took is still lying in the project. The lease itself is left untouched, because the
+    foundation never deletes a lease it could not verify.
+    """
+    if lease is None or root is None:
+        return []
+    if lease_mod.release(root, lease):
+        return []
+    return [dg.make("LEASE_RELEASE_FAILED",
+                    f"the single-writer lease on {lease.resource_id} could not be released; it is still held and is "
+                    f"not removed unverified. Recovering it is an explicit operation",
+                    adapter_id, capability_id, lease.path)]
 
 
-def _release_and_finish(root, lease, finish, status, diagnostics):
-    _release(root, lease)
-    return finish(status, diagnostics)
+def _release_and_finish(root, lease, finish, status, diagnostics, adapter_id=None, capability_id=None):
+    return finish(status, list(diagnostics) + _release(root, lease, adapter_id, capability_id))
 
 
 def _scopes_and_workspace(adapter, capability, request, root):
@@ -442,12 +539,17 @@ def _scopes_and_workspace(adapter, capability, request, root):
 
 
 def _assemble(framework, registry, request, adapter, capability, context, outcome, diagnostics,
-              probe, root, started_at, started, clock, inputs=()):
+              probe, root, started_at, started, clock, inputs=(), project_id=None):
     """Turn what the adapter reported into a checked, fail-closed ToolResult."""
     adapter_id, cap_id = request.adapter_id, request.capability_id
-    diagnostics = list(diagnostics) + list(outcome.diagnostics)
+    outcome, redacted, unsupported = _sanitize_outcome(outcome, adapter_id, cap_id)
+    diagnostics = list(diagnostics) + list(outcome.diagnostics) + unsupported
     process = outcome.process
     dry_run = bool(request.dry_run)
+    if redacted:
+        diagnostics.append(dg.make("SECRETS_REDACTED",
+                                   f"{redacted} credential-shaped value(s) were redacted from metadata this adapter "
+                                   f"supplied", adapter_id, cap_id))
 
     if process is not None:
         if process.timed_out:
@@ -471,16 +573,26 @@ def _assemble(framework, registry, request, adapter, capability, context, outcom
                                    adapter_id, cap_id))
     complete = not timed_out and not failed
 
-    artifacts, problems = art.collect(outcome.artifacts, context.scopes, root or context.workspace,
+    claim_problems = art.declaration_problems(outcome.artifacts, capability,
+                                              framework.registry["tool_artifact_kinds"], inputs)
+    refused = {aid for _, aid, _ in claim_problems}
+    artifacts, problems = art.collect([a for a in outcome.artifacts if a.artifact_id not in refused],
+                                      context.scopes, root or context.workspace,
                                       request.request_id, capability.execution_context, complete=complete,
                                       known=inputs)
-    for code, artifact_id, message in problems:
+    for code, artifact_id, message in claim_problems + problems:
         diagnostics.append(dg.make(code, message, adapter_id, cap_id, artifact_id))
     for a in artifacts:
         if not a.complete:
             diagnostics.append(dg.make("ARTIFACT_INCOMPLETE",
                                        f"{a.artifact_id} was produced by an execution that did not finish; it is "
                                        f"reported, never offered as evidence", adapter_id, cap_id, a.path))
+
+    # One foundation-observed finish time and one monotonic duration for the whole execution, used by
+    # the result, the provenance and every accepted candidate. A tool-independent adapter may run with
+    # no process at all, so the interval is never taken from a ProcessOutcome and never from a
+    # subtraction of wall-clock timestamps.
+    finished_at, duration = clock.now(), round(clock.monotonic() - started, 6)
 
     mutation = bool(outcome.mutation_performed) and capability.mutating and not dry_run
     if dry_run and capability.mutating:
@@ -495,12 +607,13 @@ def _assemble(framework, registry, request, adapter, capability, context, outcom
                                    f"{cap_id} is declared READ_ONLY but reported a mutation; the declaration, not the "
                                    f"execution, decides what a capability may do", adapter_id, cap_id))
 
-    provenance = _provenance(framework, request, adapter, capability, context, outcome, probe,
-                             artifacts, started_at, clock, mutation, dry_run, process, inputs)
+    provenance = _provenance(framework, request, adapter, capability, outcome, probe, artifacts,
+                             started_at, finished_at, duration, mutation, dry_run, process, inputs,
+                             project_id)
 
     candidates = []
     for candidate in outcome.evidence:
-        bound = _bind_candidate(candidate, request, provenance)
+        bound = _bind_candidate(candidate, request, provenance, finished_at)
         accepted, problems = ev.validate(framework, bound, capability, list(artifacts) + list(inputs), dry_run,
                                          capability.execution_context)
         diagnostics += problems
@@ -516,8 +629,8 @@ def _assemble(framework, registry, request, adapter, capability, context, outcom
     diagnostics = dg.sort(diagnostics)
     return ToolResult(
         request_id=request.request_id, adapter_id=adapter_id, capability_id=cap_id,
-        status=dg.result_status(diagnostics, default=dg.SUCCESS), started_at=started_at, finished_at=clock.now(),
-        duration_seconds=round(clock.monotonic() - started, 6), dry_run=dry_run, mutation_performed=mutation,
+        status=dg.result_status(diagnostics, default=dg.SUCCESS), started_at=started_at, finished_at=finished_at,
+        duration_seconds=duration, dry_run=dry_run, mutation_performed=mutation,
         exit_code=outcome.exit_code if outcome.exit_code is not None else (process.exit_code if process else None),
         stdout=process.stdout if process else "", stderr=process.stderr if process else "",
         stdout_bytes=process.stdout_bytes if process else 0, stderr_bytes=process.stderr_bytes if process else 0,
@@ -526,35 +639,83 @@ def _assemble(framework, registry, request, adapter, capability, context, outcom
         diagnostics=tuple(diagnostics), data=outcome.data, plan=tuple(outcome.plan))
 
 
-def _bind_candidate(candidate, request, provenance):
-    """Bind a candidate to the request's subject and this execution's provenance. An adapter cannot
-    re-point a candidate at a different subject, and it cannot supply its own provenance."""
+def _sanitize_outcome(outcome, adapter_id, cap_id):
+    """Redact every adapter-supplied surface before it can reach a caller. (outcome, redactions, problems).
+
+    The process boundary already redacts captured output. This covers everything else an adapter
+    controls — diagnostics, parsed data, the recorded command and environment, artifact descriptions,
+    evidence summaries, limitations and notes — so the promise holds even for an adapter that never
+    used the boundary helpers. A value a result cannot carry is dropped with a diagnostic rather than
+    stringified.
+    """
+    total, problems = 0, []
+
+    def clean(value, what):
+        nonlocal total
+        sanitized, n, problem = sanitize_or_none(value)
+        total += n
+        if problem is not None:
+            problems.append(dg.make("UNSUPPORTED_RESULT_VALUE", f"{what}: {problem}; it was dropped",
+                                    adapter_id, cap_id))
+            return None
+        return sanitized
+
+    diagnostics, n = sanitize_all(outcome.diagnostics)
+    total += n
+    artifacts = tuple(dataclasses_replace(a, description=redact(a.description)[0] if a.description else a.description)
+                      for a in outcome.artifacts)
+    evidence = []
+    for candidate in outcome.evidence:
+        summary, a = redact(candidate.summary) if isinstance(candidate.summary, str) else (candidate.summary, 0)
+        limitations, b = _redact_strings(candidate.limitations)
+        notes, c = _redact_strings(candidate.notes)
+        total += a + b + c
+        evidence.append(dataclasses_replace(candidate, summary=summary, limitations=limitations, notes=notes))
+    detail = redact(outcome.detail)[0] if isinstance(outcome.detail, str) else ""
+    total += redact(outcome.detail)[1] if isinstance(outcome.detail, str) else 0
+    plan, n = _redact_strings(outcome.plan)
+    total += n
+    return dataclasses_replace(
+        outcome, diagnostics=tuple(diagnostics), artifacts=artifacts, evidence=tuple(evidence),
+        detail=detail, plan=plan,
+        data=clean(outcome.data, "adapter result data"),
+        command=clean(outcome.command, "recorded command"),
+        environment=clean(outcome.environment, "recorded environment")), total, problems
+
+
+def _redact_strings(values):
+    out, total = [], 0
+    for value in values or ():
+        if isinstance(value, str):
+            text, n = redact(value)
+            out.append(text)
+            total += n
+        else:
+            out.append(value)
+    return tuple(out), total
+
+
+def _bind_candidate(candidate, request, provenance, generated_at):
+    """Bind a candidate to the request's subject, this execution's provenance and the foundation's own
+    clock. An adapter cannot re-point a candidate at another subject, supply its own provenance, or
+    establish evidence freshness: `generated_at` is the foundation-observed execution time, because
+    freshness is exactly the kind of claim a tool must not be trusted to make about itself."""
     return dataclasses_replace(
         candidate,
         subject_kind=request.subject.kind, subject_ref=request.subject.ref,
         subject_revision=request.subject.revision,
         source_adapter=request.adapter_id, source_capability=request.capability_id,
-        provenance=provenance.to_dict(), materializable=False)
+        generated_at=generated_at, provenance=provenance.to_dict(), materializable=False)
 
 
-def _provenance(framework, request, adapter, capability, context, outcome, probe, artifacts,
-                started_at, clock, mutation, dry_run, process, inputs=()):
+def _provenance(framework, request, adapter, capability, outcome, probe, artifacts,
+                started_at, finished_at, duration, mutation, dry_run, process, inputs=(), project_id=None):
     from . import provenance as prov
-    project_id = None
-    if request.project_root:
-        try:
-            import json
-            config = json.loads((Path(request.project_root) / ".game" / "gpos" / "project-config.json")
-                                .read_text(encoding="utf-8"))
-            project_id = config.get("project_id") or config.get("id")
-        except (OSError, ValueError):
-            project_id = None
     return prov.ToolProvenance(
         gpos_version=framework.version, adapter_id=adapter.descriptor.adapter_id,
         adapter_version=adapter.descriptor.adapter_version, capability_id=capability.id,
         request_id=request.request_id, execution_context=capability.execution_context,
-        started_at=started_at, finished_at=clock.now(),
-        duration_seconds=round(process.duration_seconds if process else 0.0, 6),
+        started_at=started_at, finished_at=finished_at, duration_seconds=duration,
         dry_run=dry_run, mutation_performed=mutation,
         subject_kind=request.subject.kind, subject_ref=request.subject.ref,
         tool_name=adapter.descriptor.target_tool,

@@ -205,7 +205,16 @@ def run_process(spec, scopes, clock=time.monotonic):
     if os.name == "posix":
         popen_kwargs["start_new_session"] = True  # own process group: a timeout kills the whole tree
     # An argument vector and no shell mode: the child is exec'd directly, so nothing is ever re-parsed.
-    proc = subprocess.Popen([spec.executable] + list(spec.argv), **popen_kwargs)
+    try:
+        proc = subprocess.Popen([spec.executable] + list(spec.argv), **popen_kwargs)
+    except (FileNotFoundError, PermissionError, NotADirectoryError, IsADirectoryError) as exc:
+        # The executable passed validate_spec and then disappeared, lost its permission bit or was
+        # replaced. That is a tool availability problem, not a foundation defect, so it is reported as
+        # one rather than surfacing as an opaque adapter error.
+        raise ProcessSpecError("TOOL_NOT_FOUND", f"{spec.executable}: {type(exc).__name__}: {exc}") from exc
+    except OSError as exc:
+        raise ProcessSpecError("EXECUTION_FAILED", f"{spec.executable}: the process could not be started "
+                                                   f"({type(exc).__name__}: {exc})") from exc
     sinks = ({"data": bytearray(), "total": 0}, {"data": bytearray(), "total": 0})
     readers = [threading.Thread(target=_drain, args=(s, spec.capture_bytes, sink), daemon=True)
                for s, sink in ((proc.stdout, sinks[0]), (proc.stderr, sinks[1]))]

@@ -162,12 +162,49 @@ def validate(framework, candidate, capability, artifacts, dry_run, execution_con
     return accepted, out
 
 
-def materialize(framework, candidate, artifacts, evidence_id, tool_version=None, extra_provenance=None):
+# Provenance the foundation established and validated. `materialize` fills these from the candidate and
+# its execution; a caller may restate an identical value, but never a different one, and never a value
+# the foundation does not know.
+FOUNDATION_OWNED_PROVENANCE = ("capture_context", "subject_revision", "build_revision", "build_id",
+                               "target_platform", "device", "tool_version")
+# Provenance fields the frozen evidence schema accepts that the foundation cannot observe for itself.
+# A caller may supply these, and only these, as supplements.
+SUPPLEMENTAL_PROVENANCE = ("artifact_hash", "instrumentation")
+
+
+def _candidate_provenance(candidate):
+    """Schema-supported provenance the execution already established, taken from the candidate.
+
+    The foundation recorded these during execution, so materialization copies them instead of asking
+    the caller to restate known truth.
+    """
+    known = candidate.provenance if isinstance(candidate.provenance, dict) else {}
+    out = {}
+    for name in FOUNDATION_OWNED_PROVENANCE:
+        value = known.get(name)
+        if isinstance(value, str) and value:
+            out[name] = value
+    out["capture_context"] = candidate.capture_context
+    out["subject_revision"] = candidate.subject_revision
+    return out
+
+
+def materialize(framework, candidate, artifacts, evidence_id, extra_provenance=None):
     """A GPOS evidence record *value* for a validated candidate. Returns (record, [problem]).
 
     Deterministic: the same candidate and artifacts always produce the same record. It writes
     nothing, it refuses HUMAN_EVIDENCE, and it fills no gate, reviewer or assessor field — a record
     is only ever attached to a gate by a separate, human-authorized step.
+
+    Provenance comes from the execution, not from the caller. Everything the foundation observed
+    (`FOUNDATION_OWNED_PROVENANCE`) flows automatically out of the candidate's provenance into the
+    record, and `extra_provenance` may only add the schema-supported fields the foundation cannot
+    observe (`SUPPLEMENTAL_PROVENANCE`). A caller that tries to set a foundation-owned field to a
+    different value fails closed, so a materialized record always describes the validated candidate.
+    There is no tool_version parameter: the probe established it, or this execution cannot prove one —
+    which is why evidence captured in a context the schema requires a tool version for can only be
+    materialized from an execution that actually probed the tool. It is never a second provenance
+    schema: the frozen evidence schema is the only one.
     """
     pol = policy(framework)
     if candidate.evidence_type in pol[FORBIDDEN_KEY]:
@@ -175,6 +212,28 @@ def materialize(framework, candidate, artifacts, evidence_id, tool_version=None,
     if not candidate.materializable:
         return None, ["the candidate has no proven subject revision; GPOS evidence must name the exact revision it "
                       "captured"]
+    provenance = _candidate_provenance(candidate)
+    supplied = dict(extra_provenance or {})
+    problems = []
+    for name, value in sorted(supplied.items()):
+        if value is None:
+            continue
+        if name in FOUNDATION_OWNED_PROVENANCE:
+            known = provenance.get(name)
+            if known is None:
+                problems.append(f"provenance {name!r} is established by the execution, not by the caller; this "
+                                f"execution did not observe it, so it cannot be supplied afterwards")
+            elif value != known:
+                problems.append(f"provenance {name!r} is owned by the foundation: the execution established "
+                                f"{known!r} and it cannot be overridden with {value!r}")
+            continue
+        if name not in SUPPLEMENTAL_PROVENANCE:
+            problems.append(f"provenance {name!r} is not a supplemental field a caller may set; the frozen evidence "
+                            f"schema supports {list(SUPPLEMENTAL_PROVENANCE)} here")
+            continue
+        provenance[name] = value
+    if problems:
+        return None, problems
     by_id = {a.artifact_id: a for a in artifacts}
     record = {
         "schema_version": "1.0",
@@ -184,8 +243,7 @@ def materialize(framework, candidate, artifacts, evidence_id, tool_version=None,
         "subject": {"kind": candidate.subject_kind, "ref": candidate.subject_ref},
         "source": {"kind": "TOOL", "id": candidate.source_adapter},
         "created_at": candidate.generated_at,
-        "provenance": {"capture_context": candidate.capture_context,
-                       "subject_revision": candidate.subject_revision},
+        "provenance": {k: provenance[k] for k in sorted(provenance)},
         "artifacts": [{"uri": by_id[a].path, "hash": f"sha256:{by_id[a].sha256}",
                        **({"media_type": by_id[a].media_type} if by_id[a].media_type else {}),
                        **({"description": by_id[a].description} if by_id[a].description else {})}
@@ -193,11 +251,6 @@ def materialize(framework, candidate, artifacts, evidence_id, tool_version=None,
         "limitations": list(candidate.limitations),
         "superseded": False,
     }
-    if tool_version:
-        record["provenance"]["tool_version"] = tool_version
-    for key, value in (extra_provenance or {}).items():
-        if value is not None:
-            record["provenance"][key] = value
     errors = framework.validators["evidence"].errors(record)
     if errors:
         return None, [f"the generated evidence record is not schema-valid: {errors}"]

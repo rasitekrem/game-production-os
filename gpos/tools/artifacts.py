@@ -14,10 +14,13 @@ An artifact from an execution that did not finish (a timeout, a failure) is reco
 """
 
 import hashlib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import paths as tp
+
+ARTIFACT_ID = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 CANONICAL, DERIVED = "CANONICAL", "DERIVED"
 CHUNK = 1024 * 1024
@@ -105,6 +108,39 @@ def collect_inputs(inputs, scopes, root, capture_contexts):
                             description=item.description, classification=CANONICAL,
                             origin_capture_context=item.capture_context, created_by_request=None, complete=True))
     return out, problems
+
+
+def declaration_problems(specs, capability, registry_kinds, known=()):
+    """[(code, artifact_id, message)] for output claims the registered capability does not support.
+
+    The declaration stays authoritative at runtime: a capability produces only the artifact kinds it
+    registered, ids are structural and unique, and an output never shadows an input the caller
+    supplied. Nothing is silently renamed or reclassified.
+    """
+    problems, seen = [], set()
+    declared, inputs = set(capability.artifact_kinds), {a.artifact_id for a in known}
+    for spec in specs:
+        aid = spec.artifact_id
+        if not isinstance(aid, str) or not ARTIFACT_ID.match(aid or ""):
+            problems.append(("INVALID_ARTIFACT_CLAIM", str(aid),
+                             f"artifact id {aid!r} must be a lower-case identifier"))
+            continue
+        if aid in seen:
+            problems.append(("INVALID_ARTIFACT_CLAIM", aid, f"two output artifacts claim the id {aid!r}"))
+            continue
+        seen.add(aid)
+        if aid in inputs:
+            problems.append(("INVALID_ARTIFACT_CLAIM", aid,
+                             f"output artifact {aid!r} would shadow an input artifact of the same id"))
+            continue
+        if spec.kind not in registry_kinds:
+            problems.append(("INVALID_ARTIFACT_CLAIM", aid,
+                             f"{aid}: artifact kind {spec.kind!r} is not in registry tool_artifact_kinds"))
+        elif spec.kind not in declared:
+            problems.append(("INVALID_ARTIFACT_CLAIM", aid,
+                             f"{aid}: {capability.id} registered artifact kinds {sorted(declared)} and may not "
+                             f"produce a {spec.kind} artifact"))
+    return problems
 
 
 def collect(specs, scopes, root, request_id, execution_context, complete=True, known=()):

@@ -9,9 +9,10 @@ so that any accidental write to a user or global directory lands there and fails
 
 Groups: A adapter identity and registry · B capabilities · C probe and lifecycle · D execution ·
 E process safety · F leases · G artifacts · H provenance · I evidence · J project preconditions ·
-K determinism · L regression and boundaries · M CLI.
+K determinism · L regression and boundaries · M CLI · N integrity hardening (code review round).
 """
 
+import dataclasses
 import json
 import os
 import shutil
@@ -103,6 +104,54 @@ class Misreporting(ToolAdapter):
         return AdapterOutcome(ok=True, exit_code=0, mutation_performed=True)
 
 
+SECRET = "super-secret-hostile-value"
+
+
+class Hostile(ToolAdapter):
+    """A deliberately hostile TEST_ONLY adapter: it puts the same fake secret into every surface it
+    controls, and its probe raises with the secret in the exception text."""
+
+    descriptor = descriptor(capabilities=(capability(requires_project=False, requires_tool=False,
+                                                     artifact_kinds=("TEXT",),
+                                                     potential_evidence=(("CODE_EVIDENCE", "OFFLINE_ANALYSIS"),)),))
+
+    def __init__(self, workspace=None, explode=False):
+        self.workspace, self.explode = workspace, explode
+
+    def probe(self):
+        if self.explode:
+            raise RuntimeError(f"probe failed with API_KEY={SECRET}")
+        return ProbeResult("synthetic", tmodel.AVAILABLE, tool_path=f"/tools/bin?token={SECRET}",
+                           tool_version=f"1.0 (password: {SECRET})", detail=f"ready, API_KEY={SECRET}",
+                           capability_availability=(("synthetic.example", True, f"token={SECRET}"),),
+                           diagnostics=(tdg.make("TOOL_NOT_FOUND", f"detail API_KEY={SECRET}", "synthetic"),))
+
+    def execute(self, request, context):
+        path = context.artifact_path("hostile.txt")
+        Path(context.workspace).mkdir(parents=True, exist_ok=True)
+        path.write_text("body")
+        return AdapterOutcome(
+            ok=True, exit_code=0, detail=f"detail API_KEY={SECRET}",
+            plan=(f"plan API_KEY={SECRET}",),
+            diagnostics=(tdg.make("PROCESS_OUTPUT_TRUNCATED", f"message API_KEY={SECRET}", "synthetic",
+                                  details={"note": f"password={SECRET}"}),),
+            data={"reported": f"API_KEY={SECRET}", "nested": [{"token": f"{SECRET}"}]},
+            command={"executable": "/bin/tool", "argv": ["--password", SECRET]},
+            environment={"inherited_names": ["PATH"], "set_names": [f"API_KEY={SECRET}"]},
+            artifacts=(art.ArtifactSpec("hostile", "TEXT", str(path),
+                                        description=f"description API_KEY={SECRET}"),),
+            evidence=(ev.EvidenceCandidate(
+                "CODE_EVIDENCE", "OFFLINE_ANALYSIS", f"summary API_KEY={SECRET}", "TASK", "T",
+                "synthetic", "synthetic.example", "2026-09-22T10:00:00Z", artifact_ids=("hostile",),
+                limitations=(f"limitation API_KEY={SECRET}",), notes=(f"note API_KEY={SECRET}",)),))
+
+
+def hostile(**kwargs):
+    r = ToolRegistry(FW, allow_test_only=True)
+    r.register(Hostile(**kwargs))
+    return r
+
+
 def misreporting():
     r = ToolRegistry(FW, allow_test_only=True)
     r.register(Misreporting())
@@ -115,8 +164,10 @@ class TmpCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
     def project(self, name="p"):
+        """A fresh copy of the synthetic project, reused within one test when asked for again."""
         target = self.tmp / name
-        shutil.copytree(FIXTURE, target)
+        if not target.exists():
+            shutil.copytree(FIXTURE, target)
         return target
 
     def out(self, name="out"):
@@ -682,7 +733,7 @@ class F01_Leases(TmpCase):
 
     def test_unknown_owner_lease_is_not_broken_silently(self):
         p = self.project()
-        path = lease_mod.lease_path(p, "synthetic", f"SYNTHETIC_SESSION:{p}")
+        path = lease_mod.lease_path(p, "synthetic", f"SYNTHETIC_SESSION:{p.resolve()}")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"adapter_id": "synthetic", "resource_id": "x", "owner_id": "someone-else",
                                     "token": "t", "acquired_at": "2026-09-22T10:00:00Z", "pid": 999999}))
@@ -695,7 +746,7 @@ class F01_Leases(TmpCase):
 
     def test_unreadable_lease_fails_closed(self):
         p = self.project()
-        path = lease_mod.lease_path(p, "synthetic", f"SYNTHETIC_SESSION:{p}")
+        path = lease_mod.lease_path(p, "synthetic", f"SYNTHETIC_SESSION:{p.resolve()}")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("{not json")
         result = self.run_cap(syn.STATEFUL_WRITE, project=p, allow_mutation=True, inputs={"text": "x"})
@@ -707,7 +758,7 @@ class F01_Leases(TmpCase):
         result = self.run_cap(syn.STATEFUL_WRITE, project=p, allow_mutation=True, inputs={"text": "x"})
         self.assertEqual(result.status, tdg.SUCCESS)
         self.assertIn("LEASE_ACQUIRED", self.codes(result))
-        self.assertIsNone(lease_mod.holder(p, "synthetic", f"SYNTHETIC_SESSION:{p}"))
+        self.assertIsNone(lease_mod.holder(p, "synthetic", f"SYNTHETIC_SESSION:{p.resolve()}"))
         again = self.run_cap(syn.STATEFUL_WRITE, project=p, allow_mutation=True, inputs={"text": "y"})
         self.assertEqual(again.status, tdg.SUCCESS)
 
@@ -1063,15 +1114,13 @@ class I01_Evidence(TmpCase):
         p = self.project()
         result = self.run_cap(syn.TRANSFORM, project=p, allow_mutation=True, inputs={"text": "x"}, revision="rev-1")
         before = sorted(x.as_posix() for x in (p / ".game" / "gpos").rglob("*"))
-        record, problems = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-TOOL-1",
-                                          tool_version="synthetic 1.0.0")
+        record, problems = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-TOOL-1")
         self.assertEqual(problems, [])
         self.assertEqual(FW.validators["evidence"].errors(record), [])
         self.assertEqual(record["source"], {"kind": "TOOL", "id": "synthetic"})
         self.assertEqual(record["provenance"]["subject_revision"], "rev-1")
         self.assertNotIn("gate", json.dumps(record))
-        again, _ = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-TOOL-1",
-                                  tool_version="synthetic 1.0.0")
+        again, _ = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-TOOL-1")
         self.assertEqual(json.dumps(record, sort_keys=True), json.dumps(again, sort_keys=True))
         self.assertEqual(sorted(x.as_posix() for x in (p / ".game" / "gpos").rglob("*")), before)
 
@@ -1388,6 +1437,538 @@ class M01_Cli(TmpCase):
                              cwd=str(ROOT), capture_output=True, text=True)
         self.assertEqual(out.returncode, 0)
         self.assertIn("synthetic", out.stdout)
+
+
+# ---------------------------------------------------------------- N  hardening (Human Review round 2)
+
+class N01_MaterializationProvenance(TmpCase):
+    """Foundation-owned provenance can never be overridden by the caller (finding 1)."""
+
+    def candidate(self, **kwargs):
+        p = self.project()
+        result = self.run_cap(syn.TRANSFORM, project=p, allow_mutation=True, inputs={"text": "x"},
+                              revision="rev-1", **kwargs)
+        self.assertEqual(result.status, tdg.SUCCESS)
+        return result
+
+    def test_capture_context_override_rejected(self):
+        result = self.candidate()
+        record, problems = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-1",
+                                          extra_provenance={"capture_context": "AUTOMATED_TEST"})
+        self.assertIsNone(record)
+        self.assertIn("owned by the foundation", problems[0])
+        self.assertIn("OFFLINE_ANALYSIS", problems[0])
+
+    def test_subject_revision_override_rejected(self):
+        result = self.candidate()
+        record, problems = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-1",
+                                          extra_provenance={"subject_revision": "fake-revision"})
+        self.assertIsNone(record)
+        self.assertIn("owned by the foundation", problems[0])
+        clean, _ = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-1")
+        self.assertEqual(clean["provenance"]["subject_revision"], "rev-1")
+
+    def test_conflicting_build_revision_rejected_and_matching_one_accepted(self):
+        result = self.candidate(build_revision="build-abc", target_platform="ANDROID")
+        record, problems = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-1",
+                                          extra_provenance={"build_revision": "build-zzz"})
+        self.assertIsNone(record)
+        self.assertIn("build_revision", problems[0])
+        record, problems = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-1",
+                                          extra_provenance={"build_revision": "build-abc"})
+        self.assertEqual(problems, [])
+        self.assertEqual(record["provenance"]["build_revision"], "build-abc")
+
+    def test_candidate_provenance_reaches_the_record_automatically(self):
+        result = self.candidate(build_revision="build-abc", build_id="b-17", target_platform="ANDROID",
+                                device="Pixel 7 / Android 14")
+        record, problems = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-1")
+        self.assertEqual(problems, [])
+        self.assertEqual({k: record["provenance"][k] for k in ("build_revision", "build_id", "target_platform",
+                                                               "device", "tool_version")},
+                         {"build_revision": "build-abc", "build_id": "b-17", "target_platform": "ANDROID",
+                          "device": "Pixel 7 / Android 14", "tool_version": syn.TOOL_VERSION})
+        self.assertEqual(FW.validators["evidence"].errors(record), [])
+
+    def test_unknown_foundation_field_cannot_be_supplied_afterwards(self):
+        result = self.candidate()
+        record, problems = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-1",
+                                          extra_provenance={"device": "Pixel 7"})
+        self.assertIsNone(record)
+        self.assertIn("established by the execution", problems[0])
+
+    def test_only_schema_supported_supplements_are_accepted(self):
+        result = self.candidate()
+        record, problems = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-1",
+                                          extra_provenance={"made_up_field": "x"})
+        self.assertIsNone(record)
+        self.assertIn("supplemental field", problems[0])
+        record, problems = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-1",
+                                          extra_provenance={"artifact_hash": "sha256:" + "0" * 64})
+        self.assertEqual(problems, [])
+        self.assertEqual(record["provenance"]["artifact_hash"], "sha256:" + "0" * 64)
+        self.assertEqual(set(ev.SUPPLEMENTAL_PROVENANCE) & set(ev.FOUNDATION_OWNED_PROVENANCE), set())
+
+    def test_materialization_is_deterministic(self):
+        result = self.candidate(build_revision="build-abc")
+        first, _ = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-1")
+        second, _ = ev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-1")
+        self.assertEqual(json.dumps(first, sort_keys=True), json.dumps(second, sort_keys=True))
+
+    def test_human_evidence_remains_impossible(self):
+        result = self.candidate()
+        forged = dataclasses.replace(result.evidence_candidates[0], evidence_type="HUMAN_EVIDENCE",
+                                     capture_context="HUMAN_RECORD")
+        record, problems = ev.materialize(FW, forged, result.artifacts, "EV-1")
+        self.assertIsNone(record)
+        self.assertIn("never be materialized", problems[0])
+        record, problems = ev.materialize(FW, forged, result.artifacts, "EV-1",
+                                          extra_provenance={"capture_context": "HUMAN_RECORD"})
+        self.assertIsNone(record)
+
+
+class N02_ProjectLessScope(TmpCase):
+    """A project-less capability never gains filesystem authority over a project tree (finding 2)."""
+
+    def test_project_root_on_a_project_less_capability_is_refused(self):
+        result = self.run_cap(syn.FAIL, project=self.project(), output_dir=str(self.out()))
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+        self.assertIn("INVALID_TOOL_REQUEST", self.codes(result))
+        self.assertTrue(any("never receives filesystem authority over a project tree" in d.message
+                            for d in result.diagnostics), [d.message for d in result.diagnostics])
+
+    def test_an_arbitrary_directory_cannot_become_a_project_scope(self):
+        outside = self.tmp / "not-a-project"
+        outside.mkdir()
+        result = self.run_cap(syn.FAIL, project=outside, output_dir=str(self.out()))
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+        self.assertEqual(self.codes(result), {"INVALID_TOOL_REQUEST"})
+
+    def test_output_dir_only_execution_still_works(self):
+        result = self.run_cap(syn.FAIL)
+        self.assertEqual(result.status, tdg.FAILED)  # it ran; scoped to the output directory alone
+
+    def test_project_bound_execution_is_unchanged(self):
+        result = self.run_cap(syn.TRANSFORM, project=self.project(), allow_mutation=True,
+                              inputs={"text": "x"}, revision="r1")
+        self.assertEqual(result.status, tdg.SUCCESS)
+        self.assertTrue(result.artifacts[0].path.startswith(tpaths.RUNTIME_DIR + "/"))
+
+
+class N03_ProvenanceIntegrity(TmpCase):
+    def test_project_id_comes_from_the_validated_record_set(self):
+        p = self.project()
+        expected = json.loads((p / ".game" / "gpos" / "project-config.json").read_text())["project"]["id"]
+        result = self.run_cap(syn.INSPECT, project=p)
+        self.assertEqual(result.provenance.project_id, expected)
+        self.assertEqual(result.provenance.to_dict()["project_id"], "synthetic-adapter-project")
+
+    def test_a_project_less_execution_has_no_project_id(self):
+        result = self.run_cap(syn.FAIL)
+        self.assertIsNone(result.provenance.project_id)
+        self.assertNotIn("project_id", result.provenance.to_dict())
+
+    def test_duration_is_the_execution_interval_not_the_process_interval(self):
+        class Slow(Clock):
+            """Execution starts at 100 s and finishes at 140 s; the process inside it takes 1 s."""
+
+            def __init__(self):
+                self.ticks = [100.0, 110.0, 111.0, 140.0]
+
+            def now(self):
+                return "2026-09-22T10:00:00Z"
+
+            def monotonic(self):
+                return self.ticks.pop(0) if len(self.ticks) > 1 else self.ticks[0]
+
+        result = execute(registry(), ExecutionRequest(adapter_id="synthetic", capability_id=syn.INSPECT,
+                                                      subject=Subject("TASK", "T"),
+                                                      project_root=str(self.project())), clock=Slow())
+        self.assertEqual(result.duration_seconds, 40.0)          # the execution interval
+        self.assertEqual(result.provenance.duration_seconds, 40.0)  # not the 1 s the process took
+        self.assertNotEqual(result.duration_seconds, 0.0)
+
+    def test_result_and_provenance_share_one_finish_time(self):
+        result = self.run_cap(syn.TRANSFORM, project=self.project(), allow_mutation=True,
+                              inputs={"text": "x"}, revision="r1")
+        self.assertEqual(result.finished_at, result.provenance.finished_at)
+        self.assertEqual(result.duration_seconds, result.provenance.duration_seconds)
+        self.assertEqual(result.evidence_candidates[0].generated_at, result.finished_at)
+
+    def test_the_foundation_owns_candidate_freshness(self):
+        """An adapter's own generated_at is never trusted as evidence freshness."""
+        result = self.run_cap("synthetic.example", reg=hostile(), output_dir=str(self.out()))
+        self.assertEqual(result.status, tdg.SUCCESS)
+        self.assertNotEqual(result.evidence_candidates[0].generated_at, "2026-09-22T10:00:00Z")
+        self.assertEqual(result.evidence_candidates[0].generated_at, result.finished_at)
+
+
+class N04_RequestVocabulary(TmpCase):
+    def assertRefused(self, **kwargs):
+        result = self.run_cap(syn.INSPECT, project=self.project(), **kwargs)
+        self.assertEqual(result.status, tdg.INVALID_REQUEST, kwargs)
+        self.assertIn("INVALID_TOOL_REQUEST", self.codes(result))
+        return result
+
+    def test_invalid_subject_kind_rejected_before_execution(self):
+        adapter = SyntheticAdapter()
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(adapter)
+        before = adapter.probe_calls
+        result = self.run_cap(syn.INSPECT, reg=r, project=self.project(), subject_kind="EPISODE")
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+        self.assertEqual(adapter.probe_calls, before)  # nothing ran
+        self.assertEqual(result.artifacts, ())
+
+    def test_empty_subject_ref_rejected(self):
+        self.assertRefused(subject_ref="   ")
+
+    def test_empty_supplied_revision_rejected(self):
+        self.assertRefused(revision="")
+
+    def test_invalid_actor_rejected(self):
+        self.assertRefused(actor=Actor("ROBOT", "x"))
+        self.assertRefused(actor=Actor("AGENT", "has spaces"))
+        self.assertRefused(actor=Actor("AGENT", ""))
+
+    def test_invalid_target_platform_rejected(self):
+        self.assertRefused(target_platform="AMIGA")
+
+    def test_impossible_expected_evidence_rejected(self):
+        self.assertRefused(expected_evidence=(("CODE_EVIDENCE", "TARGET_RUNTIME"),))
+        self.assertRefused(expected_evidence=(("NOT_A_TYPE", "OFFLINE_ANALYSIS"),))
+        self.assertRefused(expected_evidence=(("VISUAL_EVIDENCE", "DCC_RENDER"),))  # not declared by inspect
+
+    def test_valid_values_are_unchanged(self):
+        result = self.run_cap(syn.TRANSFORM, project=self.project(), allow_mutation=True, inputs={"text": "x"},
+                              revision="r1", actor=Actor("AGENT", "reviewer-1"), target_platform="ANDROID",
+                              expected_evidence=(("CODE_EVIDENCE", "OFFLINE_ANALYSIS"),))
+        self.assertEqual(result.status, tdg.SUCCESS)
+        self.assertEqual(result.provenance.actor, {"kind": "AGENT", "id": "reviewer-1"})
+
+    def test_an_invalid_subject_never_reaches_a_candidate(self):
+        result = self.run_cap(syn.TRANSFORM, project=self.project(), allow_mutation=True,
+                              inputs={"text": "x"}, revision="r1", subject_kind="EPISODE")
+        self.assertEqual(result.evidence_candidates, ())
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+
+
+class N05_AdapterMetadataRedaction(TmpCase):
+    def test_no_adapter_controlled_surface_leaks_a_secret(self):
+        result = self.run_cap("synthetic.example", reg=hostile(), output_dir=str(self.out()))
+        payload = json.dumps(result.to_dict())
+        self.assertNotIn(SECRET, payload)
+        self.assertIn("[REDACTED]", payload)
+        for surface in (result.stdout, json.dumps(result.data), json.dumps(result.provenance.to_dict()),
+                        json.dumps([a.to_dict() for a in result.artifacts]),
+                        json.dumps([c.to_dict() for c in result.evidence_candidates]),
+                        json.dumps([d.to_dict() for d in result.diagnostics]), json.dumps(list(result.plan))):
+            self.assertNotIn(SECRET, surface)
+
+    def test_probe_text_and_diagnostics_are_redacted(self):
+        probe = hostile().probe("synthetic")
+        self.assertNotIn(SECRET, json.dumps(probe.to_dict()))
+        self.assertIn("[REDACTED]", json.dumps(probe.to_dict()))
+
+    def test_probe_exception_text_is_redacted(self):
+        probe = hostile(explode=True).probe("synthetic")
+        self.assertEqual(probe.status, tmodel.UNAVAILABLE)
+        self.assertNotIn(SECRET, json.dumps(probe.to_dict()))
+
+    def test_unsupported_result_shapes_are_refused_not_stringified(self):
+        class Weird(ToolAdapter):
+            descriptor = descriptor(capabilities=(capability(requires_project=False, requires_tool=False),))
+
+            def probe(self):
+                return ProbeResult("synthetic", tmodel.AVAILABLE)
+
+            def execute(self, request, context):
+                return AdapterOutcome(ok=True, exit_code=0, data={"handle": object()})
+
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(Weird())
+        result = self.run_cap("synthetic.example", reg=r)
+        self.assertIn("UNSUPPORTED_RESULT_VALUE", self.codes(result))
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+        self.assertNotIn("object at 0x", json.dumps(result.to_dict()))
+
+    def test_sanitize_walks_nested_structures(self):
+        from gpos.tools.redaction import UnsupportedValue, sanitize
+        value, n = sanitize({"a": [{"b": ("API_KEY=" + SECRET,)}]})
+        self.assertEqual(n, 1)
+        self.assertNotIn(SECRET, json.dumps(value))
+        with self.assertRaises(UnsupportedValue):
+            sanitize({"a": object()})
+        with self.assertRaises(UnsupportedValue):
+            sanitize({1: "x"})
+
+
+class N06_ArtifactClaims(TmpCase):
+    def declared(self, **kwargs):
+        base = dict(id="synthetic.example", artifact_kinds=("TEXT",))
+        base.update(kwargs)
+        return capability(**base)
+
+    def specs(self, *pairs):
+        return [art.ArtifactSpec(aid, kind, "/tmp/x") for aid, kind in pairs]
+
+    def problems(self, specs, cap=None, known=()):
+        return art.declaration_problems(specs, cap or self.declared(), REG["tool_artifact_kinds"], known)
+
+    def test_undeclared_artifact_kind_rejected(self):
+        problems = self.problems(self.specs(("out", "VIDEO")))
+        self.assertEqual([c for c, _, _ in problems], ["INVALID_ARTIFACT_CLAIM"])
+        self.assertIn("may not produce a VIDEO artifact", problems[0][2])
+
+    def test_unknown_registry_artifact_kind_rejected(self):
+        problems = self.problems(self.specs(("out", "HOLOGRAM")))
+        self.assertIn("not in registry tool_artifact_kinds", problems[0][2])
+
+    def test_duplicate_output_ids_rejected(self):
+        problems = self.problems(self.specs(("out", "TEXT"), ("out", "TEXT")))
+        self.assertIn("two output artifacts claim the id", problems[0][2])
+
+    def test_output_id_shadowing_an_input_rejected(self):
+        known = [art.Artifact("gameplay", "OTHER", "g", "/g", "0" * 64, 1)]
+        problems = self.problems(self.specs(("gameplay", "TEXT")), known=known)
+        self.assertIn("would shadow an input artifact", problems[0][2])
+
+    def test_structurally_invalid_id_rejected(self):
+        for bad in ("Out", "", "../x", "a b"):
+            self.assertTrue(self.problems(self.specs((bad, "TEXT"))), bad)
+
+    def test_claims_are_enforced_at_execution(self):
+        class Overreaching(ToolAdapter):
+            descriptor = descriptor(capabilities=(capability(requires_project=False, requires_tool=False,
+                                                             artifact_kinds=("TEXT",)),))
+
+            def probe(self):
+                return ProbeResult("synthetic", tmodel.AVAILABLE)
+
+            def execute(self, request, context):
+                path = context.artifact_path("x.bin")
+                Path(context.workspace).mkdir(parents=True, exist_ok=True)
+                path.write_text("x")
+                return AdapterOutcome(ok=True, exit_code=0,
+                                      artifacts=(art.ArtifactSpec("out", "VIDEO", str(path)),))
+
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(Overreaching())
+        result = self.run_cap("synthetic.example", reg=r, output_dir=str(self.out()))
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+        self.assertIn("INVALID_ARTIFACT_CLAIM", self.codes(result))
+        self.assertEqual(result.artifacts, ())  # not silently reclassified or renamed
+
+    def test_normal_derivation_remains_valid(self):
+        p = self.project()
+        capture = p / "capture.mp4"
+        capture.write_bytes(b"pretend capture")
+        result = self.run_cap(syn.DERIVE, project=p, allow_mutation=True, revision="r1",
+                              input_artifacts=(InputArtifact("gameplay", str(capture), "TARGET_RUNTIME"),))
+        self.assertEqual(result.status, tdg.SUCCESS)
+        self.assertEqual([a.artifact_id for a in result.artifacts], ["derived"])
+
+
+class N07_LeaseIntegrity(TmpCase):
+    def test_release_failure_blocks_success(self):
+        p = self.project()
+        real_release = lease_mod.release
+
+        def refuse(root, lease):
+            return False
+
+        lease_mod.release = refuse
+        self.addCleanup(setattr, lease_mod, "release", real_release)
+        result = self.run_cap(syn.STATEFUL_WRITE, project=p, allow_mutation=True, inputs={"text": "x"})
+        self.assertIn("LEASE_RELEASE_FAILED", self.codes(result))
+        self.assertEqual(result.status, tdg.CONFLICT)
+        self.assertNotEqual(result.status, tdg.SUCCESS)
+
+    def test_release_failure_on_an_error_path_is_also_reported(self):
+        p = self.project()
+        real_release = lease_mod.release
+        lease_mod.release = lambda root, lease: False
+        self.addCleanup(setattr, lease_mod, "release", real_release)
+        result = self.run_cap(syn.STATEFUL_WRITE, project=p, allow_mutation=True,
+                              inputs={"text": "x", "nonsense": "1"})
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)  # refused before the lease is taken
+        result = self.run_cap(syn.RESOURCE_WRITE, project=p, allow_mutation=True, resource_id="d-1",
+                              inputs={"text": "x"})
+        self.assertIn("LEASE_RELEASE_FAILED", self.codes(result))
+
+    def test_the_project_lease_resource_is_always_the_canonical_root(self):
+        from gpos.tools.execution import _resource
+        p = self.project()
+        (p / "sub").mkdir(exist_ok=True)
+        cap = SyntheticAdapter().capability(syn.STATEFUL_WRITE)
+        request = ExecutionRequest(adapter_id="synthetic", capability_id=cap.id, subject=Subject("TASK", "T"))
+        canonical, _ = _resource(request, cap, p)
+        for spelling in (Path(str(p) + "/"), p / ".", p / "sub" / ".."):
+            resource, problem = _resource(request, cap, spelling)
+            self.assertIsNone(problem)
+            self.assertEqual(resource, canonical, spelling)
+        self.assertEqual(canonical, f"SYNTHETIC_SESSION:{p.resolve()}")
+
+    def test_equivalent_project_spellings_share_one_lease_key(self):
+        p = self.project()
+        spellings = [p, Path(str(p) + "/"), p / "." , p / "sub" / ".."]
+        (p / "sub").mkdir(exist_ok=True)
+        keys = {lease_mod.resource_key("synthetic", f"SYNTHETIC_SESSION:{Path(x).resolve()}") for x in spellings}
+        self.assertEqual(len(keys), 1, keys)
+
+    def test_the_same_project_conflicts_through_a_different_spelling(self):
+        p = self.project()
+        (p / "sub").mkdir(exist_ok=True)
+        held = lease_mod.acquire(p, "synthetic", f"SYNTHETIC_SESSION:{p.resolve()}", "writer-A",
+                                 "2026-09-22T10:00:00Z")
+        result = self.run_cap(syn.STATEFUL_WRITE, project=p / "sub" / "..", allow_mutation=True,
+                              inputs={"text": "x"})
+        self.assertEqual(result.status, tdg.CONFLICT)
+        self.assertIn("LEASE_CONFLICT", self.codes(result))
+        self.assertTrue(lease_mod.release(p, held))
+
+    def test_a_request_named_resource_is_explicit_not_a_magic_input(self):
+        p = self.project()
+        cap = SyntheticAdapter().capability(syn.RESOURCE_WRITE)
+        self.assertTrue(cap.resource_from_request)
+        missing = self.run_cap(syn.RESOURCE_WRITE, project=p, allow_mutation=True, inputs={"text": "x"})
+        self.assertEqual(missing.status, tdg.INVALID_REQUEST)
+        self.assertTrue(any("supply resource_id" in d.message for d in missing.diagnostics))
+        ok = self.run_cap(syn.RESOURCE_WRITE, project=p, allow_mutation=True, resource_id="device-1",
+                          inputs={"text": "x"})
+        self.assertEqual(ok.status, tdg.SUCCESS)
+        self.assertTrue(any("SYNTHETIC_TARGET:device-1" in d.message for d in ok.diagnostics))
+
+    def test_a_project_leased_capability_refuses_a_resource_id(self):
+        result = self.run_cap(syn.STATEFUL_WRITE, project=self.project(), allow_mutation=True,
+                              resource_id="something", inputs={"text": "x"})
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+
+    def test_different_resources_proceed_independently(self):
+        p = self.project()
+        held = lease_mod.acquire(p, "synthetic", "SYNTHETIC_TARGET:device-1", "writer-A", "2026-09-22T10:00:00Z")
+        other = self.run_cap(syn.RESOURCE_WRITE, project=p, allow_mutation=True, resource_id="device-2",
+                             inputs={"text": "x"})
+        self.assertEqual(other.status, tdg.SUCCESS)
+        same = self.run_cap(syn.RESOURCE_WRITE, project=p, allow_mutation=True, resource_id="device-1",
+                            inputs={"text": "x"})
+        self.assertEqual(same.status, tdg.CONFLICT)
+        self.assertTrue(lease_mod.release(p, held))
+
+    def test_resource_from_request_requires_a_writer_lease(self):
+        cap = capability(id="synthetic.bad", resource_from_request=True)
+        self.assertIn("declares resource_from_request but takes no single-writer lease",
+                      " ".join(p.message for p in tval.validate_capability(FW, "synthetic", cap)))
+
+
+class N08_PortabilityRefinements(TmpCase):
+    def cli_inputs(self, artifacts, contexts=()):
+        from gpos.tools import cli as tool_cli
+        return tool_cli._input_artifacts(list(artifacts), list(contexts))
+
+    def test_windows_drive_paths_parse_unambiguously(self):
+        parsed = self.cli_inputs([r"capture=C:\media\gameplay.mp4"], ["capture=TARGET_RUNTIME"])
+        self.assertEqual(parsed[0].path, r"C:\media\gameplay.mp4")
+        self.assertEqual(parsed[0].capture_context, "TARGET_RUNTIME")
+
+    def test_posix_paths_with_colons_parse_unambiguously(self):
+        parsed = self.cli_inputs(["capture=/tmp/take:02/gameplay.mp4"])
+        self.assertEqual(parsed[0].path, "/tmp/take:02/gameplay.mp4")
+        self.assertIsNone(parsed[0].capture_context)
+
+    def test_malformed_input_artifact_options_are_usage_errors(self):
+        from gpos.tools.cli import UsageError
+        for bad, contexts in ((["nopath"], []), (["=x"], []), (["a=/p", "a=/q"], []), (["a=/p"], ["b=EDITOR"])):
+            with self.assertRaises(UsageError, msg=(bad, contexts)):
+                self.cli_inputs(bad, contexts)
+
+    def test_library_input_artifact_api_is_unchanged(self):
+        artifact = InputArtifact("gameplay", "/p/capture.mp4", "TARGET_RUNTIME")
+        self.assertEqual(artifact.to_dict(), {"artifact_id": "gameplay", "path": "/p/capture.mp4",
+                                              "capture_context": "TARGET_RUNTIME"})
+
+    def make_executable(self):
+        exe = self.tmp / "vanishing-tool"
+        exe.write_text(f"#!{tproc.interpreter_path()}\nprint('ok')\n")
+        exe.chmod(0o755)
+        return exe, tproc.ToolProcessSpec(executable=str(exe), cwd=str(self.tmp))
+
+    def test_an_executable_that_vanishes_after_validation_is_a_tool_problem(self):
+        exe, spec = self.make_executable()
+        tproc.validate_spec(spec, [str(self.tmp)])  # valid right now
+        exe.unlink()                                # and gone a moment later
+        with self.assertRaises(tproc.ProcessSpecError) as cm:
+            tproc.run_process(spec, [str(self.tmp)])
+        self.assertEqual(cm.exception.code, "TOOL_NOT_FOUND")
+
+    def test_an_executable_that_loses_permission_is_a_tool_problem(self):
+        exe, spec = self.make_executable()
+        tproc.validate_spec(spec, [str(self.tmp)])
+        exe.chmod(0o000)
+        self.addCleanup(exe.chmod, 0o755)
+        with self.assertRaises(tproc.ProcessSpecError) as cm:
+            tproc.run_process(spec, [str(self.tmp)])
+        self.assertEqual(cm.exception.code, "TOOL_NOT_FOUND")
+
+    def test_a_start_failure_after_validation_is_structured_not_an_opaque_defect(self):
+        """The file exists and is executable, so validation passes; the kernel refuses it at exec."""
+        exe = self.tmp / "unstartable-tool"
+        exe.write_text("#!/nonexistent/interpreter\nprint('ok')\n")
+        exe.chmod(0o755)
+        spec = tproc.ToolProcessSpec(executable=str(exe), cwd=str(self.tmp))
+        tproc.validate_spec(spec, [str(self.tmp)])
+        with self.assertRaises(tproc.ProcessSpecError) as cm:
+            tproc.run_process(spec, [str(self.tmp)])
+        self.assertEqual(cm.exception.code, "TOOL_NOT_FOUND")
+        self.assertNotIn("Traceback", str(cm.exception))
+
+    def test_a_start_failure_reaches_the_caller_as_an_availability_status(self):
+        class Unstartable(ToolAdapter):
+            descriptor = descriptor(capabilities=(capability(requires_project=False, requires_tool=False),))
+
+            def __init__(self, exe):
+                self.exe = exe
+
+            def probe(self):
+                return ProbeResult("synthetic", tmodel.AVAILABLE)
+
+            def execute(self, request, context):
+                return AdapterOutcome(process=context.run(
+                    tproc.ToolProcessSpec(executable=str(self.exe), cwd=context.workspace)))
+
+        exe = self.tmp / "unstartable-tool"
+        exe.write_text("#!/nonexistent/interpreter\n")
+        exe.chmod(0o755)
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(Unstartable(exe))
+        result = self.run_cap("synthetic.example", reg=r, output_dir=str(self.out()))
+        self.assertEqual(result.status, tdg.UNAVAILABLE)
+        self.assertIn("TOOL_NOT_FOUND", self.codes(result))
+        self.assertNotIn("ADAPTER_INTERNAL_ERROR", self.codes(result))
+
+    def test_a_process_start_failure_maps_to_a_structured_status(self):
+        self.assertEqual(tdg.CODES["TOOL_NOT_FOUND"][0], tdg.UNAVAILABLE)
+        self.assertEqual(tdg.CODES["EXECUTION_FAILED"][0], tdg.FAILED)
+
+
+class N09_AcceptedArchitectureUnchanged(TmpCase):
+    def test_the_single_subprocess_boundary_is_intact(self):
+        importers = [p.relative_to(ROOT).as_posix() for p in (ROOT / "gpos").rglob("*.py")
+                     if "import subprocess" in p.read_text()]
+        self.assertEqual(importers, ["gpos/tools/process.py"])
+        for path in (ROOT / "gpos").rglob("*.py"):
+            self.assertNotIn("shell=True", path.read_text(), path)
+
+    def test_registries_stay_separate_and_empty(self):
+        from gpos.adapters.backends import BACKENDS
+        self.assertEqual(sorted(BACKENDS), ["claude-code", "codex"])
+        self.assertEqual(default_registry(FW).adapter_ids(), [])
+
+    def test_the_frozen_prohibitions_hold(self):
+        self.assertEqual(POLICY["forbidden_evidence_types"], ["HUMAN_EVIDENCE"])
+        self.assertEqual(POLICY["dry_run_evidence_types"], ["CODE_EVIDENCE"])
+        self.assertEqual(POLICY["network"], "FORBIDDEN")
+        self.assertTrue(SyntheticAdapter().descriptor.test_only)
 
 
 if __name__ == "__main__":

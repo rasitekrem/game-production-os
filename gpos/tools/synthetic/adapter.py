@@ -40,6 +40,7 @@ CLAIM_HUMAN = f"{ADAPTER_ID}.claim-human-evidence"
 CLAIM_RUNTIME = f"{ADAPTER_ID}.claim-runtime"
 ESCAPE = f"{ADAPTER_ID}.escape"
 PARTIAL = f"{ADAPTER_ID}.partial"
+RESOURCE_WRITE = f"{ADAPTER_ID}.resource-write"
 
 CAPABILITIES = (
     Capability(
@@ -71,8 +72,16 @@ CAPABILITIES = (
         description="TEST_ONLY: stand in for a long-lived editor session that only one writer may drive.",
         operation_class="MUTATING", state_model="STATEFUL", execution_context="EDITOR",
         single_writer_required=True, resource_kind="SYNTHETIC_SESSION", dry_run_supported=True,
-        input_kinds=("text", "resource"), artifact_kinds=("TEXT",),
+        input_kinds=("text",), artifact_kinds=("TEXT",),
         side_effect_scope="the synthetic session state and one file in the workspace",
+        timeout=TimeoutPolicy(default=10.0, maximum=30.0)),
+    Capability(
+        id=RESOURCE_WRITE, category="DEPLOY",
+        description="TEST_ONLY: stand in for a stateful target the request names, such as a device.",
+        operation_class="MUTATING", state_model="STATEFUL", execution_context="TARGET_RUNTIME",
+        single_writer_required=True, resource_kind="SYNTHETIC_TARGET", resource_from_request=True,
+        input_kinds=("text",), artifact_kinds=("TEXT",),
+        side_effect_scope="the named synthetic target and one file in the workspace",
         timeout=TimeoutPolicy(default=10.0, maximum=30.0)),
     Capability(
         id=FAIL, category="VALIDATE", description="TEST_ONLY: fail deterministically.",
@@ -180,7 +189,7 @@ class SyntheticAdapter(model.ToolAdapter):
         inputs = request.inputs or {}
         if cap == INSPECT:
             return self._inspect(context, inputs)
-        if cap in (TRANSFORM, STATEFUL_WRITE):
+        if cap in (TRANSFORM, STATEFUL_WRITE, RESOURCE_WRITE):
             return self._write(context, inputs, cap)
         if cap == DERIVE:
             return self._derive(context, inputs)

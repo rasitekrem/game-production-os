@@ -27,6 +27,17 @@ This phase integrates **no** real production tool. It creates the shared layer t
 
 - The Phase-1 production boundary now names one audited location for process execution (`gpos/tools/process.py`) instead of forbidding it everywhere in `gpos/`. The ban on depending on tests or on network modules is unchanged and still applies to every module.
 
+### Hardened (code review of Phase 2C-0)
+
+- Materialized evidence provenance comes from the execution, never from the caller. Everything the foundation observed flows automatically out of the candidate into the record; a caller may add only the schema-supported fields the foundation cannot observe, and setting a foundation-owned field to a different value — or to one this execution never observed — fails closed.
+- A capability that does not require a project never gains filesystem authority over a project tree: supplying `project_root` to it is refused instead of quietly becoming an unvalidated scope.
+- The project id in provenance comes from the record set the validator already produced. Execution timing is one foundation-observed interval shared by the result, the provenance and every accepted candidate, measured monotonically and never taken from the inner process. The foundation, not the adapter, establishes an accepted candidate's `generated_at`.
+- Canonical request fields — subject kind and reference, supplied revision, actor kind and id, target platform, expected evidence pairs — are validated against the registry before any adapter runs, so an invalid subject can never reach an accepted candidate.
+- Every string an adapter controls is redacted, not only captured process output: diagnostics and details, result data, recorded command and environment, artifact descriptions, evidence summaries, limitations and notes, and probe text including an exception message. A credential-named key or command-line flag redacts its value; a value a result cannot carry is refused rather than stringified.
+- Output artifact claims are checked against the registered capability at execution time: declared kinds only, structural and unique ids, and no shadowing of an input artifact. Invalid claims are dropped, never renamed or reclassified.
+- A single-writer lease that cannot be released is blocking (`LEASE_RELEASE_FAILED`), so an execution never reports a clean success while its lease is still held; the unverified lease is still not deleted. A project lease is taken on the resolved project root, and a capability that leases something else declares `resource_from_request` and the request names it explicitly.
+- The CLI takes an input artifact's path and capture context as separate options, so a Windows drive path is unambiguous. A process that cannot be started after its spec validated is reported as a tool availability problem, not an opaque defect.
+
 ### Notes
 
 - No Git, GitHub, FFmpeg, Android/ADB, Blender, Unity or MCP adapter exists. No agent is invoked and no network is used at runtime.

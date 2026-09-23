@@ -4,6 +4,47 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.12] — Phase 2C-2: media evidence adapters (ffprobe, FFmpeg)
+
+Builds on the frozen Phase-2C-1 tree (`v1.0.0-alpha.11`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, and no change to any frozen foundation module. Projects must pin `gpos_version` `1.0.0-alpha.12`.
+
+Two production media adapters, one per executable, because the foundation records one tool path and version per execution. Both work on local files a caller already has: they capture nothing and never reach a network.
+
+**Media processing does not upgrade capture authority.** A frame, clip or audio segment derived from a `TARGET_RUNTIME` recording is `TARGET_RUNTIME` evidence, never `OFFLINE_ANALYSIS`.
+
+### Added
+
+- `gpos/tools/ffprobe/`: the `ffprobe` adapter (`MEDIA`, `CLI`, `STATELESS`, network `FORBIDDEN`) with one capability, `ffprobe.inspect` (`READ_ONLY`). It returns a bounded, tag-free summary: format names, duration, stream counts, and the first video and audio stream's codec, size, pixel format, frame rate, sample rate and channels. It uses `-show_entries` only, because `-show_format` / `-show_streams` would print the source's metadata tags. The summary is parsed from the private raw capture by a strict parser that refuses truncated, malformed or unexpected output.
+- `gpos/tools/ffmpeg/`: the `ffmpeg` adapter (`MEDIA`, `CLI`, `STATELESS`, network `FORBIDDEN`) with three `MUTATING` `TRANSFORM` capabilities that support dry run:
+  - `ffmpeg.extract-frame`: a PNG, `IMAGE`, offering `VISUAL_EVIDENCE`;
+  - `ffmpeg.extract-clip`: at most 30 s of FFV1 video plus PCM audio in Matroska, `VIDEO`, offering `MOTION_EVIDENCE`;
+  - `ffmpeg.extract-audio`: at most 120 s of 16-bit PCM WAV, `AUDIO`, offering `AUDIO_EVIDENCE`.
+- Each capability consumes exactly one input artifact. Each transform refuses, before FFmpeg starts, a source with no capture context, or one whose context the frozen registry does not allow for its evidence type. Outputs are `DERIVED` from the input and inherit its capture context, and every candidate states that it is derived.
+- `gpos/tools/media_common.py`: the shared local-only input contract, `-protocol_whitelist file` and a closed `-format_whitelist` of self-contained demuxers (`mov`, `matroska`, `avi`, `mpegts`, `wav`, `mp3`, `flac`, `ogg`). A local playlist pointing at a local HTTP server is refused with zero requests, and each whitelist alone blocks it.
+- Fixed command templates only. The variable slots are the validated input path, the adapter's workspace output path and canonicalized numbers. Every template uses `-n`, never `-y`, and strips source metadata and chapters.
+- The FFmpeg probe confirms the build provides the `png`, `ffv1` and `pcm_s16le` encoders and the `image2pipe`, `matroska` and `wav` muxers, and otherwise reports `VERSION_UNSUPPORTED`.
+- Handling of verified FFmpeg behaviour:
+  - an existing output is refused first, because `-n` exits 0;
+  - frames go through `image2pipe`, because `image2` ignores `-n`;
+  - an output at its `-fs` limit, an empty output (a frame past the end) or a wrong format signature is a failure, and the file is kept as an incomplete artifact, never evidence;
+  - outputs are byte-reproducible (`-fflags +bitexact`).
+- [tools/media-adapters.md](tools/media-adapters.md), with the first-party FFmpeg documentation consulted; real FFmpeg/ffprobe integration tests (`tests/test_media_adapters.py`, groups A–Z) and a bounded mutation harness (`tests/mutate_media_adapters.py`).
+
+### Changed
+
+- `default_registry()` now contains exactly `ffmpeg`, `ffprobe` and `git`.
+- The CLI's JSON output echoes the request through the same redaction as the result, so a credential-shaped input file name is not printed back (`gpos/tools/cli.py`, not a frozen module).
+- Phase-boundary tests evolved to the Phase-2C-2 boundary, without weakening any other assertion:
+  - the Phase-2A test that forbade the word "ffmpeg" anywhere in `gpos/` now allows it only in the two media adapter packages, their shared constants module and the production registry;
+  - the Phase-2C-0 tests assert the exact production registry and module list, and that each real tool executable is named only inside its own adapter package;
+  - the Phase-2C-1 registry and CLI-list assertions count three adapters;
+  - the Git mutation harness's two registry mutations use the new registration anchor, with the same semantics.
+
+### Notes
+
+- No capture of any kind (screen, game, device, microphone, live input), no network input, no arbitrary transcode, filter, codec, map or FFmpeg argument, and no generic command capability.
+- No OS sandboxing is claimed: FFmpeg remains an external native parser and decoder under the foundation's existing trust boundary.
+
 ## [1.0.0-alpha.11] — Phase 2C-1: Git provenance adapter
 
 Builds on the frozen Phase-2C-0 tool adapter foundation (`v1.0.0-alpha.10`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The only foundation change is one bounded amendment authorized at Human Review: a private raw capture channel (see Changed). Projects must pin `gpos_version` `1.0.0-alpha.11`.

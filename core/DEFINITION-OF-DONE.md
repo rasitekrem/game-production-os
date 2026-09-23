@@ -1,6 +1,6 @@
 # Definition of Done
 
-Status: normative · GPOS `1.0.0-alpha.11`
+Status: normative · GPOS `1.0.0-alpha.12`
 
 "Done" is defined per scope. A scope is done only when every condition for its level holds. Nothing here can be satisfied by a status of `NOT_RUN`.
 

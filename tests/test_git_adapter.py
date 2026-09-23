@@ -166,8 +166,9 @@ class GitCase(unittest.TestCase):
 # ---------------------------------------------------------------- A  registration
 
 class A_Registration(GitCase):
-    def test_production_registry_is_exactly_git(self):
-        self.assertEqual(default_registry(FW).adapter_ids(), ["git"])
+    def test_production_registry_contains_git(self):
+        # Phase 2C-2 added the two media adapters beside Git; the media suite owns the exact list.
+        self.assertEqual(default_registry(FW).adapter_ids(), ["ffmpeg", "ffprobe", "git"])
 
     def test_synthetic_stays_out_of_production(self):
         registry = default_registry(FW)
@@ -881,7 +882,7 @@ class R_Cli(GitCase):
     def test_list(self):
         code, out = self.cli("list")
         self.assertEqual(code, 0)
-        self.assertIn("1 tool adapter", out)
+        self.assertIn("3 tool adapter", out)
         self.assertIn("git 1.0.0 · VERSION_CONTROL · 2 capabilities", out)
         self.assertNotIn("TEST_ONLY", out)
 

@@ -149,12 +149,16 @@ def _sanitized_probe(result):
 def register_production_adapters(registry):
     """Register every production tool adapter, in a fixed order. Explicit Python, no discovery.
 
-    Phase 2C-1 adds the first one: the local Git provenance adapter. TEST_ONLY adapters never appear
-    here; a caller that wants the synthetic reference adapter registers it separately, into a registry
-    constructed with `allow_test_only=True`.
+    Phase 2C-1 added the local Git provenance adapter; Phase 2C-2 adds the two local media adapters, one
+    per executable (ffprobe for inspection, FFmpeg for derived media), so that execution provenance names
+    exactly one tool. TEST_ONLY adapters never appear here; a caller that wants the synthetic reference
+    adapter registers it separately, into a registry constructed with `allow_test_only=True`.
     """
+    from .ffmpeg import FfmpegAdapter
+    from .ffprobe import FfprobeAdapter
     from .git import GitAdapter
-    registry.register(GitAdapter())
+    for adapter in (FfmpegAdapter(), FfprobeAdapter(), GitAdapter()):
+        registry.register(adapter)
     return registry
 
 

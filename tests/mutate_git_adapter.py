@@ -28,10 +28,10 @@ ADAPTER, STATUS, REGISTRY = "gpos/tools/git/adapter.py", "gpos/tools/git/status.
 
 MUTATIONS = [
     ("1 production registry forgets Git", [
-        (REGISTRY, "    registry.register(GitAdapter())\n    return registry", "    return registry")]),
+        (REGISTRY, "(FfmpegAdapter(), FfprobeAdapter(), GitAdapter())", "(FfmpegAdapter(), FfprobeAdapter())")]),
     ("2 TEST_ONLY synthetic enters the production registry", [
-        (REGISTRY, "    registry.register(GitAdapter())\n    return registry",
-         "    registry.register(GitAdapter())\n    registry.allow_test_only = True\n"
+        (REGISTRY, "        registry.register(adapter)\n    return registry",
+         "        registry.register(adapter)\n    registry.allow_test_only = True\n"
          "    from .synthetic import SyntheticAdapter\n    registry.register(SyntheticAdapter())\n    return registry")]),
     ("3 repository-root equality check removed", [
         (ADAPTER, "        if not same_directory(toplevel, context.project_root):", "        if False:")]),

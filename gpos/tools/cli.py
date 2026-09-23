@@ -29,6 +29,7 @@ from ..framework import load_framework
 from . import diagnostics as dg
 from .execution import ExecutionRequest, execute
 from .model import Actor, InputArtifact, Subject
+from .redaction import sanitize
 from .registry import ToolRegistry, register_production_adapters
 
 TOOL = "gpos-tools"
@@ -264,7 +265,10 @@ def _execute(args, registry, fmt, stdout):
         actor=actor, routing_ref=args.routing_ref)
     result = execute(registry, request)
     if fmt == "json":
-        print(_dump({"tool": TOOL, "version": __version__, "request": request.to_dict(),
+        # The request is echoed through the same redaction as the result: an input artifact's file name is
+        # caller-supplied text and may be credential-shaped.
+        echoed, _ = sanitize(request.to_dict())
+        print(_dump({"tool": TOOL, "version": __version__, "request": echoed,
                      "result": result.to_dict()}), file=stdout)
     else:
         print(_result_text(result), file=stdout)

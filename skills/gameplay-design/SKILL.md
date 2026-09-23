@@ -1,7 +1,7 @@
 ---
 name: gameplay-design
 maturity: DRAFT
-gpos_version: 1.0.0-alpha.11
+gpos_version: 1.0.0-alpha.12
 may_own_gates: [GAMEPLAY_DESIGN]
 ---
 

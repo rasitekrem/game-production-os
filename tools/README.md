@@ -19,6 +19,8 @@ python3 -m gpos.tools list|describe|capabilities|probe|execute
 
 The first production tool adapter is the **Git provenance adapter** (Phase 2C-1), built on that foundation without changing it: local, read-only repository inspection and exact-revision resolution, with no version-control mutation and no network. See [git-adapter.md](git-adapter.md).
 
+The **media evidence adapters** (Phase 2C-2) are two production adapters, one per executable: `ffprobe` summarizes a local media file, and `ffmpeg` derives a still frame, a bounded review clip or a bounded audio segment from one, offering visual, motion or audio evidence in the source's own capture context. Media processing never upgrades capture authority. Both are local-only (closed protocol and demuxer whitelists), use fixed command templates, and capture nothing. See [media-adapters.md](media-adapters.md).
+
 ## Planned concepts (not implemented)
 
 | Tool | Purpose | Constraints |

@@ -65,6 +65,30 @@ python3 tests/test_git_adapter.py
 
 Real integration tests for the Phase-2C-1 Git provenance adapter (`gpos/tools/git/`): every repository is created with the installed Git in a temporary directory and inspected through the audited process boundary. The suite fails if Git is absent; it never falls back to mocks. It covers registration and the real probe; missing or unusable tools; clean, dirty, conflicted, detached and unborn repositories; non-repository and nested projects; spaces, Unicode, newlines and renames in paths; truncated output and credential-shaped names parsed from the raw capture; submodules (dirty, hidden by `ignore = all`, untracked-only, moved HEAD, clean); fsmonitor hooks and the daemon proven not to start; the environment and real optional-lock behaviour; read-only behaviour checked by hashing every file under `.git`; resolve-provenance and the explicit `build_revision` handoff; the network and argument surface; the CLI; determinism; and linked worktrees. `mutate_git_adapter.py` is its bounded mutation harness.
 
+## Media adapter tests
+
+```bash
+python3 tests/test_media_adapters.py
+```
+
+Real integration tests for the Phase-2C-2 media adapters (`gpos/tools/ffprobe/`, `gpos/tools/ffmpeg/`). Fixture media (a test pattern and a sine tone with credential-shaped metadata) are generated with the installed FFmpeg, and the adapters drive the same ffprobe and FFmpeg through the audited process boundary. The suite fails with the marker FFMPEG_RUNTIME_UNAVAILABLE_FOR_PHASE2C2 if either executable is absent; it never falls back to mocks. Groups A–Z cover:
+
+- registration, real probes, and missing or unusable tools;
+- inspection and the strict raw-JSON parser;
+- non-media input;
+- a real network block: a local HTTP server receives zero requests, with a sensitivity control that proves the fixture would reach it;
+- frame, clip and audio extraction, checked with ffprobe from test code;
+- numeric validation;
+- missing, incompatible, inherited and DCC capture contexts;
+- mutation consent and dry run;
+- source immutability, output boundaries and no-overwrite;
+- partial output and timeout;
+- secrecy of credential-shaped names and metadata;
+- the explicit Git handoff and evidence materialization;
+- the exact command surface and the CLI.
+
+`mutate_media_adapters.py` is its bounded mutation harness.
+
 ## Fixtures
 
 **Schema fixtures** — `fixtures/valid/*.json` and `fixtures/invalid/*.json` are patches applied to a valid example:

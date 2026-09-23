@@ -1,6 +1,6 @@
 # Human Review Record
 
-> **GPOS template** · `1.0.0-alpha.11` · one record per review · stored where the project keeps review records (e.g. `.game/reviews/`) · see [core/HUMAN-AUTHORITY.md §4](../core/HUMAN-AUTHORITY.md#4-human-review-protocol)
+> **GPOS template** · `1.0.0-alpha.12` · one record per review · stored where the project keeps review records (e.g. `.game/reviews/`) · see [core/HUMAN-AUTHORITY.md §4](../core/HUMAN-AUTHORITY.md#4-human-review-protocol)
 >
 > Part A is prepared by agents. Part B is the human's verdict — agents may only transcribe it verbatim.
 

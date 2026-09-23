@@ -1366,10 +1366,16 @@ class E01_NoReferenceImport(unittest.TestCase):
     def test_boundary(self):
         self.assertEqual(vf.phase_boundary_problems(), [])
         # The validator names no agent or tool. (Phase 2B: the adapter layer in gpos/adapters/ legitimately names
-        # Claude Code and Codex; engine and tool integrations stay out of gpos/ entirely.)
+        # Claude Code and Codex. Phase 2C-2: the two production media tool adapters, their shared constants and
+        # the production registry that registers them legitimately name FFmpeg; nothing else in gpos/ does, and
+        # engine integrations stay out of gpos/ entirely.)
+        media = {"gpos/tools/media_common.py", "gpos/tools/registry.py"}
         for p in (ROOT / "gpos").rglob("*.py"):
             text = p.read_text().lower()
-            words = ("unity", "blender", "ffmpeg", "adb ", "github")
+            rel = p.relative_to(ROOT).as_posix()
+            words = ("unity", "blender", "adb ", "github")
+            if not (rel in media or rel.startswith(("gpos/tools/ffmpeg/", "gpos/tools/ffprobe/"))):
+                words += ("ffmpeg",)
             if "adapters" not in p.relative_to(ROOT).parts:
                 words += ("anthropic", "openai", "codex")
             for word in words:

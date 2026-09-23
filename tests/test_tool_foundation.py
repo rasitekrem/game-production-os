@@ -194,15 +194,15 @@ class TmpCase(unittest.TestCase):
 # ---------------------------------------------------------------- A  identity and registry
 
 class A01_Registry(TmpCase):
-    def test_production_registry_is_exactly_git_and_refuses_test_only(self):
-        """Phase 2C-1 boundary: the one production adapter is Git; TEST_ONLY never enters."""
+    def test_production_registry_is_exactly_the_production_adapters_and_refuses_test_only(self):
+        """Phase 2C-2 boundary: the production adapters are FFmpeg, ffprobe and Git; TEST_ONLY never enters."""
         r = default_registry(FW)
-        self.assertEqual(r.adapter_ids(), ["git"])
+        self.assertEqual(r.adapter_ids(), ["ffmpeg", "ffprobe", "git"])
         self.assertFalse(r.allow_test_only)
         with self.assertRaises(AdapterRegistrationError) as cm:
             r.register(SyntheticAdapter())
         self.assertIn("TEST_ONLY", str(cm.exception))
-        self.assertEqual(r.adapter_ids(), ["git"])
+        self.assertEqual(r.adapter_ids(), ["ffmpeg", "ffprobe", "git"])
 
     def test_register_valid_adapter(self):
         r = registry()
@@ -1291,16 +1291,19 @@ class K01_Determinism(TmpCase):
 # ---------------------------------------------------------------- L  regression and boundaries
 
 class L01_Boundaries(TmpCase):
-    def test_only_the_git_production_adapter_exists(self):
-        """Phase 2C-1 boundary: exactly one production adapter package, git/, beside the foundation."""
-        self.assertEqual(default_registry(FW).adapter_ids(), ["git"])
+    def test_only_the_declared_production_adapters_exist(self):
+        """Phase 2C-2 boundary: exactly three production adapter packages (ffmpeg/, ffprobe/, git/) and one
+        shared media-constants module beside the foundation."""
+        self.assertEqual(default_registry(FW).adapter_ids(), ["ffmpeg", "ffprobe", "git"])
         modules = sorted(p.relative_to(ROOT / "gpos" / "tools").as_posix()
                          for p in (ROOT / "gpos" / "tools").rglob("*.py"))
         self.assertEqual(modules, ["__init__.py", "__main__.py", "artifacts.py", "capabilities.py", "cli.py",
                                    "diagnostics.py", "errors.py", "evidence.py", "execution.py",
+                                   "ffmpeg/__init__.py", "ffmpeg/adapter.py",
+                                   "ffprobe/__init__.py", "ffprobe/adapter.py", "ffprobe/parser.py",
                                    "git/__init__.py", "git/adapter.py", "git/status.py", "leases.py",
-                                   "model.py", "paths.py", "process.py", "provenance.py", "redaction.py",
-                                   "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
+                                   "media_common.py", "model.py", "paths.py", "process.py", "provenance.py",
+                                   "redaction.py", "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
                                    "synthetic/helper.py", "validation.py"])
 
     def test_the_synthetic_adapter_is_test_only_and_git_is_not(self):
@@ -1310,13 +1313,14 @@ class L01_Boundaries(TmpCase):
         self.assertEqual(SyntheticAdapter().descriptor.tool_family, "TEST_ONLY")
         self.assertFalse(GitAdapter().descriptor.test_only)
 
-    def test_only_the_git_adapter_names_a_real_tool_executable(self):
-        """Every other real tool stays unnamed everywhere; `git` may be named only inside gpos/tools/git/."""
+    def test_only_each_production_adapter_names_its_own_tool_executable(self):
+        """Every other real tool stays unnamed everywhere; `git`, `ffmpeg` and `ffprobe` may each be named only
+        inside their own adapter package (gpos/tools/git/, gpos/tools/ffmpeg/, gpos/tools/ffprobe/)."""
         import ast
         forbidden = {"git", "ffmpeg", "ffprobe", "adb", "blender", "unity", "unityhub", "gh"}
-        git_package = ROOT / "gpos" / "tools" / "git"
+        packages = {name: ROOT / "gpos" / "tools" / name for name in ("git", "ffmpeg", "ffprobe")}
         for path in (ROOT / "gpos").rglob("*.py"):
-            allowed = {"git"} if git_package in path.parents else set()
+            allowed = {name for name, package in packages.items() if package in path.parents}
             for node in ast.walk(ast.parse(path.read_text())):
                 if isinstance(node, ast.Constant) and isinstance(node.value, str):
                     self.assertNotIn(node.value.strip().lower(), forbidden - allowed, f"{path}: {node.value!r}")
@@ -1388,8 +1392,9 @@ class M01_Cli(TmpCase):
     def test_list_shows_only_production_adapters_without_test_adapters(self):
         code, out = self.cli("list")
         self.assertEqual(code, 0)
-        self.assertIn("1 tool adapter", out)
-        self.assertIn("git ", out)
+        self.assertIn("3 tool adapter", out)
+        for name in ("ffmpeg ", "ffprobe ", "git "):
+            self.assertIn(name, out)
         self.assertNotIn("synthetic", out)
         self.assertNotIn("TEST_ONLY", out)
 
@@ -1979,12 +1984,13 @@ class N09_AcceptedArchitectureUnchanged(TmpCase):
         for path in (ROOT / "gpos").rglob("*.py"):
             self.assertNotIn("shell=True", path.read_text(), path)
 
-    def test_registries_stay_separate_and_production_is_exactly_git(self):
+    def test_registries_stay_separate_and_production_is_exactly_the_production_adapters(self):
         from gpos.adapters.backends import BACKENDS
         self.assertEqual(sorted(BACKENDS), ["claude-code", "codex"])
-        self.assertNotIn("git", BACKENDS)
-        self.assertNotIn("git", REG["adapter_ids"])
-        self.assertEqual(default_registry(FW).adapter_ids(), ["git"])
+        for name in ("ffmpeg", "ffprobe", "git"):
+            self.assertNotIn(name, BACKENDS)
+            self.assertNotIn(name, REG["adapter_ids"])
+        self.assertEqual(default_registry(FW).adapter_ids(), ["ffmpeg", "ffprobe", "git"])
 
     def test_the_frozen_prohibitions_hold(self):
         self.assertEqual(POLICY["forbidden_evidence_types"], ["HUMAN_EVIDENCE"])

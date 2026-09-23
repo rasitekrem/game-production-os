@@ -57,6 +57,14 @@ Tests for the Phase-2C-0 tool adapter foundation (`gpos/tools/`): adapter identi
 
 No real production tool is required or invoked: everything runs against the `TEST_ONLY` synthetic reference adapter.
 
+## Git adapter tests
+
+```bash
+python3 tests/test_git_adapter.py
+```
+
+Real integration tests for the Phase-2C-1 Git provenance adapter (`gpos/tools/git/`): every repository is created with the installed Git in a temporary directory and inspected through the audited process boundary. The suite fails if Git is absent; it never falls back to mocks. It covers registration and the real probe; missing or unusable tools; clean, dirty, conflicted, detached and unborn repositories; non-repository and nested projects; spaces, Unicode, newlines and renames in paths; truncated and redacted output; the environment and real optional-lock behaviour; read-only behaviour checked by hashing every file under `.git`; resolve-provenance and the explicit `build_revision` handoff; the network and argument surface; the CLI; determinism; and linked worktrees. `mutate_git_adapter.py` is its bounded mutation harness.
+
 ## Fixtures
 
 **Schema fixtures** — `fixtures/valid/*.json` and `fixtures/invalid/*.json` are patches applied to a valid example:

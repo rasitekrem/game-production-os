@@ -193,14 +193,15 @@ class TmpCase(unittest.TestCase):
 # ---------------------------------------------------------------- A  identity and registry
 
 class A01_Registry(TmpCase):
-    def test_production_registry_is_empty_and_refuses_test_only(self):
+    def test_production_registry_is_exactly_git_and_refuses_test_only(self):
+        """Phase 2C-1 boundary: the one production adapter is Git; TEST_ONLY never enters."""
         r = default_registry(FW)
-        self.assertEqual(r.adapter_ids(), [])
+        self.assertEqual(r.adapter_ids(), ["git"])
         self.assertFalse(r.allow_test_only)
         with self.assertRaises(AdapterRegistrationError) as cm:
             r.register(SyntheticAdapter())
         self.assertIn("TEST_ONLY", str(cm.exception))
-        self.assertEqual(r.adapter_ids(), [])
+        self.assertEqual(r.adapter_ids(), ["git"])
 
     def test_register_valid_adapter(self):
         r = registry()
@@ -1213,7 +1214,10 @@ class J01_ProjectPreconditions(TmpCase):
 # ---------------------------------------------------------------- K  determinism
 
 class K01_Determinism(TmpCase):
-    VOLATILE = {"started_at", "finished_at", "duration_seconds", "request_id"}
+    # Intentionally volatile execution timestamps. `generated_at` is one of them: since the Phase-2C-0
+    # hardening it is the foundation-observed finish time (pinned by N03), so two executions that straddle
+    # a wall-clock second legitimately differ in it. Leaving it out made this test fail intermittently.
+    VOLATILE = {"started_at", "finished_at", "duration_seconds", "request_id", "generated_at"}
 
     def stable(self, payload):
         if isinstance(payload, dict):
@@ -1286,28 +1290,35 @@ class K01_Determinism(TmpCase):
 # ---------------------------------------------------------------- L  regression and boundaries
 
 class L01_Boundaries(TmpCase):
-    def test_no_production_tool_adapter_exists(self):
-        self.assertEqual(default_registry(FW).adapter_ids(), [])
+    def test_only_the_git_production_adapter_exists(self):
+        """Phase 2C-1 boundary: exactly one production adapter package, git/, beside the foundation."""
+        self.assertEqual(default_registry(FW).adapter_ids(), ["git"])
         modules = sorted(p.relative_to(ROOT / "gpos" / "tools").as_posix()
                          for p in (ROOT / "gpos" / "tools").rglob("*.py"))
         self.assertEqual(modules, ["__init__.py", "__main__.py", "artifacts.py", "capabilities.py", "cli.py",
-                                   "diagnostics.py", "errors.py", "evidence.py", "execution.py", "leases.py",
+                                   "diagnostics.py", "errors.py", "evidence.py", "execution.py",
+                                   "git/__init__.py", "git/adapter.py", "git/status.py", "leases.py",
                                    "model.py", "paths.py", "process.py", "provenance.py", "redaction.py",
                                    "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
                                    "synthetic/helper.py", "validation.py"])
 
-    def test_the_only_adapter_in_the_tree_is_test_only(self):
+    def test_the_synthetic_adapter_is_test_only_and_git_is_not(self):
+        from gpos.tools.git import GitAdapter
         self.assertTrue(SyntheticAdapter().descriptor.test_only)
         self.assertEqual(SyntheticAdapter().descriptor.adapter_kind, POLICY["test_only_adapter_kind"])
         self.assertEqual(SyntheticAdapter().descriptor.tool_family, "TEST_ONLY")
+        self.assertFalse(GitAdapter().descriptor.test_only)
 
-    def test_no_real_tool_executable_is_named(self):
+    def test_only_the_git_adapter_names_a_real_tool_executable(self):
+        """Every other real tool stays unnamed everywhere; `git` may be named only inside gpos/tools/git/."""
         import ast
         forbidden = {"git", "ffmpeg", "ffprobe", "adb", "blender", "unity", "unityhub", "gh"}
+        git_package = ROOT / "gpos" / "tools" / "git"
         for path in (ROOT / "gpos").rglob("*.py"):
+            allowed = {"git"} if git_package in path.parents else set()
             for node in ast.walk(ast.parse(path.read_text())):
                 if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                    self.assertNotIn(node.value.strip().lower(), forbidden, f"{path}: {node.value!r}")
+                    self.assertNotIn(node.value.strip().lower(), forbidden - allowed, f"{path}: {node.value!r}")
 
     def test_no_network_at_runtime(self):
         banned = {"socket", "ssl", "http", "urllib", "urllib3", "requests", "ftplib", "smtplib", "asyncio"}
@@ -1373,11 +1384,13 @@ class M01_Cli(TmpCase):
         code = tool_cli.main(list(argv), stdout=buffer)
         return code, buffer.getvalue()
 
-    def test_list_is_empty_without_test_adapters(self):
+    def test_list_shows_only_production_adapters_without_test_adapters(self):
         code, out = self.cli("list")
         self.assertEqual(code, 0)
-        self.assertIn("0 tool adapter", out)
-        self.assertIn("none registered", out)
+        self.assertIn("1 tool adapter", out)
+        self.assertIn("git ", out)
+        self.assertNotIn("synthetic", out)
+        self.assertNotIn("TEST_ONLY", out)
 
     def test_list_describe_capabilities_probe(self):
         code, out = self.cli("--include-test-adapters", "list")
@@ -1965,10 +1978,12 @@ class N09_AcceptedArchitectureUnchanged(TmpCase):
         for path in (ROOT / "gpos").rglob("*.py"):
             self.assertNotIn("shell=True", path.read_text(), path)
 
-    def test_registries_stay_separate_and_empty(self):
+    def test_registries_stay_separate_and_production_is_exactly_git(self):
         from gpos.adapters.backends import BACKENDS
         self.assertEqual(sorted(BACKENDS), ["claude-code", "codex"])
-        self.assertEqual(default_registry(FW).adapter_ids(), [])
+        self.assertNotIn("git", BACKENDS)
+        self.assertNotIn("git", REG["adapter_ids"])
+        self.assertEqual(default_registry(FW).adapter_ids(), ["git"])
 
     def test_the_frozen_prohibitions_hold(self):
         self.assertEqual(POLICY["forbidden_evidence_types"], ["HUMAN_EVIDENCE"])

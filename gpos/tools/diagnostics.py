@@ -62,6 +62,9 @@ CODES = {
     "PROJECT_LAYOUT": (INVALID_REQUEST, "the path is not a GPOS project root"),
     "PROJECT_INVALID": (INVALID_REQUEST, "the Phase-2A validator reports the project INVALID"),
     "ROUTING_NOT_READY": (INVALID_REQUEST, "the capability requires a READY routing and this routing is not ready"),
+    # version control (Phase 2C-1): generic to any repository adapter, not specific to one tool
+    "REPOSITORY_NOT_FOUND": (INVALID_REQUEST, "the version-control tool found no work tree at the project root"),
+    "REPOSITORY_ROOT_MISMATCH": (INVALID_REQUEST, "the repository top level is not the GPOS project root"),
     # tool availability (UNAVAILABLE)
     "TOOL_NOT_FOUND": (UNAVAILABLE, "the tool this adapter drives is not available"),
     "ADAPTER_NOT_READY": (UNAVAILABLE, "the adapter has not established that its tool is available and compatible"),
@@ -74,6 +77,7 @@ CODES = {
     "LEASE_INVALID": (CONFLICT, "the lease file is unreadable, malformed or owned by an unknown owner"),
     "LEASE_NOT_HELD": (CONFLICT, "the lease required for this operation is not held"),
     "LEASE_RELEASE_FAILED": (CONFLICT, "the single-writer lease this execution held could not be released"),
+    "REPOSITORY_STATE_CONFLICT": (CONFLICT, "the repository has no exact committed revision (uncommitted work or no commit yet)"),
     # execution (FAILED / TIMED_OUT / CANCELLED)
     "EXECUTION_FAILED": (FAILED, "the tool executed and reported failure"),
     "ARTIFACT_MISSING": (FAILED, "a declared artifact does not exist on disk"),

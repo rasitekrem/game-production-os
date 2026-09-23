@@ -1,6 +1,6 @@
 # Game Production OS
 
-Version `1.0.0-alpha.10` · Phase 2C-0 (tool adapter foundation) on the frozen Phase-1 core, Phase-2A validator and Phase-2B agent adapter layer · all skills `DRAFT`
+Version `1.0.0-alpha.11` · Phase 2C-1 (Git provenance adapter, the first production tool adapter) on the frozen Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer and Phase-2C-0 tool adapter foundation · all skills `DRAFT`
 
 A model-independent production framework for AI-assisted professional game development. It makes AI agents work like a disciplined, multidisciplinary game studio — with clear creative authority, specialist ownership, independent quality gates and typed evidence — instead of like a generic software agent that calls a feature done once the tests pass.
 
@@ -38,8 +38,8 @@ templates/     Authority skeletons for a project's .game/ directory
 schemas/       JSON Schemas for project config, task routing, gate, evidence and Human Decision records
 examples/      One minimal valid instance per schema (generic)
 adapters/      Agent adapter documentation (Claude Code, Codex) and later-phase boundaries
-tools/         Tool documentation (production validator, tool adapter foundation)
-gpos/          Production validator (2A), agent adapter layer (2B) and tool adapter foundation (2C-0)
+tools/         Tool documentation (production validator, tool adapter foundation, Git adapter)
+gpos/          Validator (2A), agent adapters (2B), tool adapter foundation (2C-0), Git adapter (2C-1)
 tests/         Framework validation, production-validator tests, fixtures and synthetic bundles
 ```
 
@@ -150,7 +150,7 @@ Adapter and tool boundaries: [adapters/README.md](adapters/README.md), [tools/RE
 
 ## Versioning
 
-Semantic Versioning, currently `1.0.0-alpha.10` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
+Semantic Versioning, currently `1.0.0-alpha.11` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
 
 | Bump | When |
 |---|---|

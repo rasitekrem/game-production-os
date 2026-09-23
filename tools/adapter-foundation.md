@@ -1,6 +1,6 @@
 # Tool adapter foundation (Phase 2C-0)
 
-Code: [`gpos/tools/`](../gpos/tools/__init__.py) · CLI: `python3 -m gpos.tools` · status: foundation only, **no production tool adapter exists yet**.
+Code: [`gpos/tools/`](../gpos/tools/__init__.py) · CLI: `python3 -m gpos.tools` · status: frozen at `v1.0.0-alpha.10`. This document describes the foundation as it was frozen. Phase 2C-1 added the first production adapter on top of it, unchanged: see [git-adapter.md](git-adapter.md).
 
 This is the shared execution, capability, provenance, safety and evidence layer that every future GPOS tool adapter must use. It integrates no real tool. It exists so that the Git, FFmpeg, target-device, Blender and Unity adapters that come later cannot each invent their own command execution model, capability vocabulary, result structure, provenance model, mutation semantics, single-writer behaviour, timeout behaviour, evidence semantics or failure model. Phase 2C-0 is what prevents tool-layer semantic drift.
 
@@ -279,7 +279,7 @@ An input artifact is given as `--input-artifact ID=PATH`, and its capture contex
 
 | Phase | Adapter | Notes |
 |---|---|---|
-| 2C-1 | version control / provenance | supplies repository revisions the foundation deliberately does not infer |
+| 2C-1 | version control / provenance | supplies repository revisions the foundation deliberately does not infer — implemented, see [git-adapter.md](git-adapter.md) |
 | 2C-2 | FFmpeg / media evidence | derived visual evidence from motion captures |
 | 2C-3 | Target device / Android ADB | device and performance evidence from real hardware |
 | 2C-4 | Blender | DCC render evidence |

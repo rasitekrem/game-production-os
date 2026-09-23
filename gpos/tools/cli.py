@@ -12,8 +12,8 @@ accepts one: this CLI cannot run anything the adapter has not declared. Inputs a
 name=value` pairs restricted to the names the capability declares.
 
 `list`, `describe`, `capabilities` and `probe` need no project and are never blocked on task
-readiness. Phase 2C-0 registers no production adapter, so the listing is empty unless
-`--include-test-adapters` adds the TEST_ONLY synthetic reference adapter.
+readiness. The listing shows the production adapters; `--include-test-adapters` adds the TEST_ONLY
+synthetic reference adapter.
 
 Exit codes follow the library status exactly (gpos.tools.diagnostics.EXIT_FOR): 0 SUCCESS,
 1 INVALID_REQUEST, 2 FAILED, 3 TIMED_OUT, 4 UNAVAILABLE, 5 CONFLICT, 6 INCOMPATIBLE, 7 CANCELLED,
@@ -29,7 +29,7 @@ from ..framework import load_framework
 from . import diagnostics as dg
 from .execution import ExecutionRequest, execute
 from .model import Actor, InputArtifact, Subject
-from .registry import ToolRegistry
+from .registry import ToolRegistry, register_production_adapters
 
 TOOL = "gpos-tools"
 USAGE_EXIT = dg.EXIT_FOR[dg.INVALID_REQUEST]
@@ -85,7 +85,7 @@ def build_parser():
 
 
 def _registry(include_test_adapters):
-    registry = ToolRegistry(load_framework(), allow_test_only=include_test_adapters)
+    registry = register_production_adapters(ToolRegistry(load_framework(), allow_test_only=include_test_adapters))
     if include_test_adapters:
         from .synthetic import SyntheticAdapter
         registry.register(SyntheticAdapter())
@@ -219,8 +219,7 @@ def _read_only(args, registry, fmt, stdout):
                 print(f"  {d.adapter_id} {d.adapter_version} · {d.tool_family} · {len(d.capabilities)} capabilities"
                       + ("  · TEST_ONLY" if d.test_only else ""), file=stdout)
             if not descriptors:
-                print("  none registered (Phase 2C-0 ships the foundation, not production tool adapters; "
-                      "--include-test-adapters adds the TEST_ONLY reference adapter)", file=stdout)
+                print("  none registered", file=stdout)
         return 0
     adapter = registry.get(args.adapter)
     if adapter is None:

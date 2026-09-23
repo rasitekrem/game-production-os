@@ -4,6 +4,34 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.11] — Phase 2C-1: Git provenance adapter
+
+Builds on the frozen Phase-2C-0 tool adapter foundation (`v1.0.0-alpha.10`) and uses it without changing its contract. No change to gate, evidence, authority, routing, lifecycle, validator, agent-adapter or foundation semantics. Projects must pin `gpos_version` `1.0.0-alpha.11`.
+
+This is the first production tool adapter. It is local and read-only: it inspects a Git repository and reports an exact revision, and it can neither change a repository nor reach a network.
+
+### Added
+
+- `gpos/tools/git/`: the production Git adapter (`git`, `VERSION_CONTROL`, `CLI`, `STATELESS`, network `FORBIDDEN`), registered by `default_registry()`, which now contains exactly `git`. The TEST_ONLY synthetic adapter still never enters the production registry, and the tool and agent adapter registries stay separate.
+- `git.inspect`: the repository state — HEAD, branch or detached HEAD, unborn branch, staged, unstaged, untracked and conflicted counts, and `exact_revision`, which is HEAD only when the tree is clean. A dirty tree is never represented as its HEAD commit.
+- `git.resolve-provenance`: the exact commit a caller may hand to later requests as `build_revision`; refused with `REPOSITORY_STATE_CONFLICT` when the tree is dirty or the branch has no commit. The foundation still never infers a revision: the handoff is explicit, and a request that does not pass it records the revision as unknown.
+- A real probe through the audited process boundary: Git found on an absolute PATH entry, its version parsed conservatively, 2.18.0 required because that is the oldest documentation that describes every option used.
+- A fixed Git surface of three argument vectors, with no caller-supplied argument, no configuration override, no mutation and no network command. Git runs with no terminal prompt, no optional locks (so `status` cannot rewrite the index), no pager and a deterministic message locale.
+- Repository-root rule: the GPOS project root must be Git's work-tree top level. A nested project fails closed with `REPOSITORY_ROOT_MISMATCH` (`MONOREPO_NESTED_PROJECT_NOT_YET_SUPPORTED`) without inspecting the enclosing repository; a project outside any repository is `REPOSITORY_NOT_FOUND`. Linked worktrees are supported because Git itself reports their top level.
+- State is reported only from complete, unaltered machine output: truncated output, output altered by the process boundary's redaction, and anything the porcelain v2 parser does not fully understand are refused.
+- `REPOSITORY_NOT_FOUND`, `REPOSITORY_ROOT_MISMATCH` and `REPOSITORY_STATE_CONFLICT`, generic to version control.
+- [tools/git-adapter.md](tools/git-adapter.md), with the first-party Git documentation consulted; real-Git integration tests (`tests/test_git_adapter.py`) and a bounded mutation harness (`tests/mutate_git_adapter.py`).
+
+### Changed
+
+- The Phase-2C-0 tests that asserted "no production tool adapter exists" now assert the Phase-2C-1 boundary exactly: the production registry is `git` and nothing else, `gpos/tools/` holds exactly one production adapter package, and no other real tool executable is named anywhere in `gpos/`.
+- `python3 -m gpos.tools` lists the production adapters by default.
+
+### Notes
+
+- No version-control mutation capability exists; any mutation needs a separate Human Review. No hosting-service, media, device, DCC, engine or MCP adapter exists.
+- The frozen process boundary redacts credential-shaped text in captured output, which can merge NUL-separated machine records. The adapter refuses such output rather than parse it, so a repository with a credential-shaped path or branch name cannot be inspected until the foundation offers adapters an unredacted parsing channel.
+
 ## [1.0.0-alpha.10] — Phase 2C-0: tool adapter foundation
 
 Builds on the frozen Phase-1 core (`v1.0.0-alpha.7`), the frozen Phase-2A validator (`v1.0.0-alpha.8`) and the frozen Phase-2B agent adapter layer (`v1.0.0-alpha.9`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. Projects must pin `gpos_version` `1.0.0-alpha.10`.

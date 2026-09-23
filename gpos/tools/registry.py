@@ -8,9 +8,10 @@ Registration is explicit Python — there is no plugin discovery, no entry-point
 download and no network. Everything is validated against the frozen GPOS registry before it is
 accepted, and listings are deterministic (sorted by id), so two runs produce the same view.
 
-Phase 2C-0 ships **no** production tool adapter. `default_registry()` is empty by design: the only
-executable adapter in the tree is the TEST_ONLY synthetic reference adapter, and it must be
-registered deliberately, into a registry that was explicitly told to allow test-only adapters.
+Production adapters are registered by `register_production_adapters()`; Phase 2C-1 adds the first,
+the local version-control provenance adapter. The TEST_ONLY synthetic reference adapter is never a
+production adapter: it must be registered deliberately, into a registry that was explicitly told to
+allow test-only adapters.
 """
 
 from . import diagnostics as dg
@@ -145,11 +146,19 @@ def _sanitized_probe(result):
                                capability_availability=availability, diagnostics=tuple(diagnostics))
 
 
-def default_registry(framework=None):
-    """The production tool adapter registry.
+def register_production_adapters(registry):
+    """Register every production tool adapter, in a fixed order. Explicit Python, no discovery.
 
-    Phase 2C-0 registers nothing: no adapter for any real production tool exists yet (see
-    tools/adapter-foundation.md). The registry is where they arrive in later phases, one at a time.
+    Phase 2C-1 adds the first one: the local Git provenance adapter. TEST_ONLY adapters never appear
+    here; a caller that wants the synthetic reference adapter registers it separately, into a registry
+    constructed with `allow_test_only=True`.
     """
+    from .git import GitAdapter
+    registry.register(GitAdapter())
+    return registry
+
+
+def default_registry(framework=None):
+    """The production tool adapter registry: exactly the production adapters, nothing TEST_ONLY."""
     from ..framework import load_framework
-    return ToolRegistry(framework or load_framework(), allow_test_only=False)
+    return register_production_adapters(ToolRegistry(framework or load_framework(), allow_test_only=False))

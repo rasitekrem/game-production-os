@@ -17,6 +17,8 @@ The **tool adapter foundation** is implemented in Phase 2C-0 as `python3 -m gpos
 python3 -m gpos.tools list|describe|capabilities|probe|execute
 ```
 
+The first production tool adapter is the **Git provenance adapter** (Phase 2C-1), built on that foundation without changing it: local, read-only repository inspection and exact-revision resolution, with no version-control mutation and no network. See [git-adapter.md](git-adapter.md).
+
 ## Planned concepts (not implemented)
 
 | Tool | Purpose | Constraints |

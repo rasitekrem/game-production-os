@@ -1,6 +1,6 @@
 # Evidence Rules
 
-Status: normative · GPOS `1.0.0-alpha.12` · Elaborates [P4](PRINCIPLES.md#p4--evidence-typed), [P8](PRINCIPLES.md#p8--visual-feedback-loop), [P9](PRINCIPLES.md#p9--motion-requires-motion-evidence)
+Status: normative · GPOS `1.0.0-alpha.13` · Elaborates [P4](PRINCIPLES.md#p4--evidence-typed), [P8](PRINCIPLES.md#p8--visual-feedback-loop), [P9](PRINCIPLES.md#p9--motion-requires-motion-evidence)
 
 Machine-readable source: [`registry.json`](registry.json) → `evidence_types`, `capture_contexts`, `instrumentation_timing_impacts`. Record format: [`schemas/evidence.schema.json`](../schemas/evidence.schema.json). Which gate accepts which type: [QUALITY-GATES.md §5](QUALITY-GATES.md#5-evidence-per-gate).
 

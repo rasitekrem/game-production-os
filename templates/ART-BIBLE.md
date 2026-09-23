@@ -1,6 +1,6 @@
 # Art Bible
 
-> **GPOS template** · `1.0.0-alpha.12` · copy to `.game/ART-BIBLE.md` · see [templates/README.md](README.md)
+> **GPOS template** · `1.0.0-alpha.13` · copy to `.game/ART-BIBLE.md` · see [templates/README.md](README.md)
 >
 > Document authority status: `PROPOSED` <!-- becomes LOCKED only by Human Decision; cite the DECISIONS.md entry -->
 > Locked by decision: `UNDECIDED`

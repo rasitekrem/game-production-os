@@ -15,7 +15,7 @@
   "golden_gameplay_cell": {
     "required": true
   },
-  "gpos_version": "1.0.0-alpha.12",
+  "gpos_version": "1.0.0-alpha.13",
   "human_review": {
     "reviewers": [
       {

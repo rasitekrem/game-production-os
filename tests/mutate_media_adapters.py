@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FFMPEG, FFPROBE, PARSER = "gpos/tools/ffmpeg/adapter.py", "gpos/tools/ffprobe/adapter.py", "gpos/tools/ffprobe/parser.py"
 COMMON, REGISTRY, CLI = "gpos/tools/media_common.py", "gpos/tools/registry.py", "gpos/tools/cli.py"
 
-PRODUCTION = "(FfmpegAdapter(), FfprobeAdapter(), GitAdapter())"
+PRODUCTION = "(AdbAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter())"
 RESTRICTIONS = 'INPUT_RESTRICTIONS = ("-protocol_whitelist", ALLOWED_PROTOCOLS, "-format_whitelist", ",".join(SAFE_DEMUXERS))'
 CANDIDATE_CONTEXT = "            evidence_type=evidence_type, capture_context=source.origin_capture_context,"
 FRAME_KINDS = '               ("timestamp_seconds",), "IMAGE", "VISUAL_EVIDENCE", VISUAL_CONTEXTS,'
@@ -45,9 +45,9 @@ def offline_for(kind):
 
 MUTATIONS = [
     ("1 production registry forgets ffprobe", [
-        (REGISTRY, PRODUCTION, "(FfmpegAdapter(), GitAdapter())")]),
+        (REGISTRY, PRODUCTION, "(AdbAdapter(), FfmpegAdapter(), GitAdapter())")]),
     ("2 production registry forgets ffmpeg", [
-        (REGISTRY, PRODUCTION, "(FfprobeAdapter(), GitAdapter())")]),
+        (REGISTRY, PRODUCTION, "(AdbAdapter(), FfprobeAdapter(), GitAdapter())")]),
     ("3 TEST_ONLY synthetic enters the production registry", [
         (REGISTRY, "        registry.register(adapter)\n    return registry",
          "        registry.register(adapter)\n    registry.allow_test_only = True\n"

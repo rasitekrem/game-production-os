@@ -195,14 +195,14 @@ class TmpCase(unittest.TestCase):
 
 class A01_Registry(TmpCase):
     def test_production_registry_is_exactly_the_production_adapters_and_refuses_test_only(self):
-        """Phase 2C-2 boundary: the production adapters are FFmpeg, ffprobe and Git; TEST_ONLY never enters."""
+        """Phase 2C-3 boundary: the production adapters are ADB, FFmpeg, ffprobe and Git; TEST_ONLY never enters."""
         r = default_registry(FW)
-        self.assertEqual(r.adapter_ids(), ["ffmpeg", "ffprobe", "git"])
+        self.assertEqual(r.adapter_ids(), ["adb", "ffmpeg", "ffprobe", "git"])
         self.assertFalse(r.allow_test_only)
         with self.assertRaises(AdapterRegistrationError) as cm:
             r.register(SyntheticAdapter())
         self.assertIn("TEST_ONLY", str(cm.exception))
-        self.assertEqual(r.adapter_ids(), ["ffmpeg", "ffprobe", "git"])
+        self.assertEqual(r.adapter_ids(), ["adb", "ffmpeg", "ffprobe", "git"])
 
     def test_register_valid_adapter(self):
         r = registry()
@@ -1292,12 +1292,13 @@ class K01_Determinism(TmpCase):
 
 class L01_Boundaries(TmpCase):
     def test_only_the_declared_production_adapters_exist(self):
-        """Phase 2C-2 boundary: exactly three production adapter packages (ffmpeg/, ffprobe/, git/) and one
+        """Phase 2C-3 boundary: exactly four production adapter packages (adb/, ffmpeg/, ffprobe/, git/) and one
         shared media-constants module beside the foundation."""
-        self.assertEqual(default_registry(FW).adapter_ids(), ["ffmpeg", "ffprobe", "git"])
+        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "ffmpeg", "ffprobe", "git"])
         modules = sorted(p.relative_to(ROOT / "gpos" / "tools").as_posix()
                          for p in (ROOT / "gpos" / "tools").rglob("*.py"))
-        self.assertEqual(modules, ["__init__.py", "__main__.py", "artifacts.py", "capabilities.py", "cli.py",
+        self.assertEqual(modules, ["__init__.py", "__main__.py", "adb/__init__.py", "adb/adapter.py", "adb/parsers.py",
+                                   "artifacts.py", "capabilities.py", "cli.py",
                                    "diagnostics.py", "errors.py", "evidence.py", "execution.py",
                                    "ffmpeg/__init__.py", "ffmpeg/adapter.py",
                                    "ffprobe/__init__.py", "ffprobe/adapter.py", "ffprobe/parser.py",
@@ -1314,11 +1315,11 @@ class L01_Boundaries(TmpCase):
         self.assertFalse(GitAdapter().descriptor.test_only)
 
     def test_only_each_production_adapter_names_its_own_tool_executable(self):
-        """Every other real tool stays unnamed everywhere; `git`, `ffmpeg` and `ffprobe` may each be named only
-        inside their own adapter package (gpos/tools/git/, gpos/tools/ffmpeg/, gpos/tools/ffprobe/)."""
+        """Every other real tool stays unnamed everywhere; `git`, `ffmpeg`, `ffprobe` and `adb` may each be named
+        only inside their own adapter package (gpos/tools/git/, ffmpeg/, ffprobe/, adb/)."""
         import ast
         forbidden = {"git", "ffmpeg", "ffprobe", "adb", "blender", "unity", "unityhub", "gh"}
-        packages = {name: ROOT / "gpos" / "tools" / name for name in ("git", "ffmpeg", "ffprobe")}
+        packages = {name: ROOT / "gpos" / "tools" / name for name in ("git", "ffmpeg", "ffprobe", "adb")}
         for path in (ROOT / "gpos").rglob("*.py"):
             allowed = {name for name, package in packages.items() if package in path.parents}
             for node in ast.walk(ast.parse(path.read_text())):
@@ -1392,8 +1393,8 @@ class M01_Cli(TmpCase):
     def test_list_shows_only_production_adapters_without_test_adapters(self):
         code, out = self.cli("list")
         self.assertEqual(code, 0)
-        self.assertIn("3 tool adapter", out)
-        for name in ("ffmpeg ", "ffprobe ", "git "):
+        self.assertIn("4 tool adapter", out)
+        for name in ("adb ", "ffmpeg ", "ffprobe ", "git "):
             self.assertIn(name, out)
         self.assertNotIn("synthetic", out)
         self.assertNotIn("TEST_ONLY", out)
@@ -2049,10 +2050,10 @@ class N09_AcceptedArchitectureUnchanged(TmpCase):
     def test_registries_stay_separate_and_production_is_exactly_the_production_adapters(self):
         from gpos.adapters.backends import BACKENDS
         self.assertEqual(sorted(BACKENDS), ["claude-code", "codex"])
-        for name in ("ffmpeg", "ffprobe", "git"):
+        for name in ("adb", "ffmpeg", "ffprobe", "git"):
             self.assertNotIn(name, BACKENDS)
             self.assertNotIn(name, REG["adapter_ids"])
-        self.assertEqual(default_registry(FW).adapter_ids(), ["ffmpeg", "ffprobe", "git"])
+        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "ffmpeg", "ffprobe", "git"])
 
     def test_the_frozen_prohibitions_hold(self):
         self.assertEqual(POLICY["forbidden_evidence_types"], ["HUMAN_EVIDENCE"])

@@ -67,6 +67,8 @@ CODES = {
     "REPOSITORY_ROOT_MISMATCH": (INVALID_REQUEST, "the repository top level is not the GPOS project root"),
     # tool availability (UNAVAILABLE)
     "TOOL_NOT_FOUND": (UNAVAILABLE, "the tool this adapter drives is not available"),
+    # target device (Phase 2C-3): generic to any device adapter, not specific to one tool
+    "TARGET_DEVICE_UNAVAILABLE": (UNAVAILABLE, "the named target device is not connected to the device tool"),
     "ADAPTER_NOT_READY": (UNAVAILABLE, "the adapter has not established that its tool is available and compatible"),
     # compatibility (INCOMPATIBLE)
     "TOOL_VERSION_UNSUPPORTED": (INCOMPATIBLE, "the installed tool version is outside the adapter's supported range"),
@@ -78,6 +80,8 @@ CODES = {
     "LEASE_NOT_HELD": (CONFLICT, "the lease required for this operation is not held"),
     "LEASE_RELEASE_FAILED": (CONFLICT, "the single-writer lease this execution held could not be released"),
     "REPOSITORY_STATE_CONFLICT": (CONFLICT, "the repository has no exact committed revision (uncommitted work or no commit yet)"),
+    "TARGET_DEVICE_NOT_READY": (CONFLICT, "the named target device is connected but not ready (offline, unauthorized or still booting)"),
+    "TARGET_PROCESS_NOT_RUNNING": (CONFLICT, "the named application process is not running on the target device"),
     # execution (FAILED / TIMED_OUT / CANCELLED)
     "EXECUTION_FAILED": (FAILED, "the tool executed and reported failure"),
     "ARTIFACT_MISSING": (FAILED, "a declared artifact does not exist on disk"),

@@ -6,7 +6,7 @@
     "/kind": "GPOS_UPGRADE",
     "/upgrade": {
       "from_version": "1.0.0-alpha.3",
-      "to_version": "1.0.0-alpha.12"
+      "to_version": "1.0.0-alpha.13"
     }
   },
   "remove": [

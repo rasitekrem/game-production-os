@@ -4,6 +4,45 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.13] — Phase 2C-3: Android ADB target-device evidence adapter
+
+Builds on the frozen Phase-2C-2 tree (`v1.0.0-alpha.12`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, to the registry, or to any frozen foundation module. Projects must pin `gpos_version` `1.0.0-alpha.13`.
+
+The first production target-device adapter. It reads evidence from one explicitly named Android target through ADB, and **no production capability changes Android target state**.
+
+### Added
+
+- `gpos/tools/adb/`: the `adb` adapter (`DEVICE`, `CLI`, `STATELESS`, network `FORBIDDEN`) with three `MUTATING` capabilities that support dry run. They are mutating only because each writes one evidence file into the host workspace:
+  - `adb.capture-device-report` (`CAPTURE`): nine allowlisted system properties as canonical `device.json` → `DEVICE_EVIDENCE` / `TARGET_RUNTIME`;
+  - `adb.capture-screenshot` (`CAPTURE`): a PNG streamed with `exec-out screencap -p`, with no file on the device → `VISUAL_EVIDENCE` / `TARGET_RUNTIME`;
+  - `adb.capture-meminfo` (`PROFILE`): `dumpsys meminfo -s <package>` for one named, running package → `PERFORMANCE_EVIDENCE` / `PERFORMANCE_RUNTIME`.
+- Explicit targets only: `target_platform` must be `ANDROID`, and `device` must be the exact local ADB serial, bound with `-s` on every target command. Nothing is inferred: no `-d` or `-e`, ANDROID_SERIAL is never inherited, and there is no first-device fallback. Network serials (`host:port`, mDNS names) are refused, and wireless auto-connect is disabled for any server the adapter's client starts.
+- A closed, read-only command surface: `version`, `get-state`, `getprop sys.boot_completed`, `getprop`, `exec-out screencap -p`, `dumpsys meminfo -s <package>`. The only variable slots are the validated serial and application id.
+- Readiness before every capture: `get-state` must be `device`, and `sys.boot_completed` must be `1`. A dry run contacts no target.
+- Strict parsers (`gpos/tools/adb/parsers.py`) over the private raw capture:
+  - multi-line `getprop` values;
+  - a complete-PNG structure check (the image is never decoded);
+  - a meminfo check that the output describes exactly the requested process, with totals.
+  - A package with no running process is a conflict; zeros are never invented.
+- `TARGET_DEVICE_UNAVAILABLE`, `TARGET_DEVICE_NOT_READY` and `TARGET_PROCESS_NOT_RUNNING`, generic to device adapters.
+- [tools/adb-adapter.md](tools/adb-adapter.md), with the first-party Android documentation consulted.
+- A real-target integration suite (`tests/test_adb_adapter.py`, groups A–Z, run on 2 physical devices plus 2 emulators across API 31 and 35) and a bounded mutation harness (`tests/mutate_adb_adapter.py`).
+
+### Changed
+
+- `default_registry()` now contains exactly `adb`, `ffmpeg`, `ffprobe` and `git`.
+- Phase-boundary tests evolved to the Phase-2C-3 boundary, without weakening any other assertion:
+  - the word "adb" is allowed only in the ADB package and the registry;
+  - the exact module list and the four-adapter registry;
+  - each tool is named only in its own package;
+  - the Git, media and foundation suites' registry and CLI-list counts;
+  - the registry anchors in the Git and media mutation harnesses.
+
+### Notes
+
+- Materializing a meminfo record requires the caller to declare `instrumentation`, a supplemental field the frozen foundation leaves to the caller. The result offers a suggested declaration with timing impact `UNKNOWN`.
+- ADB is client/server software: an adb client command may start the host ADB server. The adapter never starts, stops or configures it explicitly, and claims no sandboxing.
+
 ## [1.0.0-alpha.12] — Phase 2C-2: media evidence adapters (ffprobe, FFmpeg)
 
 Builds on the frozen Phase-2C-1 tree (`v1.0.0-alpha.11`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, and no change to any frozen foundation module. Projects must pin `gpos_version` `1.0.0-alpha.12`.

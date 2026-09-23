@@ -294,8 +294,9 @@ class MediaCase(unittest.TestCase):
 # ---------------------------------------------------------------- A  registration
 
 class A_Registration(MediaCase):
-    def test_production_registry_is_exactly_ffmpeg_ffprobe_git(self):
-        self.assertEqual(default_registry(FW).adapter_ids(), ["ffmpeg", "ffprobe", "git"])
+    def test_production_registry_contains_both_media_adapters(self):
+        # Phase 2C-3 added the ADB adapter; the newest suite owns the exact list.
+        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "ffmpeg", "ffprobe", "git"])
 
     def test_synthetic_stays_out_of_production(self):
         registry = default_registry(FW)
@@ -303,7 +304,7 @@ class A_Registration(MediaCase):
         self.assertFalse(registry.allow_test_only)
         with self.assertRaises(Exception):
             registry.register(SyntheticAdapter())
-        self.assertEqual(registry.adapter_ids(), ["ffmpeg", "ffprobe", "git"])
+        self.assertEqual(registry.adapter_ids(), ["adb", "ffmpeg", "ffprobe", "git"])
 
     def test_both_descriptors_pass_production_registration_validation(self):
         for descriptor in (fa.DESCRIPTOR, pa.DESCRIPTOR):
@@ -1706,7 +1707,7 @@ class Z_Cli(MediaCase):
     def test_list(self):
         code, out = self.cli("list")
         self.assertEqual(code, 0)
-        self.assertIn("3 tool adapter", out)
+        self.assertIn("4 tool adapter", out)
         self.assertIn("ffmpeg 1.0.0 · MEDIA · 3 capabilities", out)
         self.assertIn("ffprobe 1.0.0 · MEDIA · 1 capabilities", out)
         self.assertIn("git 1.0.0 · VERSION_CONTROL · 2 capabilities", out)

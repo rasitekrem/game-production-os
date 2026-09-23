@@ -89,6 +89,30 @@ Real integration tests for the Phase-2C-2 media adapters (`gpos/tools/ffprobe/`,
 
 `mutate_media_adapters.py` is its bounded mutation harness.
 
+## ADB adapter tests
+
+```bash
+GPOS_TEST_ANDROID_SERIALS=<serial>[,<serial>...] python3 tests/test_adb_adapter.py
+```
+
+Real integration tests for the Phase-2C-3 ADB adapter (`gpos/tools/adb/`), run against real Android targets a human authorized. GPOS_TEST_ANDROID_SERIALS is test-only and names them. Without it, the suite uses the single eligible target, or stops with ADB_TARGET_UNAVAILABLE_FOR_PHASE2C3 or ADB_TARGET_SELECTION_REQUIRED_FOR_PHASE2C3. It never falls back to mocks. Stand-in programs cover only deterministic error cases.
+
+Every real-target test runs on each authorized target in turn as `adb -s <serial>`. Physical serials and build fingerprints are never printed (targets are labelled, and the runner filters its output), and screenshots are checked for structure only. Groups A–Z cover:
+
+- registration and the real probe;
+- target selection and readiness;
+- the device report and its privacy;
+- screenshot and truncation;
+- meminfo, package validation and a package that is not running;
+- contexts and materialization;
+- the explicit Git handoff through the CLI;
+- mutation consent, dry run and output collision;
+- target immutability, the command surface, network and wireless;
+- public output, the parsers and performance limitations;
+- the CLI, repository privacy and the other adapters.
+
+`mutate_adb_adapter.py` is its bounded mutation harness.
+
 ## Fixtures
 
 **Schema fixtures** — `fixtures/valid/*.json` and `fixtures/invalid/*.json` are patches applied to a valid example:

@@ -21,6 +21,8 @@ The first production tool adapter is the **Git provenance adapter** (Phase 2C-1)
 
 The **media evidence adapters** (Phase 2C-2) are two production adapters, one per executable: `ffprobe` summarizes a local media file, and `ffmpeg` derives a still frame, a bounded review clip or a bounded audio segment from one, offering visual, motion or audio evidence in the source's own capture context. Media processing never upgrades capture authority. Both are local-only (closed protocol and demuxer whitelists), use fixed command templates, and capture nothing. See [media-adapters.md](media-adapters.md).
 
+The **Android ADB evidence adapter** (Phase 2C-3) is the first target-device adapter. From one explicitly named local Android target (`--device <serial>`, `--target-platform ANDROID`) it captures a device report, a screenshot or one named package's memory snapshot, offering device, visual or performance evidence. Every target command is a fixed, read-only template: no install, launch, input, file transfer, shell runner or wireless ADB. See [adb-adapter.md](adb-adapter.md).
+
 ## Planned concepts (not implemented)
 
 | Tool | Purpose | Constraints |

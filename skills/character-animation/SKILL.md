@@ -1,7 +1,7 @@
 ---
 name: character-animation
 maturity: DRAFT
-gpos_version: 1.0.0-alpha.12
+gpos_version: 1.0.0-alpha.13
 may_own_gates: [ANIMATION]
 ---
 

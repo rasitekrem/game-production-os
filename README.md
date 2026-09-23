@@ -1,6 +1,6 @@
 # Game Production OS
 
-Version `1.0.0-alpha.12` · Phase 2C-2 (ffprobe and FFmpeg media evidence adapters) on the frozen Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation and Phase-2C-1 Git provenance adapter · all skills `DRAFT`
+Version `1.0.0-alpha.13` · Phase 2C-3 (Android ADB target-device evidence adapter) on the frozen Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation, Phase-2C-1 Git provenance adapter and Phase-2C-2 media evidence adapters · all skills `DRAFT`
 
 A model-independent production framework for AI-assisted professional game development. It makes AI agents work like a disciplined, multidisciplinary game studio — with clear creative authority, specialist ownership, independent quality gates and typed evidence — instead of like a generic software agent that calls a feature done once the tests pass.
 
@@ -38,8 +38,8 @@ templates/     Authority skeletons for a project's .game/ directory
 schemas/       JSON Schemas for project config, task routing, gate, evidence and Human Decision records
 examples/      One minimal valid instance per schema (generic)
 adapters/      Agent adapter documentation (Claude Code, Codex) and later-phase boundaries
-tools/         Tool documentation (production validator, tool adapter foundation, Git and media adapters)
-gpos/          Validator (2A), agent adapters (2B), tool adapter foundation (2C-0), Git adapter (2C-1), media adapters (2C-2)
+tools/         Tool documentation (production validator, tool adapter foundation, Git, media and ADB adapters)
+gpos/          Validator (2A), agent adapters (2B), tool adapter foundation (2C-0), Git adapter (2C-1), media adapters (2C-2), ADB adapter (2C-3)
 tests/         Framework validation, production-validator tests, fixtures and synthetic bundles
 ```
 
@@ -150,7 +150,7 @@ Adapter and tool boundaries: [adapters/README.md](adapters/README.md), [tools/RE
 
 ## Versioning
 
-Semantic Versioning, currently `1.0.0-alpha.12` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
+Semantic Versioning, currently `1.0.0-alpha.13` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
 
 | Bump | When |
 |---|---|

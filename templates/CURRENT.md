@@ -1,6 +1,6 @@
 # Current
 
-> **GPOS template** · `1.0.0-alpha.12` · copy to `.game/CURRENT.md` · see [templates/README.md](README.md)
+> **GPOS template** · `1.0.0-alpha.13` · copy to `.game/CURRENT.md` · see [templates/README.md](README.md)
 >
 > The live production state. Agents keep this current and read it first when resuming work. It records state, not authority: nothing here overrides a locked document or a Human Decision.
 

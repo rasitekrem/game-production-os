@@ -277,6 +277,14 @@ MUTATIONS = [
      '    raw_stdout: bytes = field(default=b"", repr=False)', '    raw_stdout: bytes = field(default=b"")'),
     ('the CLI packs path and context into one ambiguous value', 'gpos/tools/cli.py',
      '        artifact_id, path = item.split("=", 1)', '        artifact_id, path = item.split(":", 1)'),
+    ('the CLI accepts --build-revision but drops it', 'gpos/tools/cli.py',
+     '        build_revision=args.build_revision, build_id=args.build_id,', '        build_revision=None, build_id=args.build_id,'),
+    ('the CLI accepts --target-platform but drops it', 'gpos/tools/cli.py',
+     '        target_platform=args.target_platform, device=args.device)', '        target_platform=None, device=args.device)'),
+    ('the CLI drops --build-id', 'gpos/tools/cli.py',
+     '        build_revision=args.build_revision, build_id=args.build_id,', '        build_revision=args.build_revision, build_id=None,'),
+    ('the CLI drops --device', 'gpos/tools/cli.py',
+     '        target_platform=args.target_platform, device=args.device)', '        target_platform=args.target_platform, device=None)'),
 ]
 
 

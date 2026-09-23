@@ -145,7 +145,7 @@ Each transform refuses with `INVALID_TOOL_REQUEST`, in a real run and in a dry r
    `PERFORMANCE_RUNTIME`, `OFFLINE_ANALYSIS` and every other context are refused. For audio, so is `DCC_RENDER`. The declared pairs equal the registry's sets exactly (tested), and the registry was not changed.
 4. a number is not a plain, finite, non-negative decimal within bounds. Accepted forms are an integer, a finite float, a Decimal, or text such as `12` or `12.5` with at most 6 decimals and ASCII digits only. Refused: NaN, infinity, negatives, booleans, exponents, signs, whitespace, trailing newlines, non-ASCII digits, and values beyond the bound. The adapter forwards only its **own canonical rendering** at microsecond precision (`1.5` → `1.500000`), never the caller's text;
 5. the output directory is the source's own directory, since derived media is never written beside its source;
-6. the output file already exists (see `-n` above).
+6. the output file (or a symlink) already exists, as `-n` alone would exit 0 (see above). This is checked in a dry run too.
 
 Any other request input, such as a codec, filter, map, format, output name, option or executable, is not a declared input kind and is refused by the foundation.
 
@@ -247,6 +247,22 @@ No media adapter calls Git or infers a revision:
 
 Without the handoff, `build_revision` stays unknown.
 
+The same workflow runs entirely from the CLI:
+
+```bash
+python3 -m gpos.tools execute --adapter git --capability git.resolve-provenance \
+    --project P --subject-ref T-1 --format json
+python3 -m gpos.tools execute --adapter ffmpeg --capability ffmpeg.extract-frame \
+    --project P --subject-ref T-1 --subject-revision <SHA> --build-revision <SHA> --target-platform MACOS \
+    --input-artifact gameplay=P/captures/gameplay.mp4 --input-artifact-context gameplay=TARGET_RUNTIME \
+    --input timestamp_seconds=1.5 --allow-mutation --format json
+```
+
+- The first command's JSON result contains the `repository_revision` used as `<SHA>` in the second.
+- The second command's result provenance and its candidate carry exactly that `build_revision` and `target_platform`, and the candidate is materializable.
+- `materialize()` stays a library call, because it is deliberately not a CLI write operation. The tests materialize the CLI's own candidate.
+- `--build-id` and `--device` are carried the same way. An omitted option stays unknown. An invalid platform or an empty value is refused before FFmpeg starts.
+
 ## Dry run
 
 A dry run validates the request, the input artifact, its capture context and the numbers, and returns a plan:
@@ -257,7 +273,7 @@ would offer VISUAL_EVIDENCE captured in TARGET_RUNTIME
 no FFmpeg process, workspace or file is created by a dry run
 ```
 
-It starts no process and creates no workspace, output or evidence. It performs no mutation and never claims that an output exists.
+It starts no process and creates no workspace, output or evidence. A plan never succeeds where the real run would be refused: an output file or symlink already at the output path, for example in a caller-named output directory, is refused in the dry run too. The check only looks; it creates nothing and runs nothing. It performs no mutation and never claims that an output exists.
 
 ## Secrecy
 

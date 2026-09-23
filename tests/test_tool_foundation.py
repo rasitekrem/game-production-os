@@ -1440,6 +1440,68 @@ class M01_Cli(TmpCase):
         self.assertTrue(payload["result"]["mutation_performed"])
         self.assertEqual(payload["request"]["subject"]["revision"], "r1")
 
+    # ---- Phase 2C-2 hardening: the request's existing provenance fields, exposed by the CLI unchanged
+
+    PROVENANCE_OPTIONS = {"build_revision": ("--build-revision", "4f0c2d9e1b7a"),
+                          "build_id": ("--build-id", "ci-build-1187"),
+                          "target_platform": ("--target-platform", "MACOS"),
+                          "device": ("--device", "Pixel 8 Pro")}
+
+    def execute_json(self, *extra):
+        p = self.project()
+        code, out = self.cli("--include-test-adapters", "execute", "--adapter", "synthetic",
+                             "--capability", syn.INSPECT, "--project", str(p), "--subject-ref", "TASK-1",
+                             "--format", "json", *extra)
+        return code, json.loads(out)
+
+    def test_cli_provenance_options_round_trip_exactly(self):
+        argv = [a for option, value in self.PROVENANCE_OPTIONS.values() for a in (option, value)]
+        code, payload = self.execute_json(*argv)
+        self.assertEqual(code, 0)
+        provenance = payload["result"]["provenance"]
+        for field, (_, value) in self.PROVENANCE_OPTIONS.items():
+            self.assertEqual(provenance[field], value, field)
+            self.assertEqual(payload["request"][field], value, field)
+            self.assertNotIn(field, provenance["unknown"])
+
+    def test_each_cli_provenance_option_is_carried_on_its_own(self):
+        for field, (option, value) in self.PROVENANCE_OPTIONS.items():
+            code, payload = self.execute_json(option, value)
+            self.assertEqual(code, 0, field)
+            provenance = payload["result"]["provenance"]
+            self.assertEqual(provenance[field], value, field)
+            others = set(self.PROVENANCE_OPTIONS) - {field}
+            self.assertEqual(others & set(provenance["unknown"]), others, field)  # nothing else was inferred
+
+    def test_omitted_cli_provenance_options_stay_unknown(self):
+        code, payload = self.execute_json()
+        self.assertEqual(code, 0)
+        provenance = payload["result"]["provenance"]
+        for field in self.PROVENANCE_OPTIONS:
+            self.assertNotIn(field, provenance)
+            self.assertIn(field, provenance["unknown"])
+            self.assertNotIn(field, payload["request"])
+
+    def test_an_invalid_target_platform_is_refused_by_the_foundation(self):
+        code, payload = self.execute_json("--target-platform", "PLAYSTATION9")
+        self.assertEqual(code, tdg.EXIT_FOR[tdg.INVALID_REQUEST])
+        self.assertEqual(payload["result"]["status"], tdg.INVALID_REQUEST)
+        self.assertIn("not in registry platforms", json.dumps(payload["result"]["diagnostics"]))
+        code, _ = self.execute_json("--target-platform", "macos")  # vocabulary is exact, never normalized
+        self.assertEqual(code, tdg.EXIT_FOR[tdg.INVALID_REQUEST])
+
+    def test_empty_cli_provenance_values_are_refused_not_defaulted(self):
+        for field, (option, _) in self.PROVENANCE_OPTIONS.items():
+            for empty in ("", "   "):
+                code, payload = self.execute_json(option, empty)
+                self.assertEqual(code, tdg.EXIT_FOR[tdg.INVALID_REQUEST], (field, empty))
+                self.assertEqual(payload["result"]["status"], tdg.INVALID_REQUEST)
+
+    def test_the_request_echo_redacts_credential_shaped_provenance_values(self):
+        code, payload = self.execute_json("--build-id", "token=ghp_" + "A1b2C3d4E5f6G7h8I9j0")
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["request"]["build_id"], "token=[REDACTED]")
+
     def test_no_arbitrary_command_option(self):
         from gpos.tools import cli as tool_cli
         text = (ROOT / "gpos/tools/cli.py").read_text()

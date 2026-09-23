@@ -142,6 +142,28 @@ def tree_digest(root):
     return out
 
 
+def candidate_from_json(d):
+    """The foundation's EvidenceCandidate for a candidate exactly as the CLI printed it."""
+    return tev.EvidenceCandidate(
+        evidence_type=d["evidence_type"], capture_context=d["capture_context"], summary=d["summary"],
+        subject_kind=d["subject"]["kind"], subject_ref=d["subject"]["ref"],
+        subject_revision=d["subject"].get("revision"), source_adapter=d["source"]["adapter_id"],
+        source_capability=d["source"]["capability_id"], generated_at=d["generated_at"],
+        artifact_ids=tuple(d["artifact_ids"]), derived_from=tuple(d["derived_from"]),
+        limitations=tuple(d["limitations"]), provenance=d.get("provenance"), materializable=d["materializable"],
+        notes=tuple(d.get("notes", ())))
+
+
+def artifact_from_json(d, project):
+    from gpos.tools.artifacts import Artifact
+    return Artifact(artifact_id=d["artifact_id"], kind=d["kind"], path=d["path"],
+                    absolute_path=str(Path(project) / d["path"]), sha256=d["sha256"], bytes=d["bytes"],
+                    media_type=d.get("media_type"), description=d.get("description", ""),
+                    classification=d["classification"], derived_from=tuple(d["derived_from"]),
+                    origin_capture_context=d.get("origin_capture_context"),
+                    created_by_request=d["created_by_request"], complete=d["complete"])
+
+
 class Recorder:
     """Records every process spec started through the audited boundary while active."""
 
@@ -1161,6 +1183,51 @@ class Q_DryRun(MediaCase):
         self.assertSucceeded(result)
         self.assertFalse((p / "reviews").exists())
 
+    def test_a_dry_run_reports_an_existing_output_exactly_as_the_real_run_does(self):
+        # A known collision is found without creating anything or running FFmpeg, so the plan never succeeds
+        # where the execution would be refused.
+        p = self.project()
+        src = self.source(p)
+        out = p / "reviews"
+        out.mkdir()
+        for cap in TRANSFORMS:
+            existing = out / OUTPUT[cap][3]
+            existing.write_bytes(b"an existing file the adapter must not touch")
+            before, listing = sha256(existing), sorted(x.name for x in out.iterdir())
+            with Recorder() as rec:
+                planned = self.run_cap(cap, p, src, output_dir=str(out), dry_run=True)
+                real = self.run_cap(cap, p, src, output_dir=str(out))
+            for result in (planned, real):
+                self.assertRefused(result, f"already holds {OUTPUT[cap][3]}")
+            self.assertEqual(planned.plan, ())
+            self.assertEqual(rec.specs, [])  # no FFmpeg process, not even a probe
+            self.assertEqual(sha256(existing), before)
+            self.assertEqual(sorted(x.name for x in out.iterdir()), listing)
+
+    def test_a_dry_run_refuses_a_symlink_at_the_output_path(self):
+        p = self.project()
+        src = self.source(p)
+        out = p / "reviews"
+        out.mkdir()
+        (out / "frame.png").symlink_to(p / "missing-target.png")  # dangling: exists() alone would miss it
+        with Recorder() as rec:
+            result = self.run_cap(fa.EXTRACT_FRAME, p, src, output_dir=str(out), dry_run=True)
+        self.assertRefused(result, "already holds frame.png")
+        self.assertEqual(rec.specs, [])
+        self.assertFalse((p / "missing-target.png").exists())
+
+    def test_an_absent_output_still_plans_without_creating_anything(self):
+        p = self.project()
+        src = self.source(p)
+        out = p / "reviews"
+        out.mkdir()
+        with Recorder() as rec:
+            for cap in TRANSFORMS:
+                self.assertSucceeded(self.run_cap(cap, p, src, output_dir=str(out), dry_run=True))
+        self.assertEqual(rec.media_runs, [])
+        self.assertEqual(list(out.iterdir()), [])
+        self.assertFalse(self.workspace_root(p).exists())
+
     def test_a_dry_run_never_claims_an_output_exists(self):
         p = self.project()
         result = self.run_cap(fa.EXTRACT_CLIP, p, self.source(p), dry_run=True)
@@ -1703,6 +1770,81 @@ class Z_Cli(MediaCase):
         self.assertEqual(code, tdg.EXIT_FOR[tdg.INVALID_REQUEST])  # no capture context
         code, out = self.cli(*base, "--input-artifact-context", "src=TARGET_RUNTIME", "--dry-run")
         self.assertEqual(code, 0, out)
+
+    def frame_via_cli(self, p, src, *extra):
+        code, out = self.cli("execute", "--adapter", "ffmpeg", "--capability", "ffmpeg.extract-frame", "--project",
+                             str(p), "--subject-ref", "T-1", "--input-artifact", f"gameplay={src}",
+                             "--input-artifact-context", "gameplay=TARGET_RUNTIME", "--input", "timestamp_seconds=1",
+                             "--allow-mutation", "--format", "json", *extra)
+        return code, json.loads(out)
+
+    @unittest.skipIf(GIT is None, "the handoff needs Git")
+    def test_git_to_ffmpeg_provenance_handoff_through_the_cli(self):
+        p = self.project()
+        src = self.source(p)
+        git(p, "init", "-q", "-b", "main")
+        git(p, "add", "-A")
+        git(p, "commit", "-q", "-m", "fixture")
+        code, out = self.cli("execute", "--adapter", "git", "--capability", "git.resolve-provenance", "--project",
+                             str(p), "--subject-ref", "T-1", "--format", "json")
+        self.assertEqual(code, 0, out)
+        revision = json.loads(out)["result"]["data"]["repository_revision"]
+        self.assertTrue(re.fullmatch(r"[0-9a-f]{40}", revision))
+        with Recorder() as rec:
+            code, payload = self.frame_via_cli(p, src, "--subject-revision", revision, "--build-revision", revision,
+                                               "--target-platform", "MACOS")
+        self.assertEqual(code, 0, payload["result"]["diagnostics"])
+        self.assertEqual({Path(s.executable).name for s in rec.specs}, {"ffmpeg"})  # the CLI never called Git
+        result = payload["result"]
+        self.assertEqual(result["provenance"]["build_revision"], revision)
+        self.assertEqual(result["provenance"]["target_platform"], "MACOS")
+        (cand,) = result["evidence_candidates"]
+        self.assertEqual((cand["evidence_type"], cand["capture_context"]), ("VISUAL_EVIDENCE", "TARGET_RUNTIME"))
+        self.assertEqual((cand["provenance"]["build_revision"], cand["provenance"]["target_platform"]),
+                         (revision, "MACOS"))
+        self.assertEqual(cand["subject"]["revision"], revision)
+        self.assertTrue(cand["materializable"])
+        # materialize() is deliberately a library call, never a CLI write: the CLI's own candidate is used.
+        record, problems = tev.materialize(FW, candidate_from_json(cand), [artifact_from_json(a, p)
+                                                                           for a in result["artifacts"]], "EV-CLI-1")
+        self.assertEqual(problems, [])
+        self.assertEqual(FW.validators["evidence"].errors(record), [])
+        self.assertEqual((record["provenance"]["build_revision"], record["provenance"]["target_platform"],
+                          record["provenance"]["capture_context"]), (revision, "MACOS", "TARGET_RUNTIME"))
+
+    def test_omitted_cli_provenance_stays_unknown(self):
+        p = self.project()
+        code, payload = self.frame_via_cli(p, self.source(p), "--subject-revision", REVISION)
+        self.assertEqual(code, 0)
+        provenance = payload["result"]["provenance"]
+        for field in ("build_revision", "build_id", "target_platform", "device"):
+            self.assertIn(field, provenance["unknown"])
+            self.assertNotIn(field, provenance)
+        # A TARGET_RUNTIME candidate without platform and build cannot become a record: nothing was guessed.
+        cand = payload["result"]["evidence_candidates"][0]
+        record, problems = tev.materialize(FW, candidate_from_json(cand), [artifact_from_json(a, p) for a in
+                                                                           payload["result"]["artifacts"]], "EV-CLI-2")
+        self.assertIsNone(record)
+        self.assertTrue(problems)
+
+    def test_build_id_and_device_are_carried_exactly_through_the_cli(self):
+        p = self.project()
+        code, payload = self.frame_via_cli(p, self.source(p), "--build-id", "ci-2207", "--device", "Pixel 8 Pro")
+        self.assertEqual(code, 0)
+        provenance = payload["result"]["provenance"]
+        self.assertEqual((provenance["build_id"], provenance["device"]), ("ci-2207", "Pixel 8 Pro"))
+        self.assertIn("build_revision", provenance["unknown"])
+
+    def test_invalid_or_empty_cli_provenance_is_refused_before_ffmpeg_runs(self):
+        p = self.project()
+        src = self.source(p)
+        with Recorder() as rec:
+            for extra in (("--target-platform", "PLAYSTATION9"), ("--target-platform", ""), ("--build-revision", ""),
+                          ("--build-id", " "), ("--device", "")):
+                code, payload = self.frame_via_cli(p, src, *extra)
+                self.assertEqual(code, tdg.EXIT_FOR[tdg.INVALID_REQUEST], extra)
+                self.assertEqual(payload["result"]["artifacts"], [])
+        self.assertEqual(rec.media_runs, [])
 
     def secret_source(self, p):
         return self.source(p, name=f"run-{SECRET_TOKEN}-password=hunter2.mp4")

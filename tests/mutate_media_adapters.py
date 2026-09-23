@@ -25,7 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FFMPEG, FFPROBE, PARSER = "gpos/tools/ffmpeg/adapter.py", "gpos/tools/ffprobe/adapter.py", "gpos/tools/ffprobe/parser.py"
-COMMON, REGISTRY = "gpos/tools/media_common.py", "gpos/tools/registry.py"
+COMMON, REGISTRY, CLI = "gpos/tools/media_common.py", "gpos/tools/registry.py", "gpos/tools/cli.py"
 
 PRODUCTION = "(FfmpegAdapter(), FfprobeAdapter(), GitAdapter())"
 RESTRICTIONS = 'INPUT_RESTRICTIONS = ("-protocol_whitelist", ALLOWED_PROTOCOLS, "-format_whitelist", ",".join(SAFE_DEMUXERS))'
@@ -187,6 +187,21 @@ MUTATIONS = [
         (FFMPEG, "        record[\"mutation_performed\"] = bool(produced)\n", "        record[\"mutation_performed\"] = False\n"),
         (FFMPEG, "evidence=(candidate,),\n                              **record)",
          "evidence=(candidate,),\n                              **dict(record, mutation_performed=True))")]),
+    ('the CLI accepts --build-revision but drops it', [
+        (CLI, '        build_revision=args.build_revision, build_id=args.build_id,',
+         '        build_revision=None, build_id=args.build_id,')]),
+    ('the CLI accepts --target-platform but drops it', [
+        (CLI, '        target_platform=args.target_platform, device=args.device)',
+         '        target_platform=None, device=args.device)')]),
+    ('the CLI drops --build-id', [
+        (CLI, '        build_revision=args.build_revision, build_id=args.build_id,',
+         '        build_revision=args.build_revision, build_id=None,')]),
+    ('the CLI drops --device', [
+        (CLI, '        target_platform=args.target_platform, device=args.device)',
+         '        target_platform=args.target_platform, device=None)')]),
+    ("dry run returns before the existing-output check again", [
+        (FFMPEG, "        if output.exists() or output.is_symlink():\n            return _refuse(cap, f\"the workspace already holds",
+         "        if not context.dry_run and (output.exists() or output.is_symlink()):\n            return _refuse(cap, f\"the workspace already holds")]),
     ("parser stream limit removed", [
         (PARSER, "    if len(streams) > MAX_STREAMS:", "    if False:")]),
     ("parser accepts a trailing newline in numbers", [

@@ -282,6 +282,15 @@ python3 -m gpos.tools execute --adapter A --capability C --subject-ref REF [--pr
 
 An input artifact is given as `--input-artifact ID=PATH`, and its capture context separately as `--input-artifact-context ID=CONTEXT`. They are separate options because packing a path and a context into one colon-separated value cannot be parsed unambiguously for a Windows path such as `C:\media\gameplay.mp4`, and guessing by operating system would make the same command mean different things on different machines. The library `InputArtifact` API is unchanged.
 
+The request's existing provenance fields are exposed by the CLI (Phase 2C-2), one option each:
+
+- `--build-revision` → `build_revision`;
+- `--build-id` → `build_id`;
+- `--target-platform` → `target_platform`;
+- `--device` → `device`.
+
+They are passed to the request unchanged, and the foundation validates them as it always has: a target platform must be registry vocabulary, and a supplied value must be non-empty. An omitted option stays unknown. Nothing is inferred, and no tool is called to find a value. The JSON output echoes the request through the same redaction as the result. The result's provenance records what the caller supplied exactly as supplied.
+
 ## Future adapter sequence
 
 | Phase | Adapter | Notes |

@@ -100,7 +100,7 @@ The foundation never infers a repository revision, and this adapter does not cha
 4. the caller passes it into a later request as `build_revision`;
 5. the foundation's existing provenance records exactly that value.
 
-A later request that does not pass it records `build_revision` as unknown, even right after a successful resolution. There is no cache, no current-revision singleton and no cross-call state: every execution reads the repository as it is now.
+From the CLI, step 4 is `--build-revision <repository_revision>` on `python3 -m gpos.tools execute` (Phase 2C-2). A later request that does not pass it records `build_revision` as unknown, even right after a successful resolution. There is no cache, no current-revision singleton and no cross-call state: every execution reads the repository as it is now.
 
 ## Authorized Git surface
 

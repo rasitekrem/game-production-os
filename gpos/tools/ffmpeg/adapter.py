@@ -253,6 +253,11 @@ class FfmpegAdapter(model.ToolAdapter):
         if workspace.resolve() == Path(source.absolute_path).resolve().parent:
             return _refuse(cap, "the output workspace is the source artifact's own directory; derived media is never "
                                 "written beside its source")
+        # Before the dry-run return: an existing output is a known conflict a plan can report without creating
+        # anything or running FFmpeg, so a dry run never succeeds where the real run would be refused.
+        if output.exists() or output.is_symlink():
+            return _refuse(cap, f"the workspace already holds {filename}; an existing file is never reported as a "
+                                f"newly derived artifact")
         argv = _argv(kind, source.absolute_path, params, output, self._size_limits[kind])
         described = _described(kind, params, source)
         if context.dry_run:
@@ -261,9 +266,6 @@ class FfmpegAdapter(model.ToolAdapter):
                                         f"would offer {evidence_type} captured in {source.origin_capture_context}",
                                         "no FFmpeg process, workspace or file is created by a dry run"),
                                   data={"source_artifact_id": source.artifact_id, "output_artifact_id": kind, **params})
-        if output.exists() or output.is_symlink():
-            return _refuse(cap, f"the workspace already holds {filename}; an existing file is never reported as a "
-                                f"newly derived artifact")
         spec = proc.ToolProcessSpec(executable=context.probe.tool_path, argv=argv, cwd=str(workspace),
                                     timeout=context.timeout)
         outcome = context.run(spec)

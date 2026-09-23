@@ -73,6 +73,11 @@ def build_parser():
                     help="an existing artifact this execution consumes; repeatable")
     ex.add_argument("--input-artifact-context", action="append", default=[], metavar="ID=CONTEXT",
                     help="the capture context an input artifact came from, e.g. gameplay=TARGET_RUNTIME")
+    ex.add_argument("--build-revision",
+                    help="the exact build/source revision, e.g. from git.resolve-provenance; omitted stays unknown")
+    ex.add_argument("--build-id", help="the build identifier; omitted stays unknown")
+    ex.add_argument("--target-platform", help="a GPOS platform (registry vocabulary); omitted stays unknown")
+    ex.add_argument("--device", help="the device the capture came from; omitted stays unknown")
     ex.add_argument("--output-dir")
     ex.add_argument("--resource", help="the single-writer target, for a capability that leases one the request names")
     ex.add_argument("--routing", dest="routing_ref")
@@ -262,7 +267,10 @@ def _execute(args, registry, fmt, stdout):
         input_artifacts=_input_artifacts(args.input_artifact, args.input_artifact_context),
         output_dir=args.output_dir, resource_id=args.resource,
         dry_run=args.dry_run, allow_mutation=args.allow_mutation, timeout=args.timeout,
-        actor=actor, routing_ref=args.routing_ref)
+        actor=actor, routing_ref=args.routing_ref,
+        # Passed through unchanged: the foundation validates them, and an omitted value stays unknown.
+        build_revision=args.build_revision, build_id=args.build_id,
+        target_platform=args.target_platform, device=args.device)
     result = execute(registry, request)
     if fmt == "json":
         # The request is echoed through the same redaction as the result: an input artifact's file name is

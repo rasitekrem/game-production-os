@@ -33,6 +33,8 @@ Two production media adapters, one per executable, because the foundation record
 ### Changed
 
 - `default_registry()` now contains exactly `ffmpeg`, `ffprobe` and `git`.
+- `python3 -m gpos.tools execute` exposes the request's existing provenance fields, one option each: `--build-revision`, `--build-id`, `--target-platform`, `--device`. The values are passed unchanged and validated by the foundation as before, and an omitted option stays unknown. The explicit Git → media provenance handoff now works end to end from the CLI. No new foundation semantics.
+- A transform's dry run now refuses an output (or symlink) already at the output path, exactly as the real run does, instead of planning success for a run that would be refused.
 - The CLI's JSON output echoes the request through the same redaction as the result, so a credential-shaped input file name is not printed back (`gpos/tools/cli.py`, not a frozen module).
 - Phase-boundary tests evolved to the Phase-2C-2 boundary, without weakening any other assertion:
   - the Phase-2A test that forbade the word "ffmpeg" anywhere in `gpos/` now allows it only in the two media adapter packages, their shared constants module and the production registry;

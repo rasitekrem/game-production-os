@@ -41,6 +41,7 @@ CLAIM_RUNTIME = f"{ADAPTER_ID}.claim-runtime"
 ESCAPE = f"{ADAPTER_ID}.escape"
 PARTIAL = f"{ADAPTER_ID}.partial"
 RESOURCE_WRITE = f"{ADAPTER_ID}.resource-write"
+DETACHED_WRITE = f"{ADAPTER_ID}.detached-write"
 
 CAPABILITIES = (
     Capability(
@@ -56,6 +57,13 @@ CAPABILITIES = (
         dry_run_supported=True, input_kinds=("text", "name"), artifact_kinds=("TEXT",),
         potential_evidence=(("CODE_EVIDENCE", "OFFLINE_ANALYSIS"),),
         side_effect_scope="one file inside the execution workspace",
+        timeout=TimeoutPolicy(default=10.0, maximum=30.0)),
+    Capability(
+        id=DETACHED_WRITE, category="TRANSFORM",
+        description="TEST_ONLY: write a text artifact into a caller-named directory, with no project at all.",
+        operation_class="MUTATING", state_model="STATELESS", execution_context="OFFLINE_ANALYSIS",
+        requires_project=False, dry_run_supported=True, input_kinds=("text", "name"),
+        artifact_kinds=("TEXT",), side_effect_scope="one file inside the caller-named output directory",
         timeout=TimeoutPolicy(default=10.0, maximum=30.0)),
     Capability(
         id=DERIVE, category="EXPORT",
@@ -189,7 +197,7 @@ class SyntheticAdapter(model.ToolAdapter):
         inputs = request.inputs or {}
         if cap == INSPECT:
             return self._inspect(context, inputs)
-        if cap in (TRANSFORM, STATEFUL_WRITE, RESOURCE_WRITE):
+        if cap in (TRANSFORM, STATEFUL_WRITE, RESOURCE_WRITE, DETACHED_WRITE):
             return self._write(context, inputs, cap)
         if cap == DERIVE:
             return self._derive(context, inputs)
@@ -286,9 +294,18 @@ class SyntheticAdapter(model.ToolAdapter):
             data={"source_capture_context": source.origin_capture_context, "claimed_capture_context": claim})
 
     def _claim(self, context, evidence_type, capture_context):
+        """Offer a candidate the foundation must judge. A dry run writes nothing and creates nothing:
+        the candidate is still offered, so the dry-run evidence rules can be seen refusing it."""
         path = context.artifact_path("claim.txt")
         if context.dry_run:
-            path.parent.mkdir(parents=True, exist_ok=True)
+            return AdapterOutcome(
+                plan=(f"would write {path}",), detail="dry run: nothing was written",
+                evidence=(EvidenceCandidate(
+                    evidence_type=evidence_type, capture_context=capture_context,
+                    summary="TEST_ONLY claim the foundation must judge",
+                    subject_kind="TASK", subject_ref="", source_adapter=ADAPTER_ID,
+                    source_capability=context.capability.id, generated_at=context.clock.now(),
+                    artifact_ids=("claim",)),))
         spec = self._spec(context, ("write", str(path), "claim"))
         outcome = context.run(spec)
         return AdapterOutcome(

@@ -177,7 +177,8 @@ class TmpCase(unittest.TestCase):
 
     def run_cap(self, cap, reg=None, project=None, **kwargs):
         reg = reg or registry()
-        kwargs.setdefault("output_dir", None if project else str(self.out()))
+        if "output_dir" not in kwargs and project is None:
+            kwargs["output_dir"] = str(self.out())  # only created when the caller named none
         revision = kwargs.pop("revision", None)
         request = ExecutionRequest(adapter_id="synthetic", capability_id=cap,
                                    subject=Subject(kwargs.pop("subject_kind", "TASK"),
@@ -1974,6 +1975,138 @@ class N09_AcceptedArchitectureUnchanged(TmpCase):
         self.assertEqual(POLICY["dry_run_evidence_types"], ["CODE_EVIDENCE"])
         self.assertEqual(POLICY["network"], "FORBIDDEN")
         self.assertTrue(SyntheticAdapter().descriptor.test_only)
+
+
+class N10_DryRunCreatesNothing(TmpCase):
+    """A dry run performs no external mutation — including creating its own workspace."""
+
+    def missing(self, *parts):
+        """A path under the temporary directory that does not exist, with absent parents."""
+        target = self.tmp.joinpath("absent", *parts) if parts else self.tmp / "absent" / "out"
+        self.assertFalse(target.exists())
+        return target
+
+    def test_a_project_less_dry_run_creates_no_directory(self):
+        target = self.missing()
+        result = self.run_cap(syn.DETACHED_WRITE, output_dir=str(target), dry_run=True,
+                              inputs={"text": "x"})
+        self.assertEqual(result.status, tdg.SUCCESS)
+        self.assertTrue(result.dry_run)
+        self.assertFalse(result.mutation_performed)
+        self.assertTrue(result.plan)
+        self.assertFalse(target.exists(), "the dry run created its output directory")
+        self.assertFalse(target.parent.exists(), "the dry run created a parent of its output directory")
+        self.assertEqual(sorted(p.name for p in self.tmp.iterdir()), [])
+
+    def test_the_same_request_really_executes(self):
+        target = self.missing()
+        result = self.run_cap(syn.DETACHED_WRITE, output_dir=str(target), allow_mutation=True,
+                              inputs={"text": "x"})
+        self.assertEqual(result.status, tdg.SUCCESS)
+        self.assertTrue(result.mutation_performed)
+        self.assertTrue(target.is_dir())
+        self.assertEqual([a.artifact_id for a in result.artifacts], ["output"])
+        self.assertTrue(Path(result.artifacts[0].absolute_path).is_file())
+
+    def test_a_project_bound_dry_run_creates_no_runtime_directory(self):
+        p = self.project()
+        before = sorted(x.relative_to(p).as_posix() for x in p.rglob("*"))
+        result = self.run_cap(syn.TRANSFORM, project=p, dry_run=True, inputs={"text": "x"})
+        self.assertEqual(result.status, tdg.SUCCESS)
+        self.assertFalse((p / tpaths.RUNTIME_DIR).exists())
+        self.assertEqual(sorted(x.relative_to(p).as_posix() for x in p.rglob("*")), before)
+
+    def test_a_dry_run_that_offers_evidence_still_creates_nothing(self):
+        p = self.project()
+        result = self.run_cap(syn.CLAIM_RUNTIME, project=p, dry_run=True, revision="r1",
+                              inputs={"evidence_type": "RUNTIME_EVIDENCE", "capture_context": "TARGET_RUNTIME"})
+        self.assertIn("EVIDENCE_NOT_AVAILABLE_IN_DRY_RUN", self.codes(result))
+        self.assertFalse((p / tpaths.RUNTIME_DIR).exists())
+
+    def test_an_output_path_that_is_a_regular_file_is_a_structured_refusal(self):
+        target = self.tmp / "not-a-directory"
+        target.write_text("i am a file")
+        result = self.run_cap(syn.DETACHED_WRITE, output_dir=str(target), allow_mutation=True,
+                              inputs={"text": "x"})
+        self.assertNotEqual(result.status, tdg.SUCCESS)
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+        self.assertIn("WORKSPACE_NOT_USABLE", self.codes(result))
+        self.assertTrue(any("already exists and is not a directory" in d.message for d in result.diagnostics),
+                        [d.message for d in result.diagnostics])
+        self.assertEqual(target.read_text(), "i am a file")  # untouched
+
+    def test_a_workspace_creation_failure_is_a_structured_result(self):
+        """A deterministic double: creation raises, and no exception escapes execute()."""
+        from gpos.tools import execution as ex
+        real_mkdir = Path.mkdir
+
+        def refuse(self, *args, **kwargs):
+            if "absent" in self.parts:
+                raise PermissionError(13, "Permission denied")
+            return real_mkdir(self, *args, **kwargs)
+
+        Path.mkdir = refuse
+        self.addCleanup(setattr, Path, "mkdir", real_mkdir)
+        result = self.run_cap(syn.DETACHED_WRITE, output_dir=str(self.missing()), allow_mutation=True,
+                              inputs={"text": "x"})
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+        self.assertIn("WORKSPACE_NOT_USABLE", self.codes(result))
+        self.assertTrue(any("PermissionError" in d.message for d in result.diagnostics))
+        self.assertNotIn("Traceback", json.dumps(result.to_dict()))
+        self.assertEqual(result.artifacts, ())
+
+    def test_a_relative_output_path_is_refused_and_creates_nothing(self):
+        before = sorted(p.name for p in Path.cwd().iterdir())
+        result = self.run_cap(syn.DETACHED_WRITE, output_dir="relative/output", allow_mutation=True,
+                              inputs={"text": "x"})
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+        self.assertIn("UNSAFE_ARTIFACT_PATH", self.codes(result))
+        self.assertTrue(any("the output directory must be an absolute path" in d.message
+                            for d in result.diagnostics), [d.message for d in result.diagnostics])
+        self.assertFalse((Path.cwd() / "relative").exists())
+        self.assertEqual(sorted(p.name for p in Path.cwd().iterdir()), before)
+
+    def test_an_unsafe_output_path_is_refused_before_anything_is_created(self):
+        p = self.project()
+        outside = self.tmp / "outside-the-project"
+        result = self.run_cap(syn.TRANSFORM, project=p, output_dir=str(outside), allow_mutation=True,
+                              inputs={"text": "x"})
+        self.assertEqual(result.status, tdg.INVALID_REQUEST)
+        self.assertIn("UNSAFE_ARTIFACT_PATH", self.codes(result))
+        self.assertFalse(outside.exists())
+        records = self.run_cap(syn.TRANSFORM, project=p, output_dir=str(p / ".game" / "gpos" / "out"),
+                               allow_mutation=True, inputs={"text": "x"})
+        self.assertIn("UNSAFE_ARTIFACT_PATH", self.codes(records))
+        self.assertFalse((p / ".game" / "gpos" / "out").exists())
+
+    def test_a_symlinked_output_directory_no_longer_escapes_as_an_exception(self):
+        """Before the fix this mkdir ran before any validation and raised PermissionError out of
+        execute() while trying to create a directory the symlink pointed at. It is now a result."""
+        scope = self.tmp / "scope"
+        scope.mkdir()
+        os.symlink("/etc", scope / "escape")
+        result = self.run_cap(syn.DETACHED_WRITE, output_dir=str(scope / "escape" / "out"),
+                              allow_mutation=True, inputs={"text": "x"})
+        self.assertNotEqual(result.status, tdg.SUCCESS)
+        self.assertIn("WORKSPACE_NOT_USABLE", self.codes(result))
+        self.assertNotIn("Traceback", json.dumps(result.to_dict()))
+        self.assertFalse(Path("/etc/out").exists())
+
+    def test_symlink_containment_inside_a_scope_is_unchanged(self):
+        scope = self.tmp / "scope"
+        scope.mkdir()
+        os.symlink("/etc", scope / "escape")
+        self.assertIn("symlink", tpaths.unsafe_reason([str(scope)], str(scope / "escape" / "passwd")))
+        p = self.project()
+        os.symlink("/etc", p / "planted")
+        self.assertIn("symlink", tpaths.unsafe_reason([str(p)], str(p / "planted" / "passwd")))
+
+    def test_a_scope_that_does_not_exist_is_still_checkable(self):
+        """The fix resolves a caller-named scope without creating it; containment still holds."""
+        target = self.missing()
+        self.assertIsNone(tpaths.unsafe_reason([str(target)], str(target / "file.txt")))
+        self.assertIn("outside", tpaths.unsafe_reason([str(target)], str(self.tmp / "elsewhere.txt")))
+        self.assertFalse(target.exists())
 
 
 if __name__ == "__main__":

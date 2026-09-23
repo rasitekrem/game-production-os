@@ -34,8 +34,12 @@ def contains(scope, path):
 
 
 def _roots(scopes):
-    """Every scope as a resolved absolute path."""
-    return [Path(s).resolve() for s in scopes]
+    """Every scope as an absolute path with its existing prefix resolved.
+
+    A scope that does not exist yet resolves the same way a target does, so a permitted scope never
+    has to be created just to be checked.
+    """
+    return [_resolve_prefix(Path(s).absolute()) for s in scopes]
 
 
 def _under(roots, path):
@@ -49,6 +53,11 @@ def _resolve_prefix(path):
     while not existing.exists() and existing != existing.parent:
         existing = existing.parent
     return existing.resolve() / path.relative_to(existing)
+
+
+def resolve_without_creating(path):
+    """`path` as an absolute path with its existing prefix resolved. Creates nothing."""
+    return _resolve_prefix(Path(path).absolute())
 
 
 def unsafe_reason(scopes, path, must_exist=False):

@@ -37,6 +37,7 @@ This phase integrates **no** real production tool. It creates the shared layer t
 - Output artifact claims are checked against the registered capability at execution time: declared kinds only, structural and unique ids, and no shadowing of an input artifact. Invalid claims are dropped, never renamed or reclassified.
 - A single-writer lease that cannot be released is blocking (`LEASE_RELEASE_FAILED`), so an execution never reports a clean success while its lease is still held; the unverified lease is still not deleted. A project lease is taken on the resolved project root, and a capability that leases something else declares `resource_from_request` and the request names it explicitly.
 - The CLI takes an input artifact's path and capture context as separate options, so a Windows drive path is unambiguous. A process that cannot be started after its spec validated is reported as a tool availability problem, not an opaque defect.
+- A dry run creates no execution workspace and no parent of one. A caller-named output directory is resolved without being created and checked before anything is made, the workspace for a real execution is created only after validation succeeds, and a creation failure is a structured `WORKSPACE_NOT_USABLE` result instead of an exception escaping the call.
 
 ### Notes
 

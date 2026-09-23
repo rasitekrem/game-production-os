@@ -49,6 +49,7 @@ CODES = {
     "TIMEOUT_NOT_PERMITTED": (INVALID_REQUEST, "the requested timeout is outside the capability's policy bounds"),
     "UNSAFE_EXECUTION_PATH": (INVALID_REQUEST, "the working directory is outside the permitted filesystem scope"),
     "UNSAFE_ARTIFACT_PATH": (INVALID_REQUEST, "an artifact path escapes the permitted filesystem scope"),
+    "WORKSPACE_NOT_USABLE": (INVALID_REQUEST, "the execution workspace does not exist and cannot be created"),
     "UNSAFE_PROCESS_SPEC": (INVALID_REQUEST, "the process spec is not a resolved executable plus an argument vector"),
     "EVIDENCE_CONTEXT_INCOMPATIBLE": (INVALID_REQUEST, "the evidence type and capture context are incompatible (registry evidence_context_compatibility)"),
     "EVIDENCE_TYPE_FORBIDDEN": (INVALID_REQUEST, "a tool adapter may never produce this evidence type"),

@@ -159,7 +159,7 @@ The child environment is built from a declared policy: a positive allowlist of i
 
 The foundation default is **project-root bounded**. A project-bound capability may touch the project tree and any extra absolute scopes its adapter contract explicitly declares; a capability that declares `requires_project = False` is scoped to the output directory the caller named, and nothing else. Nothing is granted implicitly, and no scope ever comes from something a tool produced.
 
-A project-less capability never gains filesystem authority over a project tree by being handed one: supplying `project_root` to a capability that does not require a project is refused as an invalid request, rather than quietly becoming an unvalidated scope. Ambiguity is rejected, not resolved.
+A project-less capability never gains filesystem authority over a project tree by being handed one: supplying `project_root` to a capability that does not require a project is refused as an invalid request, rather than quietly becoming an unvalidated scope. Ambiguity is rejected, not resolved. Its output directory must be an absolute path, and it is checked before it is created — validation never has creating a directory as a side effect.
 
 Every execution path and every declared artifact is checked before use: `..` cannot walk out, a symlink planted anywhere below the scope is refused before the target is opened, and the resolved path must still be inside a scope. The canonical record area `.game/gpos/` is never a write target for tool execution.
 
@@ -168,6 +168,8 @@ A limitation worth stating plainly: the foundation cannot stop an external tool 
 ## Dry run
 
 If a capability supports dry run, a dry-run request validates the request, resolves what would execute, determines the side-effect plan and performs no external mutation. `dry_run` is `true` in the result, `mutation_performed` is `false`, and the plan is reported.
+
+"No external mutation" includes the foundation's own housekeeping: a dry run creates no execution workspace and no parent of one. A caller-named output directory is *resolved* without being created, so a dry run against a directory that does not exist leaves it, and every parent of it, absent. For a real execution the workspace is created only after the request and its paths have been validated, and a failure to create it — a path that is already a regular file, a permission error, any other filesystem error — is a structured `WORKSPACE_NOT_USABLE` result rather than an exception escaping the call.
 
 Dry-run success means the operation plan was valid. It does not mean the real operation succeeded. A dry run observed nothing, so it may only produce the registry's `dry_run_evidence_types` — a closed allowlist which excludes every execution-observed type, including `RUNTIME_EVIDENCE`, `DEVICE_EVIDENCE`, `PERFORMANCE_EVIDENCE`, `MOTION_EVIDENCE` and `AUDIO_EVIDENCE`. An adapter that tries is refused with `EVIDENCE_NOT_AVAILABLE_IN_DRY_RUN`.
 

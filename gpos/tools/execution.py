@@ -503,6 +503,12 @@ def _scopes_and_workspace(adapter, capability, request, root):
     `requires_project = False` has no project tree, so it is scoped to the output directory the
     caller named and nothing else. Nothing is ever granted implicitly, the canonical record area is
     never a write target, and no scope comes from anything the tool itself produced.
+
+    Nothing is created here until the request has been validated, and **nothing at all** is created
+    for a dry run: the caller-named scope is resolved without being brought into existence, so a dry
+    run against a directory that does not exist leaves it, and every parent of it, absent. Creating
+    the workspace for a real execution is the last step, and a failure to create it is a structured
+    result rather than an exception escaping `execute`.
     """
     adapter_id, cap_id = request.adapter_id, request.capability_id
     scopes = [Path(s).resolve() for s in adapter.descriptor.filesystem_scopes]
@@ -510,9 +516,14 @@ def _scopes_and_workspace(adapter, capability, request, root):
         scopes.insert(0, root)
     if request.output_dir is not None:
         workspace = Path(request.output_dir)
+        if not workspace.is_absolute():
+            return (), None, [dg.make("UNSAFE_ARTIFACT_PATH",
+                                      f"{workspace}: the output directory must be an absolute path",
+                                      adapter_id, cap_id)]
         if root is None and not capability.requires_project:
-            workspace.mkdir(parents=True, exist_ok=True)
-            scopes.insert(0, workspace.resolve())
+            # The caller named the only scope this execution gets. It is resolved, not created: a path
+            # that does not exist yet is still checkable, and a dry run must leave it that way.
+            scopes.insert(0, tp.resolve_without_creating(workspace))
         reason = tp.unsafe_reason([str(s) for s in scopes], str(workspace)) if scopes else \
             f"{workspace}: no permitted filesystem scope is declared"
         if reason:
@@ -535,9 +546,29 @@ def _scopes_and_workspace(adapter, capability, request, root):
         return (), None, [dg.make("UNSAFE_EXECUTION_PATH",
                                   f"{cap_id} has no permitted filesystem scope: it needs a project root or an adapter "
                                   f"contract that declares one", adapter_id, cap_id)]
-    if not request.dry_run:
+    if request.dry_run:
+        return tuple(scopes), workspace, []  # a dry run resolves the plan and creates nothing
+    problems = _create_workspace(workspace, adapter_id, cap_id)
+    return ((), None, problems) if problems else (tuple(scopes), workspace, [])
+
+
+def _create_workspace(workspace, adapter_id, cap_id):
+    """Create the validated workspace. [ToolDiagnostic] — non-empty when it cannot be used.
+
+    A path that exists but is not a directory, a permission failure or any other filesystem error is
+    a structured refusal; none of them escapes as an exception.
+    """
+    if workspace.exists() and not workspace.is_dir():
+        return [dg.make("WORKSPACE_NOT_USABLE",
+                        f"{workspace}: the output directory already exists and is not a directory",
+                        adapter_id, cap_id)]
+    try:
         workspace.mkdir(parents=True, exist_ok=True)
-    return tuple(scopes), workspace, []
+    except OSError as exc:
+        return [dg.make("WORKSPACE_NOT_USABLE",
+                        f"{workspace}: the execution workspace could not be created "
+                        f"({type(exc).__name__}: {exc})", adapter_id, cap_id)]
+    return []
 
 
 def _assemble(framework, registry, request, adapter, capability, context, outcome, diagnostics,

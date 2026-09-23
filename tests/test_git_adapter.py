@@ -18,7 +18,8 @@ Groups: A registration · B real probe · C missing or unusable tool · D clean 
 state · F conflicted state · G detached HEAD · H unborn branch · I non-repository project · J root
 mismatch · K path safety and parsing · L truncated or altered output · M environment and optional
 locks · N read-only behaviour · O resolve-provenance · P explicit handoff · Q network and argument
-surface · R CLI · S determinism and linked worktrees.
+surface · R CLI · S determinism and linked worktrees · T submodules · U fsmonitor neutralized ·
+V raw machine output and the version floor.
 """
 
 import ast
@@ -525,13 +526,13 @@ class K_Paths(GitCase):
         text = (f"# branch.oid {oid}\0# branch.head main\0"
                 f"2 R. N... 100644 100644 100644 {oid} {oid} R100 new name.txt\0old\nname.txt\0"
                 f"1 .M N... 100644 100644 100644 {oid} {oid} path with spaces and ü.txt\0"
-                f"? untracked\nwith newline\0")
+                f"? untracked\nwith newline\0").encode()
         state = gs.parse(text)
         self.assertEqual((state["staged_count"], state["unstaged_count"], state["untracked_count"]), (1, 1, 1))
 
     def test_parser_accepts_sha256_object_ids_and_ignores_unknown_headers(self):
         oid = "b" * 64
-        state = gs.parse(f"# branch.oid {oid}\0# branch.head main\0# branch.upstream origin/main\0# stash 3\0")
+        state = gs.parse(f"# branch.oid {oid}\0# branch.head main\0# branch.upstream origin/main\0# stash 3\0".encode())
         self.assertEqual(state["exact_revision"], oid)
 
     def test_parser_refuses_anything_it_does_not_fully_understand(self):
@@ -548,11 +549,12 @@ class K_Paths(GitCase):
             "bad XY": head + f"1 ZZ N... 1 1 1 {oid} {oid} p\0",
             "bad oid": "# branch.oid not-a-sha\0# branch.head main\0",
             "unborn and detached": "# branch.oid (initial)\0# branch.head (detached)\0",
-            "not text": b"# branch.oid (initial)\0",
         }
         for name, text in bad.items():
             with self.assertRaises(gs.StatusParseError, msg=name):
-                gs.parse(text)
+                gs.parse(text.encode())
+        with self.assertRaises(gs.StatusParseError, msg="decoded text instead of the captured bytes"):
+            gs.parse("# branch.oid (initial)\0# branch.head main\0")
 
 
 # ---------------------------------------------------------------- L  truncated or altered output
@@ -580,8 +582,7 @@ class L_IncompleteOutput(GitCase):
         raw = git(p, *ga.STATUS_ARGV).stdout.encode()
         records = raw.split(b"\0")
         boundary = len(b"\0".join(records[:4])) + 1  # headers plus two complete records, NUL included
-        prefix = raw[:boundary].decode()
-        self.assertEqual(gs.parse(prefix)["untracked_count"], 2)  # precondition: the prefix parses cleanly
+        self.assertEqual(gs.parse(raw[:boundary])["untracked_count"], 2)  # precondition: the prefix parses cleanly
         registry = ToolRegistry(FW)
         registry.register(GitAdapter(status_capture_bytes=boundary))
         result = self.inspect(p, registry=registry)
@@ -595,20 +596,48 @@ class L_IncompleteOutput(GitCase):
             (p / f"untracked-{i}.txt").write_text("x")
         self.assertState(self.inspect(p), untracked_count=8)
 
-    def test_output_altered_by_redaction_is_never_parsed(self):
-        """The process boundary redacts credential-shaped text, which can merge NUL-separated records.
-        The adapter must refuse rather than report a count computed from altered output."""
+    def test_credential_shaped_filenames_are_counted_correctly_and_never_exposed(self):
+        """Redaction could merge the NUL-separated records of `api_key=abc` and `ordinary.txt` in the public
+        text. The adapter parses the private raw capture instead, so the counts are exact — and nothing
+        secret-shaped reaches any public surface."""
         p = self.repo()
         (p / "api_key=abc").write_text("x")
         (p / "ordinary.txt").write_text("y")
         result = self.inspect(p)
-        self.assertEqual(result.status, tdg.FAILED)
-        self.assertFalse(result.data)  # no repository state at all
-        self.assertIn("SECRETS_REDACTED", self.codes(result))
-        self.assertTrue(any("redacted" in d.message and d.code == "EXECUTION_FAILED" for d in result.diagnostics))
+        self.assertState(result, untracked_count=2, clean=False, exact_revision=None)
+        surfaces = {
+            "ToolResult JSON": json.dumps(result.to_dict()),
+            "provenance": json.dumps(result.provenance.to_dict()),
+            "diagnostics": json.dumps([d.to_dict() for d in result.diagnostics]),
+            "stdout/stderr": result.stdout + result.stderr,
+        }
+        from gpos.tools import cli as tool_cli
+        for fmt in ("json", "text"):
+            buffer = io.StringIO()
+            tool_cli.main(["execute", "--adapter", "git", "--capability", "git.inspect", "--project", str(p),
+                           "--subject-kind", "PROJECT", "--subject-ref", PROJECT_ID, "--format", fmt], stdout=buffer)
+            surfaces[f"CLI {fmt}"] = buffer.getvalue()
+        for name, text in surfaces.items():
+            self.assertNotIn("api_key=abc", text, name)
+            self.assertNotIn("=abc", text, name)
         resolved = self.resolve(p)
-        self.assertNotEqual(resolved.status, tdg.SUCCESS)
-        self.assertFalse(resolved.data)  # no revision, fabricated or otherwise
+        self.assertEqual(resolved.status, tdg.CONFLICT)  # dirty, correctly: two untracked files
+        self.assertIn("untracked 2", next(d.message for d in resolved.diagnostics
+                                          if d.code == "REPOSITORY_STATE_CONFLICT"))
+
+    def test_a_credential_shaped_value_in_the_project_path_still_matches_the_root(self):
+        """The root comparison uses Git's exact bytes, so a redactable directory name no longer breaks it;
+        the path shown in the public data is still redacted."""
+        base = self.tmp / "password=s3cr3tDIR"
+        base.mkdir()
+        p = self.project(parent=base)
+        git(p, "init", "-q", "-b", "main")
+        git(p, "add", "-A")
+        git(p, "commit", "-q", "-m", "initial")
+        result = self.inspect(p)
+        self.assertEqual(result.status, tdg.SUCCESS, [d.message for d in result.diagnostics])
+        self.assertTrue(result.data["clean"])
+        self.assertNotIn("s3cr3tDIR", json.dumps(result.to_dict()))
 
 
 # ---------------------------------------------------------------- M  environment and optional locks
@@ -795,7 +824,7 @@ class Q_Surface(GitCase):
             ("--version",),
             ("rev-parse", "--show-toplevel"),
             ("status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--find-renames",
-             "--no-ahead-behind")))
+             "--no-ahead-behind", "--ignore-submodules=none")))
 
     def test_every_process_started_uses_an_authorized_vector_unmodified(self):
         p = self.repo()
@@ -909,6 +938,228 @@ class S_Determinism(GitCase):
         self.assertTrue((worktree / ".git").is_file())
         self.assertState(self.inspect(worktree), repository_root=str(worktree.resolve()),
                          head_sha=self.head(p), exact_revision=self.head(p), clean=True, detached=True)
+
+
+# ---------------------------------------------------------------- T  submodules (hardening)
+
+class T_Submodules(GitCase):
+    """Submodule ignore settings may never hide dirtiness (`--ignore-submodules=none`)."""
+
+    def superproject(self):
+        lib = self.tmp / "lib"
+        lib.mkdir()
+        git(lib, "init", "-q", "-b", "main")
+        (lib / "a.txt").write_text("a\n")
+        git(lib, "add", "a.txt")
+        git(lib, "commit", "-q", "-m", "lib")
+        p = self.repo()
+        # Fixture only: the local file transport prepares the submodule. The adapter enables no transport.
+        git(p, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "sub")
+        git(p, "commit", "-q", "-m", "add submodule")
+        return p
+
+    def assertDirtySubmodule(self, p):
+        data = self.assertState(self.inspect(p), clean=False, exact_revision=None, head_sha=self.head(p))
+        self.assertGreaterEqual(data["unstaged_count"], 1)
+        resolved = self.resolve(p)
+        self.assertEqual(resolved.status, tdg.CONFLICT)
+        self.assertIsNone(resolved.data["repository_revision"])
+
+    def test_a_modified_tracked_file_inside_a_submodule(self):
+        p = self.superproject()
+        (p / "sub" / "a.txt").write_text("dirty\n")
+        self.assertDirtySubmodule(p)
+
+    def test_local_config_ignore_all_cannot_hide_a_dirty_submodule(self):
+        p = self.superproject()
+        (p / "sub" / "a.txt").write_text("dirty\n")
+        git(p, "config", "submodule.sub.ignore", "all")
+        self.assertNotIn(" S.M.", git(p, "status", "--porcelain=v2", "-z").stdout)  # precondition: Git hides it
+        self.assertDirtySubmodule(p)
+
+    def test_gitmodules_ignore_all_cannot_hide_a_dirty_submodule(self):
+        p = self.superproject()
+        git(p, "config", "-f", ".gitmodules", "submodule.sub.ignore", "all")
+        git(p, "commit", "-q", "-am", "ignore the submodule in .gitmodules")
+        (p / "sub" / "a.txt").write_text("dirty\n")
+        self.assertNotIn(" S.M.", git(p, "status", "--porcelain=v2", "-z").stdout)  # precondition: Git hides it
+        self.assertDirtySubmodule(p)
+
+    def test_an_untracked_file_only_inside_the_submodule(self):
+        p = self.superproject()
+        (p / "sub" / "new.txt").write_text("untracked in the submodule\n")
+        git(p, "config", "submodule.sub.ignore", "untracked")
+        self.assertDirtySubmodule(p)
+
+    def test_a_submodule_checked_out_at_another_commit(self):
+        p = self.superproject()
+        (p / "sub" / "b.txt").write_text("b\n")
+        git(p / "sub", "add", "b.txt")
+        git(p / "sub", "commit", "-q", "-m", "moves the submodule HEAD")
+        git(p, "config", "submodule.sub.ignore", "all")
+        self.assertDirtySubmodule(p)
+
+    def test_a_clean_submodule_is_unchanged_behaviour(self):
+        p = self.superproject()
+        git(p, "config", "submodule.sub.ignore", "all")
+        self.assertState(self.inspect(p), clean=True, exact_revision=self.head(p))
+        self.assertEqual(self.resolve(p).data["repository_revision"], self.head(p))
+
+    def test_the_submodules_own_fsmonitor_hook_never_runs(self):
+        """Git runs `git status` inside each submodule itself; the command-scope override must reach it."""
+        p = self.superproject()
+        marker = self.tmp / "SUBMODULE_HOOK_RAN"
+        hook = self.tmp / "submodule-hook"
+        hook.write_text(f"#!/bin/sh\necho ran >> '{marker}'\nexit 1\n")
+        hook.chmod(0o755)
+        git(p / "sub", "config", "core.fsmonitor", str(hook))
+        (p / "sub" / "a.txt").write_text("dirty\n")
+        self.assertDirtySubmodule(p)
+        self.assertFalse(marker.exists(), "the submodule's fsmonitor hook ran under the adapter")
+        git(p, "status", "--porcelain=v2", "-z", "--ignore-submodules=none")
+        self.assertTrue(marker.exists(), "precondition: plain status would have run the submodule's hook")
+
+    def test_a_superproject_is_left_untouched(self):
+        p = self.superproject()
+        (p / "sub" / "a.txt").write_text("dirty\n")
+        before = tree_digest(p)  # includes .git/modules/sub: the submodule's index, refs and config
+        for capability in (ga.INSPECT, ga.RESOLVE_PROVENANCE):
+            self.run_cap(capability, p)
+        self.assertEqual(tree_digest(p), before)
+
+
+# ---------------------------------------------------------------- U  fsmonitor neutralized (hardening)
+
+class U_Fsmonitor(GitCase):
+    def hook(self):
+        marker = self.tmp / "FSMONITOR_RAN"
+        hook = self.tmp / "fsmonitor-hook"
+        hook.write_text(f"#!/bin/sh\necho ran >> '{marker}'\nexit 1\n")
+        hook.chmod(0o755)
+        return hook, marker
+
+    def test_a_configured_hook_program_never_runs(self):
+        p = self.repo()
+        hook, marker = self.hook()
+        git(p, "config", "core.fsmonitor", str(hook))
+        head = self.head(p)
+        self.assertState(self.inspect(p), clean=True, exact_revision=head)   # still correct
+        self.assertEqual(self.resolve(p).data["repository_revision"], head)
+        (p / "notes.txt").write_text("x")
+        self.assertState(self.inspect(p), clean=False, exact_revision=None, untracked_count=1)
+        self.assertFalse(marker.exists(), "the configured fsmonitor hook ran under the adapter")
+        git(p, "status", "--porcelain=v2", "-z")
+        self.assertTrue(marker.exists(), "precondition: plain status would have run the hook")
+
+    def test_the_builtin_daemon_is_never_started(self):
+        p = self.repo()
+        git(p, "config", "core.fsmonitor", "true")
+        self.addCleanup(git, p, "fsmonitor--daemon", "stop", check=False)
+        before = sorted(x.name for x in (p / ".git").iterdir())
+        self.assertState(self.inspect(p), clean=True)
+        self.assertEqual(sorted(x.name for x in (p / ".git").iterdir()), before)
+        self.assertFalse(any(name.startswith("fsmonitor--daemon") for name in before))
+        status = git(p, "fsmonitor--daemon", "status", check=False)
+        self.assertNotIn("is watching", status.stdout + status.stderr)
+        supported = "not watching" in (status.stdout + status.stderr)
+        if supported:  # where Git has the builtin daemon, prove the check is sensitive
+            git(p, "status", "--porcelain=v2", "-z")
+            watching = git(p, "fsmonitor--daemon", "status", check=False)
+            self.assertIn("is watching", watching.stdout + watching.stderr)
+
+    def test_the_override_is_fixed_and_adapter_owned(self):
+        self.assertEqual(ga.FSMONITOR_OVERRIDE, (("GIT_CONFIG_COUNT", "1"), ("GIT_CONFIG_KEY_0", "core.fsmonitor"),
+                                                 ("GIT_CONFIG_VALUE_0", "false")))
+        for pair in ga.FSMONITOR_OVERRIDE:
+            self.assertIn(pair, ga.ENVIRONMENT)
+        hostile = {"PATH": "/bin", "GIT_CONFIG_COUNT": "2", "GIT_CONFIG_KEY_0": "core.fsmonitor",
+                   "GIT_CONFIG_VALUE_0": "/tmp/evil-hook", "GIT_CONFIG_KEY_1": "core.pager", "GIT_CONFIG_VALUE_1": "x",
+                   "GIT_CONFIG_PARAMETERS": "'core.fsmonitor=/tmp/evil-hook'"}
+        built = ga.ENVIRONMENT_POLICY.build(hostile)
+        self.assertEqual((built["GIT_CONFIG_COUNT"], built["GIT_CONFIG_KEY_0"], built["GIT_CONFIG_VALUE_0"]),
+                         ("1", "core.fsmonitor", "false"))
+        for leaked in ("GIT_CONFIG_KEY_1", "GIT_CONFIG_VALUE_1", "GIT_CONFIG_PARAMETERS"):
+            self.assertNotIn(leaked, built)
+
+    def test_provenance_names_the_override_without_its_values(self):
+        env = self.inspect(self.repo()).provenance.to_dict()["environment"]
+        self.assertTrue({"GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"} <= set(env["set_names"]))
+        self.assertNotIn("core.fsmonitor", json.dumps(env))
+
+    def test_no_configuration_is_written(self):
+        p = self.repo()
+        hook, _ = self.hook()
+        git(p, "config", "core.fsmonitor", str(hook))
+        config = (p / ".git" / "config").read_bytes()
+        self.inspect(p)
+        self.assertEqual((p / ".git" / "config").read_bytes(), config)
+
+
+# ---------------------------------------------------------------- V  raw machine output and version floor
+
+class V_RawOutput(GitCase):
+    def test_the_status_parser_reads_bytes_not_text(self):
+        oid = "d" * 40
+        undecodable = b"\xff\xfe not utf-8 \x80"
+        raw = (f"# branch.oid {oid}\0# branch.head main\0".encode()
+               + b"? " + undecodable + b"\0"
+               + f"1 .M N... 100644 100644 100644 {oid} {oid} ".encode() + undecodable + b"\nline\0"
+               + b"? api_key=abc\0? ordinary.txt\0")
+        state = gs.parse(raw)
+        self.assertEqual((state["untracked_count"], state["unstaged_count"]), (3, 1))
+
+    def test_an_undecodable_branch_name_is_deterministic_and_cannot_move_a_boundary(self):
+        oid = "e" * 40
+        raw = f"# branch.oid {oid}\0".encode() + b"# branch.head feature-\xff\0" + b"? f\0"
+        first, second = gs.parse(raw), gs.parse(raw)
+        self.assertEqual(first["branch"], "feature-\\xff")
+        self.assertEqual(first, second)
+        self.assertEqual(first["untracked_count"], 1)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"),
+                         "macOS (APFS) and Windows refuse filenames that are not valid UTF-8; the parser-level "
+                         "test above covers the bytes")
+    def test_a_real_non_utf8_filename(self):
+        p = self.repo()
+        (p / os.fsdecode(b"raw-\xff-name.txt")).write_text("x")
+        self.assertState(self.inspect(p), untracked_count=1, clean=False)
+
+    def test_a_credential_shaped_branch_name(self):
+        p = self.repo()
+        git(p, "switch", "-q", "-c", "token=branchSECRET")
+        result = self.inspect(p)
+        self.assertState(result, clean=True, exact_revision=self.head(p), detached=False)
+        self.assertNotIn("branchSECRET", json.dumps(result.to_dict()))  # redacted on the way out
+
+    def test_the_result_never_holds_raw_bytes(self):
+        p = self.repo()
+        (p / "api_key=abc").write_text("x")
+        result = self.inspect(p)
+
+        def walk(value, seen=()):
+            if isinstance(value, (bytes, bytearray)):
+                self.fail("raw bytes reached the ToolResult")
+            if hasattr(value, "__dataclass_fields__") and id(value) not in seen:
+                for name in value.__dataclass_fields__:
+                    walk(getattr(value, name), seen + (id(value),))
+            elif isinstance(value, dict):
+                for item in value.values():
+                    walk(item, seen)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    walk(item, seen)
+        walk(result)
+        self.assertEqual(result.stdout, "")
+
+    def test_the_minimum_version_is_the_first_that_understands_a_boolean_fsmonitor(self):
+        self.assertEqual(ga.MINIMUM_VERSION, (2, 36, 0))
+        exe = self.tmp / "bin" / "git"
+        exe.parent.mkdir()
+        for version, expected in (("2.35.1", tmodel.VERSION_UNSUPPORTED), ("2.31.0", tmodel.VERSION_UNSUPPORTED),
+                                  ("2.36.0", tmodel.AVAILABLE)):
+            exe.write_text(f"#!{tproc.interpreter_path()}\nprint('git version {version}')\n")
+            exe.chmod(0o755)
+            self.assertEqual(GitAdapter(which=lambda name: str(exe)).probe().status, expected, version)
 
 
 if __name__ == "__main__":

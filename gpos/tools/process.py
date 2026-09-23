@@ -17,6 +17,11 @@ Guarantees:
 * stdin is closed by default: nothing interactive;
 * stdout and stderr are captured with a hard byte bound, so a process printing gigabytes cannot
   exhaust memory; the full stream length is still counted and truncation is reported;
+* captured output is exposed twice, from the same bounded capture: `stdout`/`stderr` are redacted
+  text, safe for any caller, and `raw_stdout`/`raw_stderr` are the exact captured bytes, for the
+  adapter that must parse a machine protocol (redaction can rewrite such output — for example, a
+  credential-shaped value can swallow the NUL that separates two records). The raw bytes are private:
+  no ToolResult, provenance, diagnostic, CLI output or evidence ever carries them;
 * the process runs in its own session, so a timeout terminates the whole process tree (SIGTERM,
   then SIGKILL after a short grace) instead of leaving orphans behind;
 * duration is measured with a monotonic clock, never by subtracting wall-clock timestamps.
@@ -101,7 +106,7 @@ class ToolProcessSpec:
 @dataclass(frozen=True)
 class ProcessOutcome:
     exit_code: int = None
-    stdout: str = ""
+    stdout: str = ""               # public: redacted text
     stderr: str = ""
     stdout_bytes: int = 0          # full length of the stream, even when truncated
     stderr_bytes: int = 0
@@ -111,6 +116,11 @@ class ProcessOutcome:
     terminated: bool = False       # the process tree was signalled
     duration_seconds: float = 0.0
     redactions: int = 0
+    # Private: the exact captured bytes, before redaction, from the same bounded capture as stdout and
+    # stderr (never more than capture_bytes each). For an adapter's own parsing only. Excluded from
+    # repr so they cannot surface through a log line or an exception message by accident.
+    raw_stdout: bytes = field(default=b"", repr=False)
+    raw_stderr: bytes = field(default=b"", repr=False)
 
     @property
     def truncated(self):
@@ -229,8 +239,9 @@ def run_process(spec, scopes, clock=time.monotonic):
     for r in readers:
         r.join(timeout=5.0)
     duration = clock() - started
-    out, out_n = redact(bytes(sinks[0]["data"]).decode("utf-8", errors="replace"))
-    err, err_n = redact(bytes(sinks[1]["data"]).decode("utf-8", errors="replace"))
+    raw_out, raw_err = bytes(sinks[0]["data"]), bytes(sinks[1]["data"])  # the bounded capture, unredacted
+    out, out_n = redact(raw_out.decode("utf-8", errors="replace"))
+    err, err_n = redact(raw_err.decode("utf-8", errors="replace"))
     return ProcessOutcome(
         exit_code=None if timed_out else proc.returncode,
         stdout=out, stderr=err,
@@ -238,7 +249,8 @@ def run_process(spec, scopes, clock=time.monotonic):
         stdout_truncated=sinks[0]["total"] > len(sinks[0]["data"]),
         stderr_truncated=sinks[1]["total"] > len(sinks[1]["data"]),
         timed_out=timed_out, terminated=terminated,
-        duration_seconds=round(duration, 6), redactions=out_n + err_n)
+        duration_seconds=round(duration, 6), redactions=out_n + err_n,
+        raw_stdout=raw_out, raw_stderr=raw_err)
 
 
 def interpreter_path():

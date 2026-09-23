@@ -6,7 +6,7 @@ Maturity promotions of skills are recorded here, each with the Human Decision an
 
 ## [1.0.0-alpha.11] — Phase 2C-1: Git provenance adapter
 
-Builds on the frozen Phase-2C-0 tool adapter foundation (`v1.0.0-alpha.10`) and uses it without changing its contract. No change to gate, evidence, authority, routing, lifecycle, validator, agent-adapter or foundation semantics. Projects must pin `gpos_version` `1.0.0-alpha.11`.
+Builds on the frozen Phase-2C-0 tool adapter foundation (`v1.0.0-alpha.10`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The only foundation change is one bounded amendment authorized at Human Review: a private raw capture channel (see Changed). Projects must pin `gpos_version` `1.0.0-alpha.11`.
 
 This is the first production tool adapter. It is local and read-only: it inspects a Git repository and reports an exact revision, and it can neither change a repository nor reach a network.
 
@@ -15,22 +15,29 @@ This is the first production tool adapter. It is local and read-only: it inspect
 - `gpos/tools/git/`: the production Git adapter (`git`, `VERSION_CONTROL`, `CLI`, `STATELESS`, network `FORBIDDEN`), registered by `default_registry()`, which now contains exactly `git`. The TEST_ONLY synthetic adapter still never enters the production registry, and the tool and agent adapter registries stay separate.
 - `git.inspect`: the repository state — HEAD, branch or detached HEAD, unborn branch, staged, unstaged, untracked and conflicted counts, and `exact_revision`, which is HEAD only when the tree is clean. A dirty tree is never represented as its HEAD commit.
 - `git.resolve-provenance`: the exact commit a caller may hand to later requests as `build_revision`; refused with `REPOSITORY_STATE_CONFLICT` when the tree is dirty or the branch has no commit. The foundation still never infers a revision: the handoff is explicit, and a request that does not pass it records the revision as unknown.
-- A real probe through the audited process boundary: Git found on an absolute PATH entry, its version parsed conservatively, 2.18.0 required because that is the oldest documentation that describes every option used.
-- A fixed Git surface of three argument vectors, with no caller-supplied argument, no configuration override, no mutation and no network command. Git runs with no terminal prompt, no optional locks (so `status` cannot rewrite the index), no pager and a deterministic message locale.
+- A real probe through the audited process boundary: Git found on an absolute PATH entry and its version parsed conservatively. It requires Git 2.36.0, the first release that treats `core.fsmonitor=false` as "off" rather than as the name of a program to run.
+- A fixed Git surface of three argument vectors, with no caller-supplied argument, no `-c`, no mutation and no network command. Git runs with no terminal prompt, no optional locks (so `status` cannot rewrite the index), no pager, a deterministic message locale and fsmonitor disabled at command scope.
 - Repository-root rule: the GPOS project root must be Git's work-tree top level. A nested project fails closed with `REPOSITORY_ROOT_MISMATCH` (`MONOREPO_NESTED_PROJECT_NOT_YET_SUPPORTED`) without inspecting the enclosing repository; a project outside any repository is `REPOSITORY_NOT_FOUND`. Linked worktrees are supported because Git itself reports their top level.
-- State is reported only from complete, unaltered machine output: truncated output, output altered by the process boundary's redaction, and anything the porcelain v2 parser does not fully understand are refused.
+- State is reported only from complete machine output, parsed from the exact captured bytes by a bytes-native porcelain v2 parser. Truncated output, and anything the parser does not fully understand, is refused.
 - `REPOSITORY_NOT_FOUND`, `REPOSITORY_ROOT_MISMATCH` and `REPOSITORY_STATE_CONFLICT`, generic to version control.
 - [tools/git-adapter.md](tools/git-adapter.md), with the first-party Git documentation consulted; real-Git integration tests (`tests/test_git_adapter.py`) and a bounded mutation harness (`tests/mutate_git_adapter.py`).
 
+### Hardened (Human Review of Phase 2C-1)
+
+- Submodule ignore settings can no longer produce false clean provenance. `submodule.<name>.ignore = all`, in configuration or `.gitmodules`, hid a dirty submodule completely, so a tree that was not exactly its HEAD commit was reported clean with an exact revision. Status now runs with `--ignore-submodules=none`.
+- `core.fsmonitor` is neutralized. A repository could make the adapter's READ_ONLY `git status` run a configured hook program or start Git's fsmonitor daemon — a process no capability authorized. The adapter now disables it at command scope (`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_0`, `GIT_CONFIG_VALUE_0`, fixed and adapter-owned), with no configuration write and no `-c`. The override also reaches the `git status` Git itself runs inside each submodule, closing the same path through a submodule's own hook. Because Git before 2.36 treats `false` as a hook pathname, the minimum Git is now 2.36.0.
+- Git output is parsed from the process boundary's private raw capture with a bytes-native parser, so a credential-shaped path or branch name no longer makes a repository uninspectable: counts are exact, and nothing secret-shaped reaches any public surface. The repository-root comparison also uses Git's exact bytes.
+
 ### Changed
 
+- **Foundation amendment (bounded, authorized at Human Review):** the process boundary also exposes `raw_stdout` / `raw_stderr`, the exact bytes of the same bounded capture, for adapters that parse a machine protocol. The redacted `stdout` / `stderr` are unchanged. The raw bytes are excluded from `repr` and never reach a result, provenance, diagnostic, CLI output or evidence; raw bytes offered as adapter data are refused, and copied text is still redacted. Every other foundation module is unchanged.
 - The Phase-2C-0 tests that asserted "no production tool adapter exists" now assert the Phase-2C-1 boundary exactly: the production registry is `git` and nothing else, `gpos/tools/` holds exactly one production adapter package, and no other real tool executable is named anywhere in `gpos/`.
 - `python3 -m gpos.tools` lists the production adapters by default.
 
 ### Notes
 
 - No version-control mutation capability exists; any mutation needs a separate Human Review. No hosting-service, media, device, DCC, engine or MCP adapter exists.
-- The frozen process boundary redacts credential-shaped text in captured output, which can merge NUL-separated machine records. The adapter refuses such output rather than parse it, so a repository with a credential-shaped path or branch name cannot be inspected until the foundation offers adapters an unredacted parsing channel.
+- A latent flaky test in the frozen Phase-2C-0 suite is fixed: the determinism test's volatile-timestamp set omitted `generated_at`, so two executions straddling a wall-clock second failed it (reproduced on the untouched `v1.0.0-alpha.10` tree).
 
 ## [1.0.0-alpha.10] — Phase 2C-0: tool adapter foundation
 

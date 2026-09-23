@@ -149,6 +149,13 @@ Nothing collapses into one failure code, and the library status is independent o
 - the child runs in its own session, so a timeout terminates the whole process tree (a terminate signal, then a kill signal after a short grace);
 - durations use a monotonic clock, never a subtraction of wall-clock timestamps.
 
+**Amendment (Phase 2C-1, authorized at Human Review).** Captured output is exposed twice, from the same bounded capture:
+
+- `stdout` / `stderr` are the redacted text, safe for any caller, exactly as frozen;
+- `raw_stdout` / `raw_stderr` are the exact captured bytes, for the adapter that must parse a machine protocol. Redaction can rewrite such output: a credential-shaped value can swallow the NUL that separates two records.
+
+The raw bytes use exactly the same capture bound, so no second buffer exists. They are excluded from `repr`, and no `ToolResult`, provenance, diagnostic, CLI output or evidence ever carries them. An adapter that copies them into its own data still passes the redaction boundary below, and raw bytes offered as result data are refused.
+
 There is no generic shell execution tool exposed to agents, and the CLI has no `--command` option. The adapter owns what may be executed; the runner only executes a spec that is already authorized.
 
 ### Environment policy

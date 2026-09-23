@@ -9,7 +9,8 @@ so that any accidental write to a user or global directory lands there and fails
 
 Groups: A adapter identity and registry · B capabilities · C probe and lifecycle · D execution ·
 E process safety · F leases · G artifacts · H provenance · I evidence · J project preconditions ·
-K determinism · L regression and boundaries · M CLI · N integrity hardening (code review round).
+K determinism · L regression and boundaries · M CLI · N integrity hardening (code review round) ·
+P private raw capture channel (Phase-2C-1 amendment).
 """
 
 import dataclasses
@@ -2124,9 +2125,126 @@ class N10_DryRunCreatesNothing(TmpCase):
         self.assertFalse(target.exists())
 
 
+class P01_RawCapture(TmpCase):
+    """The private raw capture channel (bounded Phase-2C-0 amendment authorized at the Phase-2C-1 review).
+
+    Adapters that parse a machine protocol read the exact captured bytes; every public surface keeps
+    today's redacted text and never carries the raw bytes."""
+
+    SECRET = "super-secret-test-value"
+
+    def leak_spec(self, **kwargs):
+        return tproc.ToolProcessSpec(executable=tproc.interpreter_path(), argv=(str(syn.HELPER), "leak"),
+                                     cwd=str(self.tmp), **kwargs)
+
+    def test_raw_capture_is_the_exact_bytes_before_redaction(self):
+        outcome = tproc.run_process(self.leak_spec(), [str(self.tmp)])
+        self.assertIn(self.SECRET.encode(), outcome.raw_stdout)
+        self.assertIsInstance(outcome.raw_stdout, bytes)
+        self.assertNotIn(self.SECRET, repr(outcome))  # the raw fields are excluded from repr
+        self.assertEqual(outcome.stdout_bytes, len(outcome.raw_stdout))  # untruncated: every byte captured
+
+    def test_public_output_is_redacted_exactly_as_before(self):
+        outcome = tproc.run_process(self.leak_spec(), [str(self.tmp)])
+        self.assertNotIn(self.SECRET, outcome.stdout)
+        self.assertEqual(outcome.stdout, redact(outcome.raw_stdout.decode("utf-8", errors="replace"))[0])
+        self.assertEqual(outcome.stderr, redact(outcome.raw_stderr.decode("utf-8", errors="replace"))[0])
+        self.assertGreaterEqual(outcome.redactions, 1)
+
+    def test_raw_capture_is_absent_from_tool_result(self):
+        result = self.run_cap(syn.LEAK)
+        self.assertNotIn(self.SECRET, json.dumps(result.to_dict()))
+        self.assertNotIn(self.SECRET, repr(result))
+
+        def walk(value):
+            if isinstance(value, (bytes, bytearray)):
+                self.fail("raw bytes reached the ToolResult")
+            if hasattr(value, "__dataclass_fields__"):
+                for name in value.__dataclass_fields__:
+                    walk(getattr(value, name))
+            elif isinstance(value, dict):
+                for item in value.values():
+                    walk(item)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    walk(item)
+        walk(result)
+
+    def test_raw_capture_is_absent_from_cli_output(self):
+        import io
+        from gpos.tools import cli as tool_cli
+        for fmt in ("json", "text"):
+            buffer = io.StringIO()
+            tool_cli.main(["--include-test-adapters", "execute", "--adapter", "synthetic", "--capability", syn.LEAK,
+                           "--subject-ref", "TASK-1", "--output-dir", str(self.out(fmt)), "--format", fmt], stdout=buffer)
+            self.assertNotIn(self.SECRET, buffer.getvalue(), fmt)
+            if fmt == "json":  # the text format prints no captured output at all
+                self.assertIn("[REDACTED]", buffer.getvalue())
+
+    def test_raw_capture_is_absent_from_provenance(self):
+        result = self.run_cap(syn.LEAK)
+        self.assertNotIn(self.SECRET, json.dumps(result.provenance.to_dict()))
+        self.assertNotIn(self.SECRET, repr(result.provenance))
+
+    def test_raw_capture_obeys_the_same_bound(self):
+        spec = tproc.ToolProcessSpec(executable=tproc.interpreter_path(), argv=(str(syn.HELPER), "noisy", "64"),
+                                     cwd=str(self.tmp), capture_bytes=1000)
+        outcome = tproc.run_process(spec, [str(self.tmp)])
+        self.assertTrue(outcome.stdout_truncated)
+        self.assertEqual(len(outcome.raw_stdout), 1000)            # exactly the bound, not the stream
+        self.assertGreater(outcome.stdout_bytes, len(outcome.raw_stdout))
+        self.assertLessEqual(len(outcome.raw_stderr), 1000)
+
+    def test_an_adapter_copying_raw_bytes_into_its_data_is_still_sanitized(self):
+        class Copier(ToolAdapter):
+            descriptor = descriptor(capabilities=(capability(requires_project=False, requires_tool=False),))
+
+            def probe(self):
+                return ProbeResult("synthetic", tmodel.AVAILABLE)
+
+            def execute(self, request, context):
+                outcome = context.run(tproc.ToolProcessSpec(executable=tproc.interpreter_path(),
+                                                            argv=(str(syn.HELPER), "leak"), cwd=context.workspace))
+                text = outcome.raw_stdout.decode()
+                return AdapterOutcome(ok=True, exit_code=0, process=outcome, detail=text,
+                                      data={"raw_text": text, "lines": text.splitlines()},
+                                      diagnostics=(tdg.make("PROCESS_OUTPUT_TRUNCATED", text, "synthetic"),))
+
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(Copier())
+        result = self.run_cap("synthetic.example", reg=r)
+        self.assertNotIn(self.SECRET, json.dumps(result.to_dict()))
+        self.assertIn("[REDACTED]", json.dumps(result.data))
+
+        class BytesCopier(Copier):
+            def execute(self, request, context):
+                outcome = context.run(tproc.ToolProcessSpec(executable=tproc.interpreter_path(),
+                                                            argv=(str(syn.HELPER), "leak"), cwd=context.workspace))
+                return AdapterOutcome(ok=True, exit_code=0, process=outcome, data={"raw": outcome.raw_stdout})
+
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(BytesCopier())
+        result = self.run_cap("synthetic.example", reg=r)
+        self.assertIn("UNSUPPORTED_RESULT_VALUE", self.codes(result))  # bytes are refused, never stringified
+        self.assertNotIn(self.SECRET, json.dumps(result.to_dict()))
+
+    def test_adapters_that_ignore_the_raw_channel_behave_as_before(self):
+        outcome = tproc.run_process(self.leak_spec(), [str(self.tmp)])
+        public = {name: getattr(outcome, name) for name in outcome.__dataclass_fields__
+                  if not name.startswith("raw_") and name != "duration_seconds"}
+        self.assertEqual(set(public), {"exit_code", "stdout", "stderr", "stdout_bytes", "stderr_bytes",
+                                       "stdout_truncated", "stderr_truncated", "timed_out", "terminated",
+                                       "redactions"})
+        self.assertEqual((public["exit_code"], public["redactions"], public["stdout_truncated"]), (0, 2, False))
+        result = self.run_cap(syn.LEAK)
+        self.assertEqual(result.status, tdg.SUCCESS)
+        self.assertIn("SECRETS_REDACTED", self.codes(result))
+        self.assertIn("API_KEY=[REDACTED]", result.stdout)
+
+
 if __name__ == "__main__":
     result = unittest.main(verbosity=1, exit=False).result
     shutil.rmtree(_HOME, ignore_errors=True)
     print(f"GPOS tool adapter foundation tests ({len(SyntheticAdapter().capabilities())} synthetic capabilities; "
-          f"0 production tool adapters)")
+          f"production tool adapters: {', '.join(default_registry(FW).adapter_ids()) or 'none'})")
     sys.exit(0 if result.wasSuccessful() else 1)

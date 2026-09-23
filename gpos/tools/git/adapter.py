@@ -30,11 +30,15 @@ that wants one runs `git.resolve-provenance` and passes the returned revision as
 in a later request. There is no cache, no current-revision singleton and no cross-call state: every
 execution reads the repository as it is now.
 
-Machine-readable output is parsed only when it is complete and unaltered. The process boundary
-redacts credential-shaped text in captured output before an adapter sees it; if that changed the
-output (a path or branch name that looks like a credential assignment), or the capture bound
-truncated it, the adapter refuses to report a state rather than parse text that is not what Git
-wrote.
+Machine-readable output is parsed from the process boundary's private raw capture — the exact bytes
+Git wrote — never from the public redacted text, which a credential-shaped path could rewrite. Output
+the capture bound truncated is refused rather than parsed. The public result carries counts, never a
+path, and anything the adapter reports still passes the foundation's redaction boundary.
+
+Two repository settings are overridden because they would otherwise break this adapter's contract:
+`core.fsmonitor` (it can make `git status` run a hook program or start a daemon) and
+`submodule.<name>.ignore` (it can hide a dirty submodule, and with it the fact that the tree is not
+exactly its HEAD commit). Both overrides are fixed, command-scope and write nothing.
 """
 
 import os
@@ -54,10 +58,14 @@ from . import status as git_status
 ADAPTER_ID = "git"
 ADAPTER_VERSION = "1.0.0"
 EXECUTABLE_NAME = "git"
-# The oldest Git whose documentation describes every option used below: porcelain v2 with branch
-# headers first appears in the 2.11 manual, GIT_OPTIONAL_LOCKS in the 2.15 manual, and
-# `status --find-renames` / `--no-renames` in the 2.18 manual (absent from 2.17).
-MINIMUM_VERSION = (2, 18, 0)
+# The oldest Git that honours everything below. Porcelain v2 with branch headers first appears in the
+# 2.11 manual, GIT_OPTIONAL_LOCKS in 2.15 and `status --find-renames` in 2.18; command-scope
+# configuration through GIT_CONFIG_COUNT arrives in 2.31. The binding constraint is fsmonitor: Git's
+# own manual warns that "Git versions 2.35.1 and prior will not understand the boolean values and will
+# consider the 'true' or 'false' values as hook pathnames to be invoked", and boolean core.fsmonitor
+# arrives with the fsmonitor daemon in 2.36.0. On an older Git, core.fsmonitor=false would itself try to
+# run a program named `false`, so the override below is only safe from 2.36.0 on.
+MINIMUM_VERSION = (2, 36, 0)
 VERSION_OUTPUT = re.compile(r"^git version (\d+)\.(\d+)\.(\d+)(?:[.\s(].*)?$")
 
 INSPECT = f"{ADAPTER_ID}.inspect"
@@ -65,21 +73,35 @@ RESOLVE_PROVENANCE = f"{ADAPTER_ID}.resolve-provenance"
 
 # The complete authorized Git surface. Every process this adapter starts uses exactly one of these
 # vectors, unmodified. `--find-renames` makes rename detection independent of user configuration;
-# `--no-ahead-behind` skips upstream divergence counting, which this adapter never reports.
+# `--no-ahead-behind` skips upstream divergence counting, which this adapter never reports;
+# `--ignore-submodules=none` overrides any `submodule.<name>.ignore` in configuration or .gitmodules,
+# which could otherwise hide a dirty submodule and let a dirty tree look like an exact revision.
 VERSION_ARGV = ("--version",)
 TOPLEVEL_ARGV = ("rev-parse", "--show-toplevel")
 STATUS_ARGV = ("status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all",
-               "--find-renames", "--no-ahead-behind")
+               "--find-renames", "--no-ahead-behind", "--ignore-submodules=none")
 AUTHORIZED_COMMANDS = (VERSION_ARGV, TOPLEVEL_ARGV, STATUS_ARGV)
 
-# Non-interactive, side-effect-free Git. Names and values are fixed here; only the names are ever
-# recorded (EnvironmentPolicy.metadata).
+# Non-interactive, side-effect-free Git. Names and values are fixed here, owned by the adapter and never
+# influenced by a caller; only the names are ever recorded (EnvironmentPolicy.metadata).
+#
+# core.fsmonitor is switched off at command scope (GIT_CONFIG_COUNT/KEY/VALUE, which "override values in
+# configuration files"). Repository configuration may otherwise make `git status` start the fsmonitor
+# daemon or run a configured hook program — a second process this READ_ONLY capability never authorized.
+# Command-scope configuration also reaches the `git status` Git itself runs inside each submodule, so a
+# submodule's own hook is neutralized too. Nothing is written to any configuration file, and `-c` is
+# never used. Every other repository and user setting still applies.
+FSMONITOR_OVERRIDE = (
+    ("GIT_CONFIG_COUNT", "1"),
+    ("GIT_CONFIG_KEY_0", "core.fsmonitor"),
+    ("GIT_CONFIG_VALUE_0", "false"),
+)
 ENVIRONMENT = (
     ("GIT_TERMINAL_PROMPT", "0"),  # never prompt on a terminal
     ("GIT_OPTIONAL_LOCKS", "0"),   # status must not refresh and rewrite the index
     ("GIT_PAGER", "cat"),          # never launch a pager
     ("LC_ALL", "C"),               # deterministic wording in the messages this adapter quotes
-)
+) + FSMONITOR_OVERRIDE
 ENVIRONMENT_POLICY = proc.EnvironmentPolicy(overrides=ENVIRONMENT)
 
 PROBE_TIMEOUT = 10.0
@@ -121,10 +143,11 @@ DESCRIPTOR = model.AdapterDescriptor(
         "Local and read-only: no version-control mutation and no network operation exists in this adapter.",
         f"{MONOREPO_NESTED_PROJECT_NOT_YET_SUPPORTED}: the GPOS project root must be Git's work-tree top level; "
         f"a project nested inside a larger repository is refused.",
-        "Output that the process boundary had to redact or truncate is refused rather than parsed, so a "
-        "credential-shaped path or branch name makes the state unavailable instead of wrong.",
-        "Git runs with the repository's and the user's own configuration, under Git's own trust model "
-        "(safe.directory). Git itself may run a configured filesystem-monitor hook during status.",
+        "Git's machine output is parsed from the exact captured bytes; truncated output is refused rather "
+        "than parsed, and public output stays redacted.",
+        "Git runs with the repository's and the user's own configuration under Git's own trust model "
+        "(safe.directory), except that core.fsmonitor is disabled at command scope and submodule ignore "
+        "settings are overridden, so no hook or daemon runs and no dirty submodule is hidden.",
     ))
 
 
@@ -167,11 +190,11 @@ class GitAdapter(model.ToolAdapter):
             return model.ProbeResult(ADAPTER_ID, model.UNAVAILABLE, tool_path=executable, platform=platform,
                                      detail=f"Git could not be started: {exc}",
                                      capability_availability=unusable("Git could not be started"))
-        if outcome.timed_out or outcome.exit_code != 0 or outcome.truncated or outcome.redactions:
+        if outcome.timed_out or outcome.exit_code != 0 or outcome.truncated:
             return model.ProbeResult(ADAPTER_ID, model.UNAVAILABLE, tool_path=executable, platform=platform,
                                      detail=f"`git --version` did not complete normally (exit {outcome.exit_code})",
                                      capability_availability=unusable("Git did not run normally"))
-        version = parse_version(outcome.stdout)
+        version = parse_version(outcome.raw_stdout.decode("utf-8", errors="replace"))
         if version is None:
             # The version output format is not documented as stable. An unrecognized format is never
             # turned into a guessed version: compatibility cannot be established, so it is not claimed.
@@ -219,14 +242,16 @@ class GitAdapter(model.ToolAdapter):
             reason = (top.stderr.strip().splitlines() or ["no reason given"])[0]
             return None, _refusal(top, spec, "REPOSITORY_NOT_FOUND",
                                   f"Git found no work tree at the GPOS project root ({reason})")
-        toplevel = top.stdout.rstrip("\n")
-        if not toplevel or "\n" in toplevel:
+        raw_toplevel = top.raw_stdout[:-1] if top.raw_stdout.endswith(b"\n") else top.raw_stdout
+        if not raw_toplevel or b"\n" in raw_toplevel or b"\0" in raw_toplevel:
             return None, _failed(top, spec, "`rev-parse --show-toplevel` did not return exactly one path")
+        toplevel = os.fsdecode(raw_toplevel)            # exact, for the comparison
+        shown = raw_toplevel.decode("utf-8", errors="backslashreplace")  # printable, for the message
         if not same_directory(toplevel, context.project_root):
             # Only the location of the enclosing repository was read. Its work tree is never inspected
             # and no scope over it is granted.
             return None, _refusal(top, spec, "REPOSITORY_ROOT_MISMATCH",
-                                  f"Git's work-tree top level is {toplevel}, not the GPOS project root "
+                                  f"Git's work-tree top level is {shown}, not the GPOS project root "
                                   f"{context.project_root}. A project nested inside a larger repository is not "
                                   f"supported yet ({MONOREPO_NESTED_PROJECT_NOT_YET_SUPPORTED}); nothing in the "
                                   f"enclosing repository was inspected")
@@ -238,7 +263,7 @@ class GitAdapter(model.ToolAdapter):
             reason = (status.stderr.strip().splitlines() or ["no reason given"])[0]
             return None, _failed(status, spec, f"`git status` exited {status.exit_code}: {reason}")
         try:
-            state = git_status.parse(status.stdout)
+            state = git_status.parse(status.raw_stdout)
         except git_status.StatusParseError as exc:
             return None, _failed(status, spec, f"`git status` output could not be read as complete porcelain v2 "
                                                f"({exc}); no repository state is reported")
@@ -293,24 +318,20 @@ def same_directory(left, right):
 
 
 def _without_output(outcome):
-    """The process outcome without its captured stdout. Timing, exit code, truncation, byte counts and
-    redaction counts still reach the foundation; the raw machine output — which names paths — does not
-    reach the result, because the public contract is counts."""
-    return replace(outcome, stdout="")
+    """The process outcome without its captured stdout, public or raw. Timing, exit code, truncation,
+    byte counts and redaction counts still reach the foundation; the machine output — which names
+    paths — goes no further than the parser, because the public contract is counts."""
+    return replace(outcome, stdout="", raw_stdout=b"", raw_stderr=b"")
 
 
 def _unusable(outcome, what, spec):
-    """An AdapterOutcome refusing to parse output that is incomplete or altered, else None."""
+    """An AdapterOutcome refusing to parse output that is incomplete (timed out or truncated), else None."""
     if outcome.timed_out:
         return AdapterOutcome(ok=False, process=_without_output(outcome), detail=f"`git {what}` timed out",
                               command=spec.command_for_provenance(), environment=spec.env.metadata())
     if outcome.truncated:
         return _failed(outcome, spec, f"`git {what}` output reached the capture bound and was truncated; a partial "
                                       f"reading is never reported as the repository state")
-    if outcome.redactions:
-        return _failed(outcome, spec, f"`git {what}` output contained credential-shaped text that the process "
-                                      f"boundary redacted, so it is no longer exactly what Git wrote; no repository "
-                                      f"state is reported from altered output")
     return None
 
 

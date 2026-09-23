@@ -259,22 +259,42 @@ MUTATIONS = [
      '    if workspace.exists() and not workspace.is_dir():', '    if False:'),
     ('a relative output directory is accepted', 'gpos/tools/execution.py',
      '        if not workspace.is_absolute():', '        if False:'),
+    # --- Phase-2C-1 amendment: the private raw capture channel
+    ('raw capture accidentally serialized into the result', 'gpos/tools/execution.py',
+     '        diagnostics=tuple(diagnostics), data=outcome.data, plan=tuple(outcome.plan))',
+     '        diagnostics=tuple(diagnostics), plan=tuple(outcome.plan),\n'
+     '        data={**(outcome.data or {}), "raw": process.raw_stdout.decode("utf-8", "replace") if process else ""})'),
+    ('public stdout no longer redacted', 'gpos/tools/process.py',
+     '    out, out_n = redact(raw_out.decode("utf-8", errors="replace"))',
+     '    out, out_n = raw_out.decode("utf-8", errors="replace"), 0'),
+    ('raw buffer bypasses the capture limit', [
+        ('gpos/tools/process.py', '            sink["total"] += len(chunk)\n',
+         '            sink["total"] += len(chunk)\n            sink.setdefault("all", bytearray()).extend(chunk)\n'),
+        ('gpos/tools/process.py',
+         '    raw_out, raw_err = bytes(sinks[0]["data"]), bytes(sinks[1]["data"])  # the bounded capture, unredacted',
+         '    raw_out, raw_err = bytes(sinks[0].get("all", sinks[0]["data"])), bytes(sinks[1].get("all", sinks[1]["data"]))')]),
+    ('raw capture shown in repr', 'gpos/tools/process.py',
+     '    raw_stdout: bytes = field(default=b"", repr=False)', '    raw_stdout: bytes = field(default=b"")'),
     ('the CLI packs path and context into one ambiguous value', 'gpos/tools/cli.py',
      '        artifact_id, path = item.split("=", 1)', '        artifact_id, path = item.split(":", 1)'),
 ]
 
 
 def run(mutation):
-    name, rel, anchor, replacement = mutation
+    """A mutation is (name, file, anchor, replacement), or (name, [(file, anchor, replacement), ...]) when one
+    realistic defect needs more than one edit."""
+    name = mutation[0]
+    edits = mutation[1] if len(mutation) == 2 else [tuple(mutation[1:])]
     tmp = Path(tempfile.mkdtemp(prefix="gpos-toolmut-"))
     try:
         copy = tmp / "repo"
         shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "__pycache__", ".DS_Store"))
-        path = copy / rel
-        text = path.read_text()
-        if text.count(anchor) != 1:
-            return name, f"NOT APPLIED (anchor found {text.count(anchor)} times)"
-        path.write_text(text.replace(anchor, replacement))
+        for rel, anchor, replacement in edits:
+            path = copy / rel
+            text = path.read_text()
+            if text.count(anchor) != 1:
+                return name, f"NOT APPLIED ({rel}: anchor found {text.count(anchor)} times)"
+            path.write_text(text.replace(anchor, replacement))
         out = subprocess.run([sys.executable, "-B", str(copy / "tests" / "test_tool_foundation.py")],
                              capture_output=True, text=True,
                              env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"), timeout=900)

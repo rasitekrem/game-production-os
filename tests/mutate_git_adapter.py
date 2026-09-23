@@ -61,8 +61,25 @@ MUTATIONS = [
          "        spec = proc.ToolProcessSpec(executable=context.probe.tool_path,\n"
          "                                    argv=argv + tuple(str(v) for v in context.request.inputs.values()),")]),
     # --- further guarantees the suite defends
-    ("output altered by redaction is parsed anyway", [
-        (ADAPTER, "    if outcome.redactions:\n        return _failed(", "    if False:\n        return _failed(")]),
+    ("status parsed from the public redacted text instead of the raw bytes", [
+        (ADAPTER, "            state = git_status.parse(status.raw_stdout)",
+         "            state = git_status.parse(status.stdout.encode())")]),
+    # --- hardening round: submodules, fsmonitor, raw machine output, version floor
+    ("--ignore-submodules=none removed", [
+        (ADAPTER, ',\n               "--find-renames", "--no-ahead-behind", "--ignore-submodules=none")',
+         ',\n               "--find-renames", "--no-ahead-behind")')]),
+    ("fsmonitor override removed", [
+        (ADAPTER, ") + FSMONITOR_OVERRIDE", ")")]),
+    ("fsmonitor override left to repository configuration", [
+        (ADAPTER, '    ("GIT_CONFIG_VALUE_0", "false"),', '    ("GIT_CONFIG_VALUE_0", ""),')]),
+    ("root compared through the public redacted text", [
+        (ADAPTER, "        toplevel = os.fsdecode(raw_toplevel)            # exact, for the comparison",
+         '        toplevel = top.stdout.rstrip("\\n")')]),
+    ("minimum version below the boolean-fsmonitor floor", [
+        (ADAPTER, "MINIMUM_VERSION = (2, 36, 0)", "MINIMUM_VERSION = (2, 18, 0)")]),
+    ("branch names decoded lossily", [
+        (STATUS, '    return value.decode("utf-8", errors="backslashreplace")',
+         '    return value.decode("utf-8", errors="replace")')]),
     ("untracked directories collapsed into one entry", [
         (ADAPTER, '"--untracked-files=all"', '"--untracked-files=normal"')]),
     ("rename origin read as a new record", [
@@ -78,8 +95,8 @@ MUTATIONS = [
         (ADAPTER, "        if not os.path.isabs(found):", "        if False:")]),
     ("a non-repository project reported as clean", [
         (ADAPTER, "        if top.exit_code != 0:\n", "        if False:\n")]),
-    ("raw path output leaks into the result", [
-        (ADAPTER, '    return replace(outcome, stdout="")', "    return outcome")]),
+    ("path-bearing output leaks into the result", [
+        (ADAPTER, '    return replace(outcome, stdout="", raw_stdout=b"", raw_stderr=b"")', "    return outcome")]),
 ]
 
 

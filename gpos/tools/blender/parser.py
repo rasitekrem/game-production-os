@@ -20,7 +20,8 @@ ENGINE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
 VERSION = re.compile(r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,4}")
 REFUSAL_CODES = {"OPEN_FAILED", "NAME_LIMIT", "SCENE_LIMIT", "SCENE_NOT_FOUND", "NO_CAMERA", "FRAME_OUT_OF_RANGE",
                  "ENGINE_UNSUPPORTED", "RESOLUTION_OUT_OF_BOUNDS", "EXTERNAL_DEPENDENCIES", "RENDER_SCRIPTING",
-                 "COMPOSITOR_FILE_OUTPUT", "MULTIVIEW", "SEQUENCER_STRIPS", "STAMP_BURN_IN", "RENDER_FAILED"}
+                 "COMPOSITOR_FILE_OUTPUT", "MULTIVIEW", "SEQUENCER_STRIPS", "STAMP_BURN_IN", "RENDER_FAILED",
+                 "ENGINE_LOG_UNBOUNDED", "AUTOEXEC_REQUIRED"}
 OBJECT_GROUPS = {"MESH", "ARMATURE", "CAMERA", "LIGHT", "EMPTY", "OTHER"}
 
 
@@ -92,7 +93,7 @@ def refusal(value):
 
 def selftest(value):
     _keys(value, ("status", "mode", "blender_version", "engines", "open_mainfile", "render", "blend_paths",
-                  "factory_startup", "autoexec_enabled", "online_access"), "the selftest record")
+                  "autoexec_fail", "factory_startup", "autoexec_enabled", "online_access"), "the selftest record")
     if not isinstance(value["blender_version"], str) or not VERSION.fullmatch(value["blender_version"]):
         raise HelperProtocolError("the selftest version is malformed")
     engines = value["engines"]
@@ -100,10 +101,10 @@ def selftest(value):
         raise HelperProtocolError("the selftest found no supported built-in render engine")
     _keys(value["open_mainfile"], ("use_scripts", "load_ui"), "the open_mainfile capabilities")
     _keys(value["render"], ("write_still", "scene"), "the render capabilities")
-    for flag in ("blend_paths", "factory_startup", "autoexec_enabled", "online_access"):
+    for flag in ("blend_paths", "autoexec_fail", "factory_startup", "autoexec_enabled", "online_access"):
         _bool(value[flag], flag)
     required = (value["open_mainfile"]["use_scripts"], value["open_mainfile"]["load_ui"], value["render"]["write_still"],
-                value["render"]["scene"], value["blend_paths"], value["factory_startup"])
+                value["render"]["scene"], value["blend_paths"], value["autoexec_fail"], value["factory_startup"])
     if not all(v is True for v in required) or value["autoexec_enabled"] is not False or value["online_access"] is not False:
         raise HelperProtocolError("this Blender build does not provide the fixed safety and render contract")
     return value

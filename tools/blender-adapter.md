@@ -64,7 +64,10 @@ Observed on the real runtime, and handled in code:
 | a Freestyle style module in SCRIPT mode runs embedded Python during rendering **even with** `--disable-autoexec` | every Freestyle render is refused; it is never silently disabled |
 | a user startup script in the isolated root runs without `--factory-startup`, and not with it | `--factory-startup` is part of the baseline |
 | a scene authored with an engine that is not available (an add-on engine) is shown by the Python API as the fallback engine BLENDER_EEVEE | the helper reads Blender's own load report from the execution's log file; such a scene is refused and inspected with its authored engine |
-| a default factory scene references Blender's bundled brush assets through a relative path into the installation's datafiles | paths into Blender's own installation are not project dependencies |
+| `--log-file` truncates the file, and the load report is written line by line as it happens; a normal load log is a few hundred bytes, and 800 scenes with unavailable engines produce about 300 KiB | the helper trusts the report only when the whole log is at most 256 KiB (see [Render](#render)) |
+| the factory cube material carries a *weak library reference* to Blender's bundled brush library, stored as a path relative to where the file was saved (`//../../…/datafiles/assets/brushes/…`); in a copy at another directory depth, the same text resolves somewhere else, where no file exists | a path is Blender's own only when the file it actually resolves to lies inside the installation's resolved datafiles directory; the generated fixtures replace that material, so they are truly self-contained |
+| with scripts disabled, Blender sets its own read-only flag `bpy.app.autoexec_fail` when it blocks a registered text block, or a driver that its restricted driver evaluator refuses (for example one naming `__import__`, even in a branch not taken at that frame); the flag has a message naming only the last failure | a render is refused whenever the flag is set; inspection stays available |
+| a simple driver expression (`frame * 0.5`, or one of driver variables) is evaluated natively; a non-simple one using only names Blender's restricted driver namespace allows (`max(frame, 2) * 0.25`) is evaluated there; neither sets the flag | such drivers render, and the image shows their effect |
 | a PNG render carries metadata stamps by default, including the file name, the date and the render time | with burn-in off, the metadata stamps are switched off in memory: renders are reproducible and name no file. Burn-in (stamps drawn into the pixels) is refused |
 | `frame_start` and `frame_end` have a hard minimum of 0; the resolution has a hard minimum of 4 | the frame input is a non-negative integer, no larger than 1,048,574 |
 
@@ -101,7 +104,7 @@ The layers:
 5. `--offline-mode`: no internet access, whatever any preference says.
 6. **The fixed helper.** Its only variable arguments come after `--`: the mode, a per-execution nonce, the validated `.blend` path, the adapter's workspace output path, an exact scene name and a canonical frame number.
 
-The self-test refuses a Blender where `open_mainfile` lacks `use_scripts` or `load_ui`, where the render operator lacks `write_still` or `scene`, where `bpy.utils.blend_paths` is missing, where factory start-up is not in effect, where auto-execution is enabled or online access is allowed, or where no built-in engine can be set. That Blender is `VERSION_UNSUPPORTED`. The helper must also report the same version as `--version` did.
+The self-test refuses a Blender where `open_mainfile` lacks `use_scripts` or `load_ui`, where the render operator lacks `write_still` or `scene`, where `bpy.utils.blend_paths` or `bpy.app.autoexec_fail` is missing, where factory start-up is not in effect, where auto-execution is enabled or online access is allowed, or where no built-in engine can be set. That Blender is `VERSION_UNSUPPORTED`. The helper must also report the same version as `--version` did.
 
 This is process-level configuration, not operating-system sandboxing. A Blender process runs with the invoking user's file-system permissions.
 
@@ -143,7 +146,9 @@ Inspection reports:
 
 It reports **counts and names, never paths**. More than 64 scenes, or a name longer than 256 characters, fails closed. Inspection never renders, saves or creates evidence.
 
-**External dependencies** are the union of every path Blender itself reports (`bpy.utils.blend_paths`) with an explicit list of render-relevant sources: linked libraries, file-backed unpacked images, fonts that are not built in, unpacked sounds and volumes, movie clips and cache files. Only paths into Blender's own installed datafiles (its bundled assets, part of the installation that the tool version identifies) are excluded. Packed data is part of the `.blend`.
+**External dependencies** are the union of every path Blender itself reports (`bpy.utils.blend_paths`) with an explicit list of render-relevant sources: linked libraries, file-backed unpacked images, fonts that are not built in, unpacked sounds and volumes, movie clips and cache files. Packed data is part of the `.blend`.
+
+Each stored path is first **resolved** to the real file it refers to from the loaded file (`//` expanded, every `..` and symbolic link followed). It is excluded only when that resolved path lies inside the resolved datafiles directory of the running installation (`bpy.utils.system_resource("DATAFILES")`), compared by whole path components with the platform's case and drive rules. Those are Blender's bundled assets, part of the installation that the tool version identifies. The stored text never decides. A path written to *look like* the installation (`//../Applications/Blender.app/…/datafiles/…`) but resolving next to the project is an external dependency, and a test proves it. A factory-derived file whose weak brush reference no longer resolves into the installation, because the file was moved to another directory depth, is counted as a missing dependency and is not rendered; this fails closed.
 
 ## Render
 
@@ -154,9 +159,11 @@ The render uses the authored scene. It is the active scene, or the scene_name in
 | unknown scene | names match exactly |
 | no authored camera | a camera is never generated or chosen |
 | frame outside the scene's range | a frame is never clamped |
+| load log over 256 KiB | the unavailable-engine report could lie beyond any part read; the log is never read in part |
 | unavailable or unsupported engine | only BLENDER_EEVEE, BLENDER_WORKBENCH and CYCLES; an engine is never replaced |
 | effective resolution over 4096 on either edge or over 16,777,216 pixels | never downscaled; the asset owner changes the scene |
 | any external dependency | only a self-contained `.blend` is rendered as evidence |
+| Blender reports blocked source Python (`bpy.app.autoexec_fail`) | the scene may not be what its author sees; GPOS never runs source Python, so it cannot claim visual evidence from such a scene |
 | Freestyle | can run embedded scripts during rendering even with auto-execution off |
 | OSL script nodes, or the Cycles OSL shading system | Open Shading Language scripts |
 | a compositor File Output node | would write files besides the one image |
@@ -173,7 +180,7 @@ The helper changes only the following, in memory and never saved:
 - every metadata-stamp flag is switched off (burn-in is already known to be off, so the pixels are unaffected);
 - the scene is set to the frame.
 
-It then renders one still (`write_still`) for that scene. The adapter then checks the file:
+It then renders one still (`write_still`) for that scene. Blender's blocked-Python flag is checked again after the frame is set and after rendering. If it appears only while rendering, the image exists but is refused: it becomes an incomplete artifact, never evidence. The adapter then checks the file:
 
 - it is a regular file and not a symlink;
 - it is not empty and not over 128 MiB;
@@ -243,11 +250,13 @@ Refusal messages and inspection data carry no path. The tests use a credential-s
 | caller Python, script, expression, operator, argv, engine, camera, executable or output path | none: two capabilities with inputs scene_name and frame only; tested at the descriptor, source and runtime-argv level |
 | subprocess outside the boundary | none: the adapter, helper and parser import no subprocess or network module; process.py remains the only subprocess importer |
 | embedded scripts (text blocks, drivers) | not run: `--disable-autoexec` and `use_scripts=False`, proven with marker-writing fixtures against a sensitive control |
+| a render whose scene depends on blocked source Python | refused when Blender's own flag reports blocked Python, before rendering; drivers Blender evaluates without auto-execution still render |
 | render-time scripts (Freestyle, OSL) | refused before rendering, never silently disabled; the Freestyle risk is proven real on this Blender |
 | user preferences, startup scripts, add-ons, extensions | not loaded: isolated BLENDER_USER_RESOURCES plus `--factory-startup`, proven with a prepared user root |
 | real user profile | never written: every real test process uses an isolated root, and the suite fails if the real profile's fingerprint changes |
 | source modification | none: no save, export or pack call; tests hash the source and list its directory (no backup or autosave file appears) |
-| undeclared file reads | refused: any external dependency blocks a render |
+| undeclared file reads | refused: any external dependency blocks a render; Blender's own assets are recognized only by the resolved file's real location, never by stored path text |
+| silent engine fallback | refused: the complete, bounded load report is required; an oversized log is refused |
 | extra writes | refused: File Output nodes, multi-view and sequencer strips; the workspace holds exactly render.png |
 | forged helper result | refused: per-execution nonce, exactly one record, strict schema, parsed from the private raw capture |
 | network | `--offline-mode`, online access checked off by the self-test, no network import |
@@ -270,7 +279,9 @@ The production design was then changed to use Blender's official BLENDER_USER_RE
 
 - One still frame of an authored scene. No animation, turntable, video, framing or camera choice.
 - Only self-contained `.blend` sources render. A file with linked libraries or external textures can be inspected but not rendered as evidence.
-- An unavailable engine is detected through Blender's own load report in its log file, whose wording is version-specific. The helper fails closed if a report mentions an unavailable engine it cannot read, and the self-test pins the helper to the Blender it runs in. This was verified on Blender 5.2.0 LTS only.
+- An unavailable engine is detected through Blender's own load report in its log file, whose wording is version-specific. The helper fails closed if a report mentions an unavailable engine it cannot read, or if the log is larger than 256 KiB, and the self-test pins the helper to the Blender it runs in. This was verified on Blender 5.2.0 LTS only.
+- A non-simple driver expression is evaluated by Blender's own restricted driver namespace with auto-execution off; GPOS relies on Blender's report (`bpy.app.autoexec_fail`) of what that namespace blocked, and refuses those renders.
+- A file created from Blender's factory scene keeps a weak reference to Blender's bundled brush library, stored relative to where it was saved. After the file is moved to another directory depth it counts as a missing dependency, and the render is refused.
 - Rendering uses the host's CPU and GPU as Blender chooses; identical bytes are verified on one host, not across hardware.
 - Real-runtime tests ran on macOS only; Windows and Linux hosts were not exercised.
 - Process-level isolation only; no operating-system sandbox.
@@ -298,4 +309,5 @@ Groups A–Z cover:
 - extra outputs and the real render;
 - materialization and the DCC authority boundary against the real validator;
 - mutation consent, dry run, partial output and timeout;
-- privacy, the command surface and the CLI.
+- privacy, the command surface and the CLI;
+- the final hardening: resolved-path containment against a path that imitates Blender's datafiles, the bounded load log (a real oversized log, and the helper's own reader against crafted complete, at-the-bound, beyond-the-bound and oversized logs), and blocked source Python (Blender's own flag per fixture; text blocks and Python drivers refused; simple and restricted drivers rendered with their effect visible).

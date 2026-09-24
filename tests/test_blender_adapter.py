@@ -96,6 +96,7 @@ def setUpModule():
                          "--python-exit-code", "3", "--python", str(BUILDER), "--", str(out), str(markers)], user)
     if done.returncode != 0 or b"GPOS_FIXTURES_BUILT" not in done.stdout:
         raise RuntimeError("the Blender fixtures could not be built")
+    _STATE["spoof_tail"] = re.search(rb"GPOS_SPOOF_TAIL (\S+)", done.stdout).group(1).decode()
     for path in out.glob("*.blend"):
         FIX[path.stem] = path
     FIX["external-texture.png"] = out / "external-texture.png"
@@ -245,7 +246,7 @@ sys.exit(cfg.get("exit_" + mode, cfg.get("exit", 0) if mode == "selftest" else 0
 GOOD_SELFTEST = {"status": "ok", "mode": "selftest", "blender_version": "5.2.0",
                  "engines": ["BLENDER_EEVEE", "BLENDER_WORKBENCH", "CYCLES"],
                  "open_mainfile": {"use_scripts": True, "load_ui": True}, "render": {"write_still": True, "scene": True},
-                 "blend_paths": True, "factory_startup": True, "autoexec_enabled": False, "online_access": False}
+                 "blend_paths": True, "autoexec_fail": True, "factory_startup": True, "autoexec_enabled": False, "online_access": False}
 GOOD_INSPECT = {"status": "ok", "mode": "inspect", "blend_file_version": "5.2.44", "active_scene": "Scene",
                 "scene_count": 1,
                 "scenes": [{"name": "Scene", "camera": "Camera", "frame_start": 1, "frame_end": 10, "current_frame": 3,
@@ -415,6 +416,7 @@ class C_MissingOrIncompatible(BlenderCase):
                  "autoexec on": dict(selftest=dict(GOOD_SELFTEST, autoexec_enabled=True)),
                  "online": dict(selftest=dict(GOOD_SELFTEST, online_access=True)),
                  "no engines": dict(selftest=dict(GOOD_SELFTEST, engines=[])),
+                 "no autoexec_fail": dict(selftest=dict(GOOD_SELFTEST, autoexec_fail=False)),
                  "helper exception": dict(lines=[], exit=71)}
         for name, config in cases.items():
             with self.subTest(case=name):
@@ -437,7 +439,7 @@ class D_Inspection(BlenderCase):
                          ("Camera", 1, 10, 3, "BLENDER_WORKBENCH", True, {"x": 64, "y": 48, "percentage": 100}, False))
         self.assertEqual(d["object_counts"], {"MESH": 1, "ARMATURE": 0, "CAMERA": 1, "LIGHT": 1, "EMPTY": 0, "OTHER": 0})
         self.assertEqual((d["mesh_datablocks"], d["total_vertices"], d["total_edges"], d["total_polygons"]), (1, 8, 12, 6))
-        self.assertEqual((d["material_count"], d["armature_count"], d["action_count"]), (2, 0, 0))  # factory + fixture
+        self.assertEqual((d["material_count"], d["armature_count"], d["action_count"]), (1, 0, 0))  # the fixture's own
         self.assertEqual(d["external_dependencies"], {"count": 0, "missing": 0})
         self.assertFalse(d["has_compositor_file_outputs"] or d["has_script_nodes"])
         self.assertTrue(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", d["blend_file_version"]))
@@ -467,14 +469,18 @@ class D_Inspection(BlenderCase):
 
 class E_SourceImmutability(BlenderCase):
     def test_inspect_and_render_never_change_the_source_or_its_directory(self):
-        for fixture in ("safe", "autoexec", "safe-cycles"):
+        for fixture in ("safe", "simple-driver", "safe-cycles", "autoexec"):
             with self.subTest(fixture=fixture):
                 p = self.project(fixture)
                 src = self.blend(p, fixture)
                 before, listing = sha256(src), sorted(x.name for x in src.parent.iterdir())
                 project_before = {x.relative_to(p).as_posix() for x in p.rglob("*") if ".game/gpos-runtime" not in x.as_posix()}
                 self.assertSucceeded(self.run_cap(ba.INSPECT, p, fixture))
-                self.assertSucceeded(self.run_cap(ba.RENDER, p, fixture))
+                rendered = self.run_cap(ba.RENDER, p, fixture)
+                if fixture == "autoexec":
+                    self.assertNotRendered(rendered, "AUTOEXEC_REQUIRED")
+                else:
+                    self.assertSucceeded(rendered)
                 self.assertEqual(sha256(src), before)
                 self.assertEqual(sorted(x.name for x in src.parent.iterdir()), listing)  # no .blend1, autosave, quit.blend
                 after = {x.relative_to(p).as_posix() for x in p.rglob("*") if ".game/gpos-runtime" not in x.as_posix()}
@@ -495,28 +501,66 @@ class E_SourceImmutability(BlenderCase):
 
 class F_EmbeddedCode(BlenderCase):
     def control(self, fixture, use_scripts, render=False):
-        """TEST-SIDE sensitivity control: the same file opened the way production must never open it."""
+        """TEST-SIDE sensitivity control: the same file opened the way production must never open it. Prints
+        Blender's own blocked-Python flag and the driven cube location at frame 3."""
         script = self.tmp / "control.py"
         script.write_text("import bpy, sys\n"
                           f"bpy.ops.wm.open_mainfile(filepath={str(FIX[fixture])!r}, load_ui=False, use_scripts={use_scripts})\n"
-                          "bpy.context.scene.frame_set(1); _ = bpy.data.objects['Cube'].location.x\n"
+                          "bpy.context.scene.frame_set(3)\n"
+                          "print('GPOS_CONTROL', bpy.app.autoexec_fail, round(bpy.data.objects['Cube'].location.x, 4))\n"
                           + (f"bpy.context.scene.render.filepath = {str(self.tmp / 'c.png')!r}\n"
                              "bpy.ops.render.render(write_still=True)\n" if render else ""))
         flags = ["--enable-autoexec"] if use_scripts else ["--disable-autoexec"]
         user = self.tmp / "control-user"
         user.mkdir(exist_ok=True)
-        blender_test(["--background", "--factory-startup", *flags, "--offline-mode", "--python", str(script)], user)
+        done = blender_test(["--background", "--factory-startup", *flags, "--offline-mode", "--python", str(script)], user)
+        blocked, x = re.search(rb"GPOS_CONTROL (True|False) (\S+)", done.stdout).groups()
+        return blocked == b"True", float(x)
 
     def test_embedded_scripts_would_run_if_allowed(self):
-        self.control("autoexec", use_scripts=True)
-        self.assertEqual(markers(), ["autoexec_driver", "autoexec_textblock"])
+        for fixture, expected in (("autoexec", ["autoexec_driver", "autoexec_textblock"]),
+                                  ("autoexec-text", ["autoexec_text_only"]), ("autoexec-driver", ["autoexec_driver_only"])):
+            with self.subTest(fixture=fixture):
+                clear_markers()
+                self.control(fixture, use_scripts=True)
+                self.assertEqual(markers(), expected)
 
-    def test_production_inspect_and_render_run_no_embedded_script(self):
-        for cap in (ba.INSPECT, ba.RENDER):
-            with self.subTest(capability=cap):
-                p = self.project("autoexec")
-                self.assertSucceeded(self.run_cap(cap, p, "autoexec"))
+    def test_blender_itself_reports_which_sources_depend_on_blocked_python(self):
+        # Blender 5.2, scripts disabled: its own read-only flag, and what its drivers evaluate to at frame 3
+        expected = {"autoexec": True, "autoexec-text": True, "autoexec-driver": True, "safe": False,
+                    "simple-driver": False, "restricted-driver": False}
+        for fixture, blocked in expected.items():
+            with self.subTest(fixture=fixture):
+                self.assertEqual(self.control(fixture, use_scripts=False)[0], blocked)
+        self.assertEqual(self.control("simple-driver", use_scripts=False)[1], 1.5)          # frame * 0.5, natively
+        self.assertEqual(self.control("restricted-driver", use_scripts=False)[1], 0.75)     # max(frame, 2) * 0.25
+        self.assertEqual(markers(), [])
+
+    def test_blocked_source_python_never_runs_and_is_never_rendered(self):
+        for fixture in ("autoexec", "autoexec-text", "autoexec-driver"):
+            with self.subTest(fixture=fixture):
+                p = self.project(fixture)
+                before = sha256(self.blend(p, fixture))
+                inspected = self.run_cap(ba.INSPECT, p, fixture)   # inspection offers no evidence: it stays usable
+                self.assertSucceeded(inspected)
+                result = self.run_cap(ba.RENDER, p, fixture)
+                self.assertNotRendered(result, "AUTOEXEC_REQUIRED")
+                self.assertEqual(list(self.workspace_root(p).rglob("*.png")), [])
                 self.assertEqual(markers(), [])
+                self.assertEqual(sha256(self.blend(p, fixture)), before)
+                self.assertNotIn("__import__", json.dumps(result.to_dict()) + json.dumps(inspected.to_dict()))
+
+    def test_drivers_blender_evaluates_without_python_still_render(self):
+        safe = self.render("safe")[0]
+        self.assertSucceeded(safe)
+        for fixture in ("simple-driver", "restricted-driver"):
+            with self.subTest(fixture=fixture):
+                result, _ = self.render(fixture)
+                self.assertSucceeded(result)
+                self.assertEqual(result.evidence_candidates[0].capture_context, "DCC_RENDER")
+                # the driver moved the cube, so the image is not the undriven scene's
+                self.assertNotEqual(result.artifacts[0].sha256, safe.artifacts[0].sha256)
+        self.assertEqual(markers(), [])
 
     def test_freestyle_runs_scripts_even_with_autoexec_off_so_it_is_refused(self):
         self.control("freestyle-script", use_scripts=False, render=True)
@@ -724,9 +768,58 @@ class J_ExternalDependencies(BlenderCase):
         self.assertEqual(inspected.data["external_dependencies"]["count"], 1)
         self.assertIn(inspected.data["external_dependencies"]["missing"], (0, 1))
 
-    def test_blenders_own_bundled_assets_are_not_project_dependencies(self):
+    def test_the_generated_fixtures_are_self_contained(self):
         result, _ = self.inspect("safe")
         self.assertEqual(result.data["external_dependencies"], {"count": 0, "missing": 0})
+
+    def factory_file(self, project, relative):
+        """TEST-SIDE: Blender's unmodified factory scene saved in place. Its cube material keeps a weak
+        reference to Blender's bundled brush library, stored as a path relative to where the file is saved."""
+        target = project / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        script = self.tmp / "factory.py"
+        script.write_text("import bpy\nbpy.ops.wm.read_factory_settings(use_empty=False)\n"
+                          "s = bpy.context.scene\ns.render.engine = 'BLENDER_WORKBENCH'\n"
+                          "s.render.resolution_x, s.render.resolution_y = 64, 48\n"
+                          f"bpy.ops.wm.save_as_mainfile(filepath={str(target)!r}, compress=False)\n"
+                          "print('GPOS_FACTORY_PATHS', bpy.utils.blend_paths(absolute=False, packed=False, local=False))\n")
+        user = self.tmp / "factory-user"
+        user.mkdir(exist_ok=True)
+        done = blender_test(["--background", "--factory-startup", "--disable-autoexec", "--offline-mode",
+                             "--python", str(script)], user)
+        self.assertIn(b"//../", re.search(rb"GPOS_FACTORY_PATHS (.*)", done.stdout).group(1))  # the reference exists
+        return target
+
+    def test_a_reference_counts_as_blenders_own_only_where_it_really_resolves_into_the_installation(self):
+        p = self.project()
+        in_place = self.factory_file(p, "assets/factory.blend")
+        artifacts = (InputArtifact("blend", str(in_place)),)
+        self.assertEqual(self.run_cap(ba.INSPECT, p, artifacts=artifacts).data["external_dependencies"],
+                         {"count": 0, "missing": 0})             # resolves inside Blender's real datafiles
+        self.assertSucceeded(self.run_cap(ba.RENDER, p, artifacts=artifacts))
+        moved = p / "assets" / "a" / "b" / "c" / "d" / "e" / "f" / "g" / "h" / "i" / "j" / "k" / "l" / "factory.blend"
+        moved.parent.mkdir(parents=True)
+        shutil.copyfile(in_place, moved)         # the same stored text now resolves elsewhere: a real dependency
+        artifacts = (InputArtifact("blend", str(moved)),)
+        self.assertEqual(self.run_cap(ba.INSPECT, p, artifacts=artifacts).data["external_dependencies"],
+                         {"count": 1, "missing": 1})
+        self.assertNotRendered(self.run_cap(ba.RENDER, p, artifacts=artifacts), "EXTERNAL_DEPENDENCIES")
+
+    def test_a_path_that_imitates_blenders_datafiles_is_a_dependency(self):
+        tail = _STATE["spoof_tail"]
+        real_datafiles = Path(os.sep + tail)
+        self.assertTrue(real_datafiles.is_dir())            # the stored text names the real installation's directory
+        p = self.project("spoof-datafiles")
+        fake = p / tail / "gpos-spoof-texture.png"          # ...but "//../" from assets/ resolves inside the project
+        fake.parent.mkdir(parents=True)
+        shutil.copyfile(FIX["external-texture.png"], fake)
+        self.assertFalse(fake.resolve().is_relative_to(real_datafiles.resolve()))
+        inspected = self.run_cap(ba.INSPECT, p, "spoof-datafiles")
+        self.assertEqual(inspected.data["external_dependencies"], {"count": 1, "missing": 0})
+        result = self.run_cap(ba.RENDER, p, "spoof-datafiles")
+        self.assertNotRendered(result, "EXTERNAL_DEPENDENCIES")
+        self.assertEqual(list(self.workspace_root(p).rglob("*.png")), [])
+        self.assertNotIn("gpos-spoof-texture", json.dumps(result.to_dict()) + json.dumps(inspected.to_dict()))
 
 
 # ---------------------------------------------------------------- K  asset scope
@@ -832,6 +925,53 @@ class O_RenderEngine(BlenderCase):
         inspected = self.run_cap(ba.INSPECT, p, "custom-engine")
         scene = inspected.data["scenes"][0]
         self.assertEqual((scene["render_engine"], scene["render_engine_available"]), ("GPOS_TEST_ENGINE", False))
+
+    def test_an_oversized_load_log_is_refused_never_read_in_part(self):
+        result, p = self.render("oversized-log")        # 800 unavailable-engine reports: over LOG_LIMIT bytes
+        self.assertNotRendered(result, "ENGINE_LOG_UNBOUNDED")
+        self.assertEqual(list(self.workspace_root(p).rglob("*.png")), [])
+
+    def test_the_helpers_log_rule(self):
+        """TEST-SIDE: the real helper's log reader, run inside real Blender against crafted logs: complete
+        (normal and exactly at the bound), oversized with an engine report beyond the bound, oversized without."""
+        script = self.tmp / "logrule.py"
+        script.write_text(
+            "import json, os, sys\n"
+            "HELPER, WORK = sys.argv[sys.argv.index('--') + 1:][:2]\n"
+            "source = open(HELPER).read().rstrip()\n"
+            "call = 'main(sys.argv[sys.argv.index(\"--\") + 1:])'\n"
+            "assert source.endswith(call)\n"
+            "helper = {'__name__': 'gpos_helper_under_test'}\n"
+            "exec(compile(source[:-len(call)], HELPER, 'exec'), helper)\n"
+            "limit = helper['LOG_LIMIT']\n"
+            "engine = \"00:00.339  reports          | ERROR Engine 'GPOS_TEST_ENGINE' not available for scene 'Scene' \" \\\n"
+            "         \"(an add-on may need to be installed or enabled)\\n\"\n"
+            "filler = '00:00.336  blend            | Read blend: filler\\n'\n"
+            "def pad(n):\n    return (filler * (n // len(filler) + 1))[:n]\n"
+            "cases = {'normal': filler + engine, 'at bound': pad(limit - len(engine)) + engine,\n"
+            "         'beyond bound': pad(limit) + engine, 'oversized, no engine line': pad(limit + 1)}\n"
+            "out = {'limit': limit}\n"
+            "for name, text in cases.items():\n"
+            "    log = os.path.join(WORK, name.replace(' ', '-').replace(',', '') + '.log')\n"
+            "    open(log, 'w').write(text)\n"
+            "    sys.argv = ['blender', '--log-file', log, '--']\n"
+            "    try:\n        out[name] = {'size': len(text), 'engines': helper['unavailable_engines']()}\n"
+            "    except helper['Refusal'] as refusal:\n        out[name] = {'size': len(text), 'refused': refusal.code}\n"
+            "    out[name]['report_present'] = bool(helper['UNAVAILABLE_ENGINE'].search(text))\n"
+            "print('GPOS_LOG_RULE', json.dumps(out))\n")
+        user = self.tmp / "logrule-user"
+        user.mkdir()
+        done = blender_test(["--background", "--factory-startup", "--disable-autoexec", "--offline-mode", "--python",
+                             str(script), "--", ba.HELPER, str(self.tmp)], user)
+        out = json.loads(re.search(rb"GPOS_LOG_RULE (.*)", done.stdout).group(1))
+        limit = out["limit"]
+        self.assertEqual(limit, 256 * 1024)
+        self.assertEqual(out["normal"]["engines"], {"Scene": "GPOS_TEST_ENGINE"})
+        self.assertEqual((out["at bound"]["size"], out["at bound"]["engines"]), (limit, {"Scene": "GPOS_TEST_ENGINE"}))
+        self.assertEqual(out["beyond bound"]["refused"], "ENGINE_LOG_UNBOUNDED")
+        self.assertTrue(out["beyond bound"]["report_present"])       # the report exists, only beyond the bound
+        self.assertEqual(out["oversized, no engine line"], {"size": limit + 1, "refused": "ENGINE_LOG_UNBOUNDED",
+                                                             "report_present": False})
 
     def test_no_engine_input_exists(self):
         self.assertRefused(self.run_cap(ba.RENDER, self.project("safe"), "safe", inputs={"engine": "CYCLES"}))
@@ -1072,7 +1212,8 @@ class X_Privacy(BlenderCase):
             self.assertNotIn("hunter2", out)
 
     def test_refusal_messages_carry_no_paths(self):
-        for fixture in ("external-image", "linked-library", "no-camera", "custom-engine"):
+        for fixture in ("external-image", "linked-library", "no-camera", "custom-engine", "autoexec-driver",
+                        "oversized-log"):
             result, p = self.render(fixture)
             text = json.dumps(result.to_dict())
             self.assertNotIn(str(p), text)

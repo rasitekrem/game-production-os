@@ -123,8 +123,8 @@ Real integration tests for the Phase-2C-4 Blender adapter (`gpos/tools/blender/`
 
 - registration, the real probe and a missing or incompatible Blender;
 - inspection and source immutability;
-- embedded scripts, Freestyle and OSL, and user startup and add-on isolation;
-- the input contract, bounds, the helper protocol and external dependencies;
+- embedded scripts, blocked source Python (text blocks, Python drivers), drivers Blender evaluates natively, Freestyle and OSL, and user startup and add-on isolation;
+- the input contract, bounds, the helper protocol, the bounded load log and external dependencies (including a path that imitates Blender's datafiles);
 - asset scope, scene, camera, frame, engine, resolution and extra outputs;
 - the real render, materialization and the DCC authority boundary against the real validator;
 - mutation consent, dry run, partial output and timeout;

@@ -19,9 +19,10 @@ Every Blender process starts from the same safety baseline:
 with `BLENDER_USER_RESOURCES` pointed at a fresh, execution-specific directory, so no user preference,
 startup file, add-on or script participates (Blender 5.2 on macOS ignores HOME for this; the official
 variable does not). The helper opens the .blend explicitly with scripts disabled, and refuses to render
-anything that could run embedded code (Freestyle, OSL script nodes), read undeclared files (external
-dependencies) or write a second file (compositor File Output, multi-view, sequencer strips). It never
-saves. The render is DCC_RENDER evidence about an ASSET, never runtime, motion or presentation proof.
+anything that could run embedded code (Freestyle, OSL script nodes), depends on source Python that Blender
+blocked, reads undeclared files (external dependencies) or writes a second file (compositor File Output,
+multi-view, sequencer strips). It never saves. The render is DCC_RENDER evidence about an ASSET, never runtime,
+motion or presentation proof.
 
 The executable is found by exact name over a fixed per-platform candidate list: `shutil.which` must
 return a path whose basename is a real directory entry with exactly that spelling, so a lookup that only
@@ -119,8 +120,8 @@ DESCRIPTOR = model.AdapterDescriptor(
         "output path.",
         "Factory startup, auto-execution disabled, scripts disabled at file open, offline mode, and an isolated "
         "per-execution BLENDER_USER_RESOURCES: no user preference, add-on or startup script participates.",
-        "Renders refuse Freestyle and OSL script nodes (embedded code), external dependencies and extra outputs; "
-        "the .blend is never saved.",
+        "Renders refuse Freestyle and OSL script nodes (embedded code), sources whose Python Blender blocked, "
+        "external dependencies and extra outputs; the .blend is never saved.",
     ))
 
 
@@ -251,8 +252,8 @@ class BlenderAdapter(model.ToolAdapter):
                           f"{'frame ' + frame if frame else 'its current frame'} of input artifact {source.artifact_id!r} "
                           f"to {OUTPUT_NAME} and offer VISUAL_EVIDENCE (DCC_RENDER) for this ASSET",
                           "whether the scene exists, has a camera, uses a supported engine, has the frame in range, a "
-                          "bounded resolution, no external dependency, no Freestyle or script nodes, no extra outputs "
-                          "and no embedded-script behaviour is only checked by a real execution",
+                          "bounded resolution, no external dependency, no Freestyle or script nodes, no extra outputs, "
+                          "a complete load report and no Python that Blender blocked is only checked by a real execution",
                           "no Blender project process, workspace, image or evidence is created by a dry run"),
                     data={"source_artifact_id": source.artifact_id,
                           **({"scene_name": scene_name} if scene_name else {}), **({"frame": int(frame)} if frame else {})})

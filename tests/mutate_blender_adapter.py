@@ -10,8 +10,9 @@ leaves it green is "MISSED" and fails this harness. An anchor that does not matc
 "NOT APPLIED" and also fails, so the list cannot rot.
 
 A mutation is a list of edits (file, anchor, replacement). Mutations 1-48 are the ones the Phase 2C-4
-brief requires; the Freestyle group is the one the user-state isolation decision requires; the rest defend
-further guarantees. No mutation removes the isolated user root from the environment: that defect would
+brief requires; the Freestyle group is the one the user-state isolation decision requires; the final group is
+the one the final hardening requires (bundled-path containment, the bounded load log, blocked source Python);
+the rest defend further guarantees. No mutation removes the isolated user root from the environment: that defect would
 point real Blender processes at the real user profile, which the suite must never touch, so it is covered
 by the static environment assertions instead (group G and the parent-environment mutation below).
 """
@@ -47,6 +48,7 @@ RENDER_RECORD = ("            value = parser.record(outcome.raw_stdout, nonce)\n
 FREESTYLE = "    if scene.render.use_freestyle:\n        raise Refusal(\"RENDER_SCRIPTING\""
 RENDER_RETURN = '    return {"scene": scene.name, "frame": frame, "camera": name(scene.camera.name), "engine": engine,\n'
 CAPABILITIES_END = ")\n\nDESCRIPTOR = model.AdapterDescriptor("
+EXTERNAL = "    external = {real for real in (resolved(path) for path in raw if path) if not inside(real, system)}\n"
 
 
 def declared_input(kind):
@@ -222,11 +224,10 @@ MUTATIONS = [
     ("nonce check removed", [
         (PARSER, "    if not line.startswith(head):\n        raise HelperProtocolError(\"the helper record does not carry",
          "    head = line[:len(PREFIX) + 33]\n    if False:\n        raise HelperProtocolError(\"the helper record does not carry")]),
-    ("bundled-asset exclusion made too broad", [
-        (HELPER, "    external = {os.path.realpath(bpy.path.abspath(path)) for path in raw if path and not _bundled(path, system)}\n",
-         "    external = {os.path.realpath(bpy.path.abspath(path)) for path in raw if path and path.startswith(\"/\")}\n")]),
-    ("bundled assets counted as project dependencies", [
-        (HELPER, "    if raw.startswith(\"//\"):\n        rest = raw[2:]", "    if False:\n        rest = raw[2:]")]),
+    ("bundled-asset containment replaced by a substring match", [
+        (HELPER, "if not inside(real, system)}", "if \"datafiles\" not in real}")]),
+    ("Blender's own references counted as project dependencies", [
+        (HELPER, "        return os.path.commonpath([path, root]) == root\n", "        return False\n")]),
     ("self-test accepts auto-execution enabled", [
         (PARSER, ' or value["autoexec_enabled"] is not False or ', " or ")]),
     ("probe skips the helper self-test", [
@@ -242,6 +243,45 @@ MUTATIONS = [
                   "                                                           cap),), **record)\n            rendered",
          "        **record)\n            rendered")]),
     ("an existing output file is overwritten", [(ADAPTER, "            if output.exists() or output.is_symlink():\n", "            if False:\n")]),
+    # --- final hardening: bundled-path containment, bounded load log, blocked source Python
+    ("old textual-tail shortcut for bundled paths restored", [
+        (HELPER, EXTERNAL,
+         "    def textual(path):\n"
+         "        tail = os.path.splitdrive(system)[1].replace(\"\\\\\", \"/\").strip(\"/\")\n"
+         "        rest = path[2:].replace(\"\\\\\", \"/\") if path.startswith(\"//\") else \"\"\n"
+         "        while rest.startswith(\"../\"):\n            rest = rest[3:]\n"
+         "        return rest == tail or rest.startswith(tail + \"/\")\n"
+         "    external = {resolved(path) for path in raw if path and not textual(path)\n"
+         "                and not inside(resolved(path), system)}\n")]),
+    ("bundled containment trusts the stored text instead of the resolved file", [
+        (HELPER, "    return os.path.realpath(bpy.path.abspath(raw))\n", "    return os.path.normpath(raw.replace(\"//\", os.sep, 1))\n")]),
+    ("oversized Blender load log accepted", [
+        (HELPER, '    if len(data) > LOG_LIMIT:\n        raise Refusal("ENGINE_LOG_UNBOUNDED"',
+         '    data = data[:LOG_LIMIT]\n    if False:\n        raise Refusal("ENGINE_LOG_UNBOUNDED"')]),
+    ("load log read in part without a completeness check", [
+        (HELPER, "            data = log.read(LOG_LIMIT + 1)\n", "            data = log.read(LOG_LIMIT)\n")]),
+    ("autoexec_fail check removed", [
+        (HELPER, '    require_no_blocked_python("at load")\n', ""),
+        (HELPER, '    require_no_blocked_python("at the frame")\n', ""),
+        (HELPER, '    require_no_blocked_python("while rendering")', "    pass")]),
+    ("blocked autoexec accepted for render (checked only after rendering)", [
+        (HELPER, '    require_no_blocked_python("at load")\n', ""),
+        (HELPER, '    require_no_blocked_python("at the frame")\n', "")]),
+    ("autoexec failure silently ignored", [
+        (HELPER, "    if bpy.app.autoexec_fail:\n        raise Refusal(\"AUTOEXEC_REQUIRED\"",
+         "    if bpy.app.autoexec_fail:\n        return\n        raise Refusal(\"AUTOEXEC_REQUIRED\"")]),
+    ("blocked text blocks ignored (only drivers refused)", [
+        (HELPER, "    if bpy.app.autoexec_fail:\n",
+         "    if bpy.app.autoexec_fail and bpy.app.autoexec_fail_message.startswith(\"Driver\"):\n")]),
+    ("blocked drivers ignored (only text blocks refused)", [
+        (HELPER, "    if bpy.app.autoexec_fail:\n",
+         "    if bpy.app.autoexec_fail and not bpy.app.autoexec_fail_message.startswith(\"Driver\"):\n")]),
+    ("every driver refused, even those Blender evaluates without Python", [
+        (HELPER, "    if bpy.app.autoexec_fail:\n",
+         "    if bpy.app.autoexec_fail or any(ob.animation_data and ob.animation_data.drivers for ob in bpy.data.objects):\n")]),
+    ("self-test no longer requires Blender's blocked-Python flag", [
+        (PARSER, 'value["blend_paths"], value["autoexec_fail"], value["factory_startup"])',
+         'value["blend_paths"], value["factory_startup"])')]),
 ]
 
 

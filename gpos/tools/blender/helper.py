@@ -17,14 +17,21 @@ The .blend is opened explicitly, after Blender has started from factory settings
 Python drivers) do not run, in addition to `--disable-autoexec`. Before a render the helper refuses every
 source whose render could run embedded code (Freestyle, which the Blender manual says runs scripts even
 with auto-execution off; OSL script nodes), read files that were not supplied (external dependencies), or
-write more than the one output (compositor File Output nodes, multi-view, sequencer strips). It never
+write more than the one output (compositor File Output nodes, multi-view, sequencer strips). It also
+refuses to render when Blender reports that it blocked source Python for this file (`bpy.app.autoexec_fail`:
+a registered text block, or a driver that Blender's restricted driver evaluator would not run): the loaded
+scene may then differ from what its author sees, and GPOS never runs that Python. It never
 saves, exports, imports, packs, creates or moves anything, and never generates a camera or changes the
 authored render settings; only the output format and path are set, in memory, for the one PNG.
 
 A scene whose authored render engine is not available (an add-on engine) is shown by Blender's Python API
 as its fallback engine, so the helper reads Blender's own load report from the log file Blender writes for
 this execution (`Engine '<id>' not available for scene '<name>'`): such a scene is reported with its authored
-engine and is never rendered with a substitute.
+engine and is never rendered with a substitute. That report is trusted only when the whole log is known:
+a log larger than LOG_LIMIT is refused rather than read in part.
+
+A path counts as Blender's own only when the file it actually resolves to lies inside the installation's
+resolved datafiles directory; the stored path text is never trusted.
 
 It emits exactly one machine record on stdout, `GPOS_BLENDER_RESULT_V1:<nonce>:<json>`, with ASCII-only
 JSON on one line. It reports counts and names, never file paths.
@@ -44,6 +51,7 @@ MAX_NAME = 256
 MAX_EDGE = 4096
 MAX_PIXELS = 16_777_216
 OBJECT_GROUPS = ("MESH", "ARMATURE", "CAMERA", "LIGHT", "EMPTY")
+LOG_LIMIT = 256 * 1024                # Blender's load log: a normal one is well under 1 KiB
 UNAVAILABLE_ENGINE = re.compile(r"Engine '([^'\r\n]{1,64})' not available for scene '([^\r\n]*)' \(an add-on")
 
 
@@ -84,10 +92,14 @@ def unavailable_engines():
         raise Refusal("ENGINE_UNSUPPORTED", "Blender's load log is not available, so the render engine cannot be "
                                            "established")
     try:
-        with open(args[args.index("--log-file") + 1], encoding="utf-8", errors="replace") as log:
-            text = log.read(4 * 1024 * 1024)
+        with open(args[args.index("--log-file") + 1], "rb") as log:
+            data = log.read(LOG_LIMIT + 1)
     except OSError:
         raise Refusal("ENGINE_UNSUPPORTED", "Blender's load log could not be read") from None
+    if len(data) > LOG_LIMIT:
+        raise Refusal("ENGINE_LOG_UNBOUNDED", f"Blender's load log is larger than {LOG_LIMIT} bytes, so the complete "
+                                              f"render-engine state cannot be established")
+    text = data.decode("utf-8", errors="replace")
     found = {m.group(2): m.group(1) for m in UNAVAILABLE_ENGINE.finditer(text)}
     if "not available for scene" in text and not found:
         raise Refusal("ENGINE_UNSUPPORTED", "Blender reported an unavailable render engine that could not be read")
@@ -107,19 +119,20 @@ def settable_engines():
     return found
 
 
-def _bundled(raw, system):
-    """True when a stored path points into Blender's own installed datafiles (its bundled asset libraries,
-    part of the installation identified by the tool version). A relative reference (`//../../…`) stored by
-    Blender is recognized by the installation path its parent steps lead to, wherever the .blend now lives."""
-    system_tail = os.path.splitdrive(system)[1].replace("\\", "/").strip("/")
-    if raw.startswith("//"):
-        rest = raw[2:].replace("\\", "/")
-        while rest.startswith("../"):
-            rest = rest[3:]
-        if rest == system_tail or rest.startswith(system_tail + "/"):
-            return True
-    real = os.path.realpath(bpy.path.abspath(raw))
-    return real == system or real.startswith(system + os.sep)
+def resolved(raw):
+    """The real file-system path a stored path refers to from the loaded .blend: `//` expanded, then every
+    `..` and symbolic link resolved."""
+    return os.path.realpath(bpy.path.abspath(raw))
+
+
+def inside(path, root):
+    """True when the resolved `path` is `root` or lies inside it, with the platform's path semantics (case on
+    Windows, drives). Both must already be resolved; only whole path components are compared."""
+    path, root = os.path.normcase(path), os.path.normcase(root)
+    try:
+        return os.path.commonpath([path, root]) == root
+    except ValueError:                  # different drives, or mixed absolute and relative
+        return False
 
 
 def external_dependencies():
@@ -128,7 +141,8 @@ def external_dependencies():
     The union of every path Blender itself reports (`bpy.utils.blend_paths`, which covers every path-bearing
     data type of this version) and an explicit list of render-relevant ones: linked libraries and file-backed,
     unpacked images, fonts, sounds, movie clips, cache files and volumes. Only paths into Blender's own
-    installation are excluded."""
+    installation are excluded: those whose resolved file lies inside Blender's resolved datafiles directory
+    (its bundled assets, part of the installation the tool version identifies). The stored text never decides."""
     system = os.path.realpath(bpy.utils.system_resource("DATAFILES"))
     raw = set(bpy.utils.blend_paths(absolute=False, packed=False, local=False))
     raw.update(lib.filepath for lib in bpy.data.libraries)
@@ -139,7 +153,7 @@ def external_dependencies():
         raw.update(item.filepath for item in collection if not item.packed_file)
     raw.update(item.filepath for item in bpy.data.movieclips)
     raw.update(item.filepath for item in bpy.data.cache_files)
-    external = {os.path.realpath(bpy.path.abspath(path)) for path in raw if path and not _bundled(path, system)}
+    external = {real for real in (resolved(path) for path in raw if path) if not inside(real, system)}
     return len(external), sum(1 for path in external if not os.path.exists(path))
 
 
@@ -157,6 +171,14 @@ def compositor_file_outputs():
 
 def script_nodes():
     return any(node.bl_idname == "ShaderNodeScript" for tree in node_trees() for node in tree.nodes)
+
+
+def require_no_blocked_python(when):
+    """Refuse when Blender reports that it blocked source Python (a registered text block, or a driver its
+    restricted evaluator refused). Blender sets the flag itself; it is read-only, and GPOS never clears it."""
+    if bpy.app.autoexec_fail:
+        raise Refusal("AUTOEXEC_REQUIRED", f"Blender blocked Python embedded in the file ({when}); the scene may not "
+                                            f"be what its author sees, and GPOS never runs source Python")
 
 
 def effective_resolution(scene):
@@ -237,6 +259,7 @@ def render(output, scene_name, frame_text):
     if count:
         raise Refusal("EXTERNAL_DEPENDENCIES", f"the file references {count} external file(s); only "
                                                  f"self-contained .blend sources are rendered as evidence")
+    require_no_blocked_python("at load")
     if scene.render.use_freestyle:
         raise Refusal("RENDER_SCRIPTING", "the scene renders with Freestyle, which can run scripts during "
                                            "rendering even with auto-execution off")
@@ -265,9 +288,11 @@ def render(output, scene_name, frame_text):
     scene.render.filepath = output
     scene.render.use_file_extension = False
     scene.frame_set(frame)
+    require_no_blocked_python("at the frame")
     result = bpy.ops.render.render(write_still=True, scene=scene.name)
     if "FINISHED" not in result:
         raise Refusal("RENDER_FAILED", "Blender did not finish the render")
+    require_no_blocked_python("while rendering")     # the image exists but is refused: never evidence
     return {"scene": scene.name, "frame": frame, "camera": name(scene.camera.name), "engine": engine,
             "width": width, "height": height}
 
@@ -281,6 +306,7 @@ def selftest():
         "open_mainfile": {"use_scripts": "use_scripts" in wm, "load_ui": "load_ui" in wm},
         "render": {"write_still": "write_still" in rr, "scene": "scene" in rr},
         "blend_paths": hasattr(bpy.utils, "blend_paths"),
+        "autoexec_fail": hasattr(bpy.app, "autoexec_fail"),
         "factory_startup": bool(bpy.app.factory_startup),
         "autoexec_enabled": bool(bpy.context.preferences.filepaths.use_scripts_auto_execute),
         "online_access": bool(bpy.app.online_access),

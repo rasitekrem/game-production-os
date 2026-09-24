@@ -17,18 +17,33 @@ OUT, MARKERS = sys.argv[sys.argv.index("--") + 1:][:2]
 
 
 def fresh(engine="BLENDER_WORKBENCH", width=64, height=48):
+    """A factory scene made self-contained. Blender 5.2's factory cube material carries a weak library
+    reference (a record of where it was appended from: Blender's bundled brush library, stored relative to the
+    saved file), so it is replaced by a new local material instead of trusting that stored path."""
     bpy.ops.wm.read_factory_settings(use_empty=False)
     scene = bpy.context.scene
     scene.render.engine = engine
     scene.render.resolution_x, scene.render.resolution_y, scene.render.resolution_percentage = width, height, 100
     scene.frame_start, scene.frame_end, scene.frame_current = 1, 10, 3
-    material = bpy.data.materials.new("GposMaterial")
-    bpy.data.objects["Cube"].data.materials.append(material)
+    cube = bpy.data.objects["Cube"].data
+    cube.materials.clear()
+    for factory in [m for m in bpy.data.materials if m.library_weak_reference is not None]:
+        bpy.data.materials.remove(factory)
+    cube.materials.append(bpy.data.materials.new("GposMaterial"))
     return scene
 
 
 def save(name):
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, name), compress=False)
+
+
+def driven(expression):
+    """A scene whose cube x location is driven by `expression`."""
+    scene = fresh()
+    curve = bpy.data.objects["Cube"].driver_add("location", 0)
+    curve.driver.type = "SCRIPTED"
+    curve.driver.expression = expression
+    return scene
 
 
 def marker_code(label):
@@ -116,6 +131,19 @@ curve.driver.type = "SCRIPTED"
 curve.driver.expression = "__import__('builtins').open(%r, 'w').write('x') or 0" % os.path.join(MARKERS, "autoexec_driver")
 save("autoexec.blend")
 
+# G1. each kind of blocked source Python on its own, and drivers Blender evaluates without auto-execution
+fresh()
+text = bpy.data.texts.new("gpos_autoexec.py")
+text.write(marker_code("autoexec_text_only"))
+text.use_module = True
+save("autoexec-text.blend")
+driven("__import__('builtins').open(%r, 'w').write('x') or 0" % os.path.join(MARKERS, "autoexec_driver_only"))
+save("autoexec-driver.blend")
+driven("frame * 0.5")                   # a simple expression: evaluated natively, no Python
+save("simple-driver.blend")
+driven("max(frame, 2) * 0.25")          # not simple, but within Blender's restricted driver namespace
+save("restricted-driver.blend")
+
 # G2. Freestyle SCRIPT mode with an embedded style module that writes a marker when rendered
 scene = fresh()
 style = bpy.data.texts.new("gpos_style.py")
@@ -148,6 +176,28 @@ bpy.utils.register_class(GposTestEngine)
 scene = fresh()
 scene.render.engine = "GPOS_TEST_ENGINE"
 save("custom-engine.blend")
+bpy.utils.unregister_class(GposTestEngine)
+
+# a stored path whose text imitates Blender's own datafiles directory but resolves beside the .blend's parent:
+# `//../<datafiles path without its root>/…`, which the test backs with a real file outside the installation
+fresh()
+system = os.path.realpath(bpy.utils.system_resource("DATAFILES"))
+tail = os.path.splitdrive(system)[1].replace("\\", "/").strip("/")
+image = bpy.data.images.new("SpoofTexture", 4, 4)
+image.source = "FILE"
+image.filepath = "//../" + tail + "/gpos-spoof-texture.png"
+material = bpy.data.materials["GposMaterial"]
+material.use_nodes = True
+material.node_tree.nodes.new("ShaderNodeTexImage").image = image
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "spoof-datafiles.blend"), compress=False, relative_remap=False)
+print("GPOS_SPOOF_TAIL", tail)
+
+# a load log larger than the helper's bound: every extra scene's unavailable engine is reported (and logged)
+bpy.utils.register_class(GposTestEngine)
+fresh()
+for index in range(800):
+    bpy.data.scenes.new(f"GposLogFiller{index:04d}" + "x" * 230).render.engine = "GPOS_TEST_ENGINE"
+save("oversized-log.blend")
 bpy.utils.unregister_class(GposTestEngine)
 
 # oversized authored resolution (never downscaled)

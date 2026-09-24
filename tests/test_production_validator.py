@@ -1368,13 +1368,15 @@ class E01_NoReferenceImport(unittest.TestCase):
         # The validator names no agent or tool. (Phase 2B: the adapter layer in gpos/adapters/ legitimately names
         # Claude Code and Codex. Phase 2C-2: the two production media tool adapters, their shared constants and
         # the production registry that registers them legitimately name FFmpeg. Phase 2C-3: the ADB adapter and
-        # the registry legitimately name adb. Nothing else in gpos/ names either, and engine integrations stay
-        # out of gpos/ entirely.)
+        # the registry legitimately name adb. Phase 2C-4: the Blender DCC adapter and the registry legitimately
+        # name Blender. Nothing else in gpos/ names any of them, and engine integrations stay out of gpos/.)
         media = {"gpos/tools/media_common.py", "gpos/tools/registry.py"}
         for p in (ROOT / "gpos").rglob("*.py"):
             text = p.read_text().lower()
             rel = p.relative_to(ROOT).as_posix()
-            words = ("unity", "blender", "github")
+            words = ("unity", "github")
+            if not (rel == "gpos/tools/registry.py" or rel.startswith("gpos/tools/blender/")):
+                words += ("blender",)
             if not (rel == "gpos/tools/registry.py" or rel.startswith("gpos/tools/adb/")):
                 words += ("adb ",)
             if not (rel in media or rel.startswith(("gpos/tools/ffmpeg/", "gpos/tools/ffprobe/"))):

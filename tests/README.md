@@ -113,6 +113,25 @@ Every real-target test runs on each authorized target in turn as `adb -s <serial
 
 `mutate_adb_adapter.py` is its bounded mutation harness.
 
+## Blender adapter tests
+
+```bash
+python3 tests/test_blender_adapter.py
+```
+
+Real integration tests for the Phase-2C-4 Blender adapter (`gpos/tools/blender/`), run against the real Blender found on PATH under its exact platform name. Without one, the suite stops with BLENDER_RUNTIME_UNAVAILABLE_FOR_PHASE2C4. It never falls back to mocks. Every `.blend` fixture is generated for the run by `blender_fixture_builder.py`, and no binary fixture is committed. Every Blender process the suite starts uses an isolated BLENDER_USER_RESOURCES, and the suite fails if the real Blender user profile's fingerprint changes. Stand-in programs cover only deterministic error cases. Groups A–Z cover:
+
+- registration, the real probe and a missing or incompatible Blender;
+- inspection and source immutability;
+- embedded scripts, Freestyle and OSL, and user startup and add-on isolation;
+- the input contract, bounds, the helper protocol and external dependencies;
+- asset scope, scene, camera, frame, engine, resolution and extra outputs;
+- the real render, materialization and the DCC authority boundary against the real validator;
+- mutation consent, dry run, partial output and timeout;
+- privacy, the command surface and the CLI.
+
+`mutate_blender_adapter.py` is its bounded mutation harness.
+
 ## Fixtures
 
 **Schema fixtures** — `fixtures/valid/*.json` and `fixtures/invalid/*.json` are patches applied to a valid example:

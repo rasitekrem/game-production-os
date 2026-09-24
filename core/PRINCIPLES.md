@@ -1,6 +1,6 @@
 # Principles
 
-Status: normative · GPOS `1.0.0-alpha.13`
+Status: normative · GPOS `1.0.0-alpha.14`
 
 These eleven principles are the constitution of Game Production OS (GPOS). Every other document elaborates one or more of them. Where a detailed document exists, it is referenced instead of restating the rule.
 

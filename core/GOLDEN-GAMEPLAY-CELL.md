@@ -1,6 +1,6 @@
 # Golden Gameplay Cell
 
-Status: normative · GPOS `1.0.0-alpha.13` · Elaborates [P5](PRINCIPLES.md#p5--golden-gameplay-cell-before-scale)
+Status: normative · GPOS `1.0.0-alpha.14` · Elaborates [P5](PRINCIPLES.md#p5--golden-gameplay-cell-before-scale)
 
 Workflow: [`workflows/golden-gameplay-cell.md`](../workflows/golden-gameplay-cell.md). Lifecycle stage: `GOLDEN_CELL`.
 

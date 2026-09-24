@@ -439,15 +439,16 @@ class StandInCase(AdbCase):
 # ---------------------------------------------------------------- A  registration
 
 class A_Registration(AdbCase):
-    def test_production_registry_is_exactly_the_four_adapters(self):
-        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "ffmpeg", "ffprobe", "git"])
+    def test_production_registry_contains_adb(self):
+        # Phase 2C-4 added the Blender adapter; the newest suite owns the exact list.
+        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git"])
 
     def test_synthetic_stays_out_of_production(self):
         registry = default_registry(FW)
         self.assertFalse(registry.allow_test_only)
         with self.assertRaises(Exception):
             registry.register(SyntheticAdapter())
-        self.assertEqual(registry.adapter_ids(), ["adb", "ffmpeg", "ffprobe", "git"])
+        self.assertEqual(registry.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git"])
 
     def test_descriptor_passes_production_registration_validation(self):
         self.assertEqual(tval.validate_descriptor(FW, aa.DESCRIPTOR, allow_test_only=False), [])
@@ -1491,7 +1492,7 @@ class X_Cli(AdbCase):
     def test_list_describe_capabilities_probe(self):
         code, out = cli("list")
         self.assertEqual(code, 0)
-        self.assertIn("4 tool adapter", out)
+        self.assertIn("5 tool adapter", out)
         self.assertIn("adb 1.0.0 · DEVICE · 3 capabilities", out)
         self.assertNotIn("TEST_ONLY", out)
         code, out = cli("describe", "adb")

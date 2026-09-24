@@ -169,7 +169,7 @@ class A_Registration(GitCase):
     def test_production_registry_contains_git(self):
         # Phase 2C-2 added the two media adapters and Phase 2C-3 the ADB adapter beside Git; the newest suite
         # owns the exact list.
-        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "ffmpeg", "ffprobe", "git"])
+        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git"])
 
     def test_synthetic_stays_out_of_production(self):
         registry = default_registry(FW)
@@ -883,7 +883,7 @@ class R_Cli(GitCase):
     def test_list(self):
         code, out = self.cli("list")
         self.assertEqual(code, 0)
-        self.assertIn("4 tool adapter", out)
+        self.assertIn("5 tool adapter", out)
         self.assertIn("git 1.0.0 · VERSION_CONTROL · 2 capabilities", out)
         self.assertNotIn("TEST_ONLY", out)
 

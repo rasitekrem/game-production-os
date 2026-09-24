@@ -23,6 +23,8 @@ The **media evidence adapters** (Phase 2C-2) are two production adapters, one pe
 
 The **Android ADB evidence adapter** (Phase 2C-3) is the first target-device adapter. From one explicitly named physical Android target (`--input adb_serial=<serial>` selects it; `--device` names its verified canonical identity; `--target-platform ANDROID`) it captures a device report, a screenshot or one named package's memory snapshot, offering device, visual or performance evidence. Every target command is a fixed, read-only template: no install, launch, input, file transfer, shell runner or wireless ADB. Emulators are refused, because they are not device evidence. See [adb-adapter.md](adb-adapter.md).
 
+The **Blender DCC adapter** (Phase 2C-4) is the first DCC adapter. It inspects one `.blend` file (bounded counts and names, never paths) and renders one still of its authored scene, camera and frame, offering `VISUAL_EVIDENCE` in `DCC_RENDER` for an `ASSET` only: asset inspection evidence, never runtime, motion or presentation proof. Every Blender process runs one fixed, audited helper from factory settings, with auto-execution and scripts disabled, offline, and with an isolated per-execution user-resource directory. The caller supplies no Python, script, option, engine, camera or output path, and the `.blend` is never saved. See [blender-adapter.md](blender-adapter.md).
+
 ## Planned concepts (not implemented)
 
 | Tool | Purpose | Constraints |

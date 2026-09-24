@@ -1,6 +1,6 @@
 # Adapters
 
-Status: Phase 2B · GPOS `1.0.0-alpha.13` · agent adapter layer in [`gpos/adapters/`](../gpos/adapters/__init__.py)
+Status: Phase 2B · GPOS `1.0.0-alpha.14` · agent adapter layer in [`gpos/adapters/`](../gpos/adapters/__init__.py)
 
 An adapter connects GPOS contracts to a specific agent runtime or tool. Phase 2B implements **agent adapters** for two coding agents: [Claude Code](claude-code.md) and [Codex](codex.md). They render the same GPOS authority into each agent's native project instructions and skills. Engine, DCC, device and repository-hosting adapters are later phases.
 

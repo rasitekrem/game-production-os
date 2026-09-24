@@ -12,7 +12,7 @@ Library use:
     ready = evaluate_readiness(rs, "TASK-1")  # ReadinessResult(valid_records, ready, ...)
 """
 
-__version__ = "1.0.0-alpha.13"
+__version__ = "1.0.0-alpha.14"
 
 from .diagnostics import CODES, Diagnostic  # noqa: E402
 from .errors import (BundleNotFound, FrameworkLoadError, GposToolError, RoutingNotFound,  # noqa: E402

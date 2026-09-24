@@ -65,6 +65,8 @@ CODES = {
     # target device (Phase 2C-3): generic to any device adapter
     "TARGET_DEVICE_NOT_PHYSICAL": (INVALID_REQUEST, "the target is an emulator, or could not be established as physical target hardware"),
     "TARGET_DEVICE_IDENTITY_MISMATCH": (INVALID_REQUEST, "the requested device identity is not the identity the selected target reports"),
+    # DCC source (Phase 2C-4): generic to any DCC adapter
+    "DCC_SOURCE_NOT_ACCEPTED": (INVALID_REQUEST, "the DCC source or its selected scene does not meet the evidence render contract"),
     # version control (Phase 2C-1): generic to any repository adapter, not specific to one tool
     "REPOSITORY_NOT_FOUND": (INVALID_REQUEST, "the version-control tool found no work tree at the project root"),
     "REPOSITORY_ROOT_MISMATCH": (INVALID_REQUEST, "the repository top level is not the GPOS project root"),

@@ -135,14 +135,20 @@ def inside(path, root):
         return False
 
 
+def blender_owned(real, system):
+    """True only for a bundled resource actually present in this installation: the resolved path lies inside
+    Blender's resolved datafiles directory AND is an existing regular file (the bundled resources observed on
+    Blender 5.2 are asset-library .blend files). A missing path there is an ordinary, missing dependency."""
+    return inside(real, system) and os.path.isfile(real)
+
+
 def external_dependencies():
     """(count, missing) of distinct external files the loaded .blend references.
 
     The union of every path Blender itself reports (`bpy.utils.blend_paths`, which covers every path-bearing
     data type of this version) and an explicit list of render-relevant ones: linked libraries and file-backed,
     unpacked images, fonts, sounds, movie clips, cache files and volumes. Only paths into Blender's own
-    installation are excluded: those whose resolved file lies inside Blender's resolved datafiles directory
-    (its bundled assets, part of the installation the tool version identifies). The stored text never decides."""
+    installation are excluded (`blender_owned`). The stored text never decides."""
     system = os.path.realpath(bpy.utils.system_resource("DATAFILES"))
     raw = set(bpy.utils.blend_paths(absolute=False, packed=False, local=False))
     raw.update(lib.filepath for lib in bpy.data.libraries)
@@ -153,7 +159,7 @@ def external_dependencies():
         raw.update(item.filepath for item in collection if not item.packed_file)
     raw.update(item.filepath for item in bpy.data.movieclips)
     raw.update(item.filepath for item in bpy.data.cache_files)
-    external = {real for real in (resolved(path) for path in raw if path) if not inside(real, system)}
+    external = {real for real in (resolved(path) for path in raw if path) if not blender_owned(real, system)}
     return len(external), sum(1 for path in external if not os.path.exists(path))
 
 

@@ -192,6 +192,17 @@ material.node_tree.nodes.new("ShaderNodeTexImage").image = image
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "spoof-datafiles.blend"), compress=False, relative_remap=False)
 print("GPOS_SPOOF_TAIL", tail)
 
+# a reference to a file that does not exist, inside Blender's real datafiles directory (never created)
+fresh()
+image = bpy.data.images.new("MissingBundledTexture", 4, 4)
+image.source = "FILE"
+image.filepath = os.path.join(system, "gpos-nonexistent-bundled-texture.png")
+material = bpy.data.materials["GposMaterial"]
+material.use_nodes = True
+material.node_tree.nodes.new("ShaderNodeTexImage").image = image
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "missing-datafiles.blend"), compress=False, relative_remap=False)
+print("GPOS_MISSING_BUNDLED", image.filepath)
+
 # a load log larger than the helper's bound: every extra scene's unavailable engine is reported (and logged)
 bpy.utils.register_class(GposTestEngine)
 fresh()

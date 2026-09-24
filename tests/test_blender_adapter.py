@@ -97,6 +97,7 @@ def setUpModule():
     if done.returncode != 0 or b"GPOS_FIXTURES_BUILT" not in done.stdout:
         raise RuntimeError("the Blender fixtures could not be built")
     _STATE["spoof_tail"] = re.search(rb"GPOS_SPOOF_TAIL (\S+)", done.stdout).group(1).decode()
+    _STATE["missing_bundled"] = re.search(rb"GPOS_MISSING_BUNDLED (.+)", done.stdout).group(1).decode().strip()
     for path in out.glob("*.blend"):
         FIX[path.stem] = path
     FIX["external-texture.png"] = out / "external-texture.png"
@@ -782,12 +783,20 @@ class J_ExternalDependencies(BlenderCase):
                           "s = bpy.context.scene\ns.render.engine = 'BLENDER_WORKBENCH'\n"
                           "s.render.resolution_x, s.render.resolution_y = 64, 48\n"
                           f"bpy.ops.wm.save_as_mainfile(filepath={str(target)!r}, compress=False)\n"
-                          "print('GPOS_FACTORY_PATHS', bpy.utils.blend_paths(absolute=False, packed=False, local=False))\n")
+                          "print('GPOS_FACTORY_PATHS', bpy.utils.blend_paths(absolute=False, packed=False, local=False))\n"
+                          "import os, json\n"
+                          "print('GPOS_FACTORY_RESOLVED', json.dumps([os.path.realpath(p) for p in "
+                          "bpy.utils.blend_paths(absolute=True, packed=False, local=False)]))\n"
+                          "print('GPOS_DATAFILES', os.path.realpath(bpy.utils.system_resource('DATAFILES')))\n")
         user = self.tmp / "factory-user"
         user.mkdir(exist_ok=True)
         done = blender_test(["--background", "--factory-startup", "--disable-autoexec", "--offline-mode",
                              "--python", str(script)], user)
         self.assertIn(b"//../", re.search(rb"GPOS_FACTORY_PATHS (.*)", done.stdout).group(1))  # the reference exists
+        datafiles = Path(re.search(rb"GPOS_DATAFILES (.+)", done.stdout).group(1).decode().strip())
+        for resolved in json.loads(re.search(rb"GPOS_FACTORY_RESOLVED (.+)", done.stdout).group(1)):
+            # the positive control: a real, existing bundled resource inside the real installation
+            self.assertTrue(Path(resolved).is_relative_to(datafiles) and Path(resolved).is_file(), resolved)
         return target
 
     def test_a_reference_counts_as_blenders_own_only_where_it_really_resolves_into_the_installation(self):
@@ -804,6 +813,20 @@ class J_ExternalDependencies(BlenderCase):
         self.assertEqual(self.run_cap(ba.INSPECT, p, artifacts=artifacts).data["external_dependencies"],
                          {"count": 1, "missing": 1})
         self.assertNotRendered(self.run_cap(ba.RENDER, p, artifacts=artifacts), "EXTERNAL_DEPENDENCIES")
+
+    def test_a_missing_file_inside_blenders_real_datafiles_is_a_missing_dependency(self):
+        missing = Path(_STATE["missing_bundled"])
+        datafiles = Path(os.sep + _STATE["spoof_tail"])
+        self.assertTrue(datafiles.is_dir() and missing.parent == datafiles)   # inside the REAL installation
+        self.assertFalse(missing.exists())
+        p = self.project("missing-datafiles")
+        inspected = self.run_cap(ba.INSPECT, p, "missing-datafiles")
+        self.assertEqual(inspected.data["external_dependencies"], {"count": 1, "missing": 1})
+        result = self.run_cap(ba.RENDER, p, "missing-datafiles")
+        self.assertNotRendered(result, "EXTERNAL_DEPENDENCIES")
+        self.assertEqual(list(self.workspace_root(p).rglob("*.png")), [])
+        self.assertFalse(missing.exists())                                   # never created or repaired
+        self.assertNotIn("gpos-nonexistent", json.dumps(result.to_dict()) + json.dumps(inspected.to_dict()))
 
     def test_a_path_that_imitates_blenders_datafiles_is_a_dependency(self):
         tail = _STATE["spoof_tail"]

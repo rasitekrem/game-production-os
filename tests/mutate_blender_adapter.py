@@ -48,7 +48,7 @@ RENDER_RECORD = ("            value = parser.record(outcome.raw_stdout, nonce)\n
 FREESTYLE = "    if scene.render.use_freestyle:\n        raise Refusal(\"RENDER_SCRIPTING\""
 RENDER_RETURN = '    return {"scene": scene.name, "frame": frame, "camera": name(scene.camera.name), "engine": engine,\n'
 CAPABILITIES_END = ")\n\nDESCRIPTOR = model.AdapterDescriptor("
-EXTERNAL = "    external = {real for real in (resolved(path) for path in raw if path) if not inside(real, system)}\n"
+EXTERNAL = "    external = {real for real in (resolved(path) for path in raw if path) if not blender_owned(real, system)}\n"
 
 
 def declared_input(kind):
@@ -225,7 +225,7 @@ MUTATIONS = [
         (PARSER, "    if not line.startswith(head):\n        raise HelperProtocolError(\"the helper record does not carry",
          "    head = line[:len(PREFIX) + 33]\n    if False:\n        raise HelperProtocolError(\"the helper record does not carry")]),
     ("bundled-asset containment replaced by a substring match", [
-        (HELPER, "if not inside(real, system)}", "if \"datafiles\" not in real}")]),
+        (HELPER, "if not blender_owned(real, system)}", "if \"datafiles\" not in real}")]),
     ("Blender's own references counted as project dependencies", [
         (HELPER, "        return os.path.commonpath([path, root]) == root\n", "        return False\n")]),
     ("self-test accepts auto-execution enabled", [
@@ -252,9 +252,11 @@ MUTATIONS = [
          "        while rest.startswith(\"../\"):\n            rest = rest[3:]\n"
          "        return rest == tail or rest.startswith(tail + \"/\")\n"
          "    external = {resolved(path) for path in raw if path and not textual(path)\n"
-         "                and not inside(resolved(path), system)}\n")]),
+         "                and not blender_owned(resolved(path), system)}\n")]),
     ("bundled containment trusts the stored text instead of the resolved file", [
         (HELPER, "    return os.path.realpath(bpy.path.abspath(raw))\n", "    return os.path.normpath(raw.replace(\"//\", os.sep, 1))\n")]),
+    ("missing path inside DATAFILES is accepted as bundled", [
+        (HELPER, "    return inside(real, system) and os.path.isfile(real)\n", "    return inside(real, system)\n")]),
     ("oversized Blender load log accepted", [
         (HELPER, '    if len(data) > LOG_LIMIT:\n        raise Refusal("ENGINE_LOG_UNBOUNDED"',
          '    data = data[:LOG_LIMIT]\n    if False:\n        raise Refusal("ENGINE_LOG_UNBOUNDED"')]),

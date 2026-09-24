@@ -97,7 +97,7 @@ GPOS_TEST_ANDROID_SERIALS=<serial>[,<serial>...] python3 tests/test_adb_adapter.
 
 Real integration tests for the Phase-2C-3 ADB adapter (`gpos/tools/adb/`), run against real Android targets a human authorized. GPOS_TEST_ANDROID_SERIALS is test-only and names them. Without it, the suite uses the single eligible target, or stops with ADB_TARGET_UNAVAILABLE_FOR_PHASE2C3 or ADB_TARGET_SELECTION_REQUIRED_FOR_PHASE2C3. It never falls back to mocks. Stand-in programs cover only deterministic error cases.
 
-Every real-target test runs on each authorized target in turn as `adb -s <serial>`. Physical serials and build fingerprints are never printed (targets are labelled, and the runner filters its output), and screenshots are checked for structure only. Groups A–Z cover:
+Every real-target test runs on each authorized target in turn as `adb -s <serial>`. Physical devices capture and materialize evidence, whose identity is checked against the real Phase-2A validator's reference devices; emulators must be refused. Physical serials and build fingerprints are never printed (targets are labelled, and the runner filters its output), and screenshots are checked for structure only. Groups A–Z cover:
 
 - registration and the real probe;
 - target selection and readiness;

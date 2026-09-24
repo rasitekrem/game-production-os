@@ -12,11 +12,19 @@ NO PRODUCTION CAPABILITY CHANGES ANDROID TARGET STATE. Every command is a fixed,
 shell runner, generic dumpsys, logcat, screen recording or wireless pairing. The capabilities are
 MUTATING only because each writes its one evidence file into this execution's host workspace.
 
-The target is never inferred. `request.target_platform` must be `ANDROID` and `request.device` must be
-the exact local ADB serial; every target command binds it with `-s`. `-d`, `-e` and `ANDROID_SERIAL` are
-never used (the foundation does not inherit the variable), and a network serial (`host:port`, an mDNS
-service name) is refused: there is no wireless ADB in this phase. `request.device` is also the device
-recorded in provenance, unchanged.
+Two identities, never confused. The `adb_serial` input is only the operational selector: the exact local
+ADB serial, bound with `-s` on every target command (never `-d`, `-e` or `ANDROID_SERIAL`, which the
+foundation does not inherit; a network serial such as `host:port` or an mDNS service name is refused: there
+is no wireless ADB in this phase). `request.device` is the GPOS reference-device identity recorded in
+provenance: `<manufacturer> <model> / Android <release> (API <level>)`, derived from the target's public
+properties by `parsers.canonical_device_identity`. Before any capture the adapter derives that identity from
+the selected target and requires `request.device` to equal it exactly, so the serial never becomes evidence
+identity and a caller cannot label one device's capture as another's. The serial is replaced by
+`<adb-target>` in the recorded command.
+
+These are physical target evidence capabilities. `DEVICE_EVIDENCE` is observation on physical target
+hardware, and emulators are not (core/EVIDENCE-RULES.md), so a target identified as an emulator, or one that
+cannot be established as physical, is refused before anything is written.
 
 Before a capture the target must be connected (`get-state` = `device`) and fully booted
 (`sys.boot_completed` = `1`): Android documents that the `device` state alone does not mean the system has
@@ -48,6 +56,7 @@ ADAPTER_ID = "adb"
 ADAPTER_VERSION = "1.0.0"
 EXECUTABLE_NAME = "adb"
 TARGET_PLATFORM = "ANDROID"
+TARGET_PLACEHOLDER = "<adb-target>"
 
 DEVICE_REPORT = f"{ADAPTER_ID}.capture-device-report"
 SCREENSHOT = f"{ADAPTER_ID}.capture-screenshot"
@@ -135,20 +144,22 @@ def _capture(cap_id, category, description, execution_context, evidence, artifac
         input_kinds=input_kinds, artifact_kinds=(artifact_kind,),
         potential_evidence=((evidence, execution_context),),
         timeout=TimeoutPolicy(default=60.0, maximum=300.0), side_effect_scope=side_effect,
-        notes=("Requires target_platform ANDROID and request.device naming the exact local ADB serial.",
-               "Reads the target only; writes one evidence file into this execution's host workspace."))
+        notes=("Requires target_platform ANDROID, the adb_serial input naming the exact local ADB serial, and "
+               "request.device equal to the target's canonical reference-device identity.",
+               "Physical targets only: an emulator is refused. Reads the target only; writes one evidence file into "
+               "this execution's host workspace."))
 
 
 CAPABILITIES = (
     _capture(DEVICE_REPORT, "CAPTURE", "Capture the named Android target's identity, OS build and boot state from "
              "a fixed allowlist of system properties; offers DEVICE_EVIDENCE.", "TARGET_RUNTIME", "DEVICE_EVIDENCE",
-             "JSON", (), "writes device.json into this execution's host workspace; the target is not modified"),
+             "JSON", ("adb_serial",), "writes device.json into this execution's host workspace; the target is not modified"),
     _capture(SCREENSHOT, "CAPTURE", "Capture one PNG screenshot streamed from the named Android target "
-             "(no file on the device); offers VISUAL_EVIDENCE.", "TARGET_RUNTIME", "VISUAL_EVIDENCE", "IMAGE", (),
+             "(no file on the device); offers VISUAL_EVIDENCE.", "TARGET_RUNTIME", "VISUAL_EVIDENCE", "IMAGE", ("adb_serial",),
              "writes screenshot.png into this execution's host workspace; the target is not modified"),
     _capture(MEMINFO, "PROFILE", "Capture one point-in-time memory snapshot of one named, running package on the "
              "named Android target; offers PERFORMANCE_EVIDENCE.", "PERFORMANCE_RUNTIME", "PERFORMANCE_EVIDENCE",
-             "REPORT", ("package_name",),
+             "REPORT", ("adb_serial", "package_name"),
              "writes meminfo.txt into this execution's host workspace; the target is not modified"),
 )
 
@@ -158,8 +169,10 @@ DESCRIPTOR = model.AdapterDescriptor(
     supported_platforms=("WINDOWS", "MACOS", "LINUX"), capabilities=CAPABILITIES,
     availability="an adb executable (Android SDK Platform-Tools) on PATH (absolute PATH entries only)",
     compatibility_notes=(
-        "Explicit local targets only: request.device is the exact USB or emulator serial; wireless and TCP/IP "
-        "targets are refused and never paired or connected.",
+        "Explicit physical targets only: the adb_serial input selects the exact local USB target; emulators, "
+        "wireless and TCP/IP targets are refused and never paired or connected.",
+        "request.device is the GPOS reference-device identity '<manufacturer> <model> / Android <release> (API "
+        "<level>)', verified against the selected target; the serial is never evidence identity.",
         "Read-only target commands: get-state, getprop, exec-out screencap -p, dumpsys meminfo -s <package>.",
         "The ADB server is host tool infrastructure: an adb command may start it; the adapter never manages it.",
     ))
@@ -227,13 +240,18 @@ class AdbAdapter(model.ToolAdapter):
         if request.target_platform != TARGET_PLATFORM:
             return _refuse(cap, f"{cap} requires target_platform {TARGET_PLATFORM}; it is caller-owned provenance and "
                                 f"is never inferred (got {request.target_platform!r})")
-        serial = request.device
+        inputs = request.inputs or {}
+        serial = inputs.get("adb_serial")
         problem = parsers.serial_problem(serial)
         if problem:
             return _refuse(cap, problem)
+        identity = request.device
+        if not isinstance(identity, str) or not identity.strip() or len(identity) > parsers.MAX_IDENTITY:
+            return _refuse(cap, "request.device must name the target's canonical reference-device identity, "
+                                "'<manufacturer> <model> / Android <release> (API <level>)'; it is never inferred")
         package = None
         if cap == MEMINFO:
-            package = (request.inputs or {}).get("package_name")
+            package = inputs.get("package_name")
             problem = parsers.package_problem(package)
             if problem:
                 return _refuse(cap, problem)
@@ -246,40 +264,57 @@ class AdbAdapter(model.ToolAdapter):
         what = f"{filename} ({artifact_kind})" + (f" for package {package}" if package else "")
         if context.dry_run:
             return AdapterOutcome(
-                plan=(f"would check the connection state and boot completion of ADB target {serial}",
+                plan=("would check the connection state, boot completion and physical hardware of the ADB target "
+                      f"named by adb_serial, and compare its canonical identity with {identity!r}",
                       f"would capture {what} from that target and offer {evidence_type} "
                       f"({context.capability.execution_context})",
-                      "no ADB target command, workspace or file is created by a dry run; target availability is "
-                      "not checked"),
-                data={"target_platform": TARGET_PLATFORM, "device": serial,
+                      "no ADB target command, workspace or file is created by a dry run; connection, boot, physical "
+                      "hardware and identity are not verified until a real execution"),
+                data={"target_platform": TARGET_PLATFORM, "device": identity,
                       **({"package_name": package} if package else {})})
-        run = _Runner(context, self._capture)
+        run = _Runner(context, self._capture, serial)
         refusal = run.ready(serial)
         if refusal:
             return refusal
-        if cap == DEVICE_REPORT:
-            return self._device_report(context, run, serial, output)
-        if cap == SCREENSHOT:
-            return self._screenshot(context, run, serial, output)
-        return self._meminfo(context, run, serial, package, output)
-
-    # ------------------------------------------------------------ the three captures
-
-    def _device_report(self, context, run, serial, output):
+        # One fixed getprop capture establishes what the target is before anything is captured from it.
         outcome, failed = run.step(getprop_argv(serial), "getprop", "shell getprop")
         if failed:
             return failed
         try:
+            records = parsers.parse_getprop(outcome.raw_stdout)
             report = parsers.device_report(outcome.raw_stdout)
+            observed = parsers.canonical_device_identity(report)
         except parsers.TargetOutputError as exc:
             return run.failed(outcome, f"the target's properties could not be read as a device report ({exc})")
+        kind = "emulator" if serial.startswith("emulator-") else parsers.target_kind(records)
+        if kind != "physical":
+            return run.refused(outcome, "TARGET_DEVICE_NOT_PHYSICAL",
+                               ("the selected target is an Android emulator" if kind == "emulator" else
+                                "the selected target could not be established as physical hardware") +
+                               f"; {cap} captures physical target evidence only, and emulators are not "
+                               f"DEVICE_EVIDENCE (core/EVIDENCE-RULES.md)")
+        if len(serial) >= 8 and serial in observed:
+            return run.failed(outcome, "the target's canonical identity would contain its serial; refused")
+        if identity != observed:
+            return run.refused(outcome, "TARGET_DEVICE_IDENTITY_MISMATCH",
+                               f"request.device {identity!r} is not the selected target, whose canonical identity is "
+                               f"{observed!r}; nothing was captured")
+        if cap == DEVICE_REPORT:
+            return self._device_report(context, run, outcome, report, identity, output)
+        if cap == SCREENSHOT:
+            return self._screenshot(context, run, serial, identity, output)
+        return self._meminfo(context, run, serial, identity, package, output)
+
+    # ------------------------------------------------------------ the three captures
+
+    def _device_report(self, context, run, outcome, report, identity, output):
+        report = dict(report, reference_device=identity)
         body = (json.dumps(report, sort_keys=True, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
         return self._written(context, run, outcome, DEVICE_REPORT, output, body,
-                             summary=f"Android target {report['manufacturer']} {report['model']}, API "
-                                     f"{report['api_level']}, observed through ADB",
+                             summary=f"Physical Android target {identity}, observed through ADB",
                              data=report)
 
-    def _screenshot(self, context, run, serial, output):
+    def _screenshot(self, context, run, serial, identity, output):
         outcome, failed = run.step(screencap_argv(serial), "screenshot", "exec-out screencap -p")
         if failed:
             return failed
@@ -288,10 +323,10 @@ class AdbAdapter(model.ToolAdapter):
         except parsers.TargetOutputError as exc:
             return run.failed(outcome, f"the screenshot is not a complete PNG ({exc}); nothing was written")
         return self._written(context, run, outcome, SCREENSHOT, output, bytes(outcome.raw_stdout),
-                             summary=f"{width}x{height} screenshot of the Android target, streamed through ADB",
+                             summary=f"{width}x{height} screenshot of {identity}, streamed through ADB",
                              data={"width": width, "height": height, "bytes": len(outcome.raw_stdout)})
 
-    def _meminfo(self, context, run, serial, package, output):
+    def _meminfo(self, context, run, serial, identity, package, output):
         outcome, failed = run.step(meminfo_argv(serial, package), "meminfo", "shell dumpsys meminfo -s")
         if failed:
             return failed
@@ -304,7 +339,7 @@ class AdbAdapter(model.ToolAdapter):
         except parsers.TargetOutputError as exc:
             return run.failed(outcome, f"the meminfo output could not be accepted as a snapshot of {package} ({exc})")
         return self._written(context, run, outcome, MEMINFO, output, text.encode("ascii"),
-                             summary=f"Point-in-time memory snapshot of {package} on the Android target",
+                             summary=f"Point-in-time memory snapshot of {package} on {identity}",
                              data={"package_name": package, "pid": pid, "bytes": len(text),
                                    "instrumentation": dict(MEMINFO_INSTRUMENTATION)})
 
@@ -333,8 +368,8 @@ class AdbAdapter(model.ToolAdapter):
 class _Runner:
     """Runs this execution's fixed ADB commands under one deadline, and records the last one."""
 
-    def __init__(self, context, capture):
-        self.context, self.capture = context, capture
+    def __init__(self, context, capture, serial):
+        self.context, self.capture, self.serial = context, capture, serial
         self.deadline = context.clock.monotonic() + context.timeout
         self.spec = None
 
@@ -363,19 +398,21 @@ class _Runner:
         if outcome.exit_code != 0:
             if b"not found" in outcome.raw_stderr:
                 return self.refused(outcome, "TARGET_DEVICE_UNAVAILABLE",
-                                    f"ADB target {serial} is not connected; no other target is used instead")
+                                    "the ADB target named by adb_serial is not connected; no other target is used "
+                                    "instead")
             return self.refused(outcome, "TARGET_DEVICE_NOT_READY",
-                                f"ADB target {serial} is not usable (for example unauthorized or offline)")
+                                "the ADB target named by adb_serial is not usable (for example unauthorized or "
+                                "offline)")
         if state != "device":
             return self.refused(outcome, "TARGET_DEVICE_NOT_READY",
-                                f"ADB target {serial} is in state {state[:20]!r}, not 'device'")
+                                f"the ADB target named by adb_serial is in state {state[:20]!r}, not 'device'")
         outcome = self.run(boot_argv(serial), "state")
         if outcome.timed_out or outcome.truncated:
             return self.step_failure(outcome, "getprop sys.boot_completed")
         if outcome.exit_code != 0 or outcome.raw_stdout.strip() != b"1":
             return self.refused(outcome, "TARGET_DEVICE_NOT_READY",
-                                f"ADB target {serial} is connected but Android has not completed boot "
-                                f"(sys.boot_completed is not 1)")
+                                "the ADB target named by adb_serial is connected but Android has not completed "
+                                "boot (sys.boot_completed is not 1)")
         return None
 
     def step_failure(self, outcome, what):
@@ -395,7 +432,12 @@ class _Runner:
                               **self.record())
 
     def record(self):
-        return dict(command=self.spec.command_for_provenance(), environment=self.spec.env.metadata())
+        """The last command as recorded in provenance, with the operational serial replaced by `<adb-target>`:
+        the serial selects a target for this execution and is never evidence identity. The argv actually run is
+        unchanged."""
+        argv = tuple(TARGET_PLACEHOLDER if a == self.serial else a for a in self.spec.argv)
+        return dict(command=replace(self.spec, argv=argv).command_for_provenance(),
+                    environment=self.spec.env.metadata())
 
 
 def parse_version(raw):

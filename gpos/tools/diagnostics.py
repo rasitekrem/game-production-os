@@ -62,6 +62,9 @@ CODES = {
     "PROJECT_LAYOUT": (INVALID_REQUEST, "the path is not a GPOS project root"),
     "PROJECT_INVALID": (INVALID_REQUEST, "the Phase-2A validator reports the project INVALID"),
     "ROUTING_NOT_READY": (INVALID_REQUEST, "the capability requires a READY routing and this routing is not ready"),
+    # target device (Phase 2C-3): generic to any device adapter
+    "TARGET_DEVICE_NOT_PHYSICAL": (INVALID_REQUEST, "the target is an emulator, or could not be established as physical target hardware"),
+    "TARGET_DEVICE_IDENTITY_MISMATCH": (INVALID_REQUEST, "the requested device identity is not the identity the selected target reports"),
     # version control (Phase 2C-1): generic to any repository adapter, not specific to one tool
     "REPOSITORY_NOT_FOUND": (INVALID_REQUEST, "the version-control tool found no work tree at the project root"),
     "REPOSITORY_ROOT_MISMATCH": (INVALID_REQUEST, "the repository top level is not the GPOS project root"),

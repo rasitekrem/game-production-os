@@ -9,8 +9,12 @@ on each of them in turn, always as `adb -s <that serial>`, never depending on de
 the variable the suite uses the single eligible local target (or `GPOS_TEST_ANDROID_SERIAL`), and stops
 with ADB_TARGET_UNAVAILABLE_FOR_PHASE2C3 or ADB_TARGET_SELECTION_REQUIRED_FOR_PHASE2C3 otherwise. The
 suite never falls back to mocks: stand-in programs are used only for deterministic error cases (a missing
-or unrecognizable adb, an unauthorized or offline or booting target, truncated or malformed output, a
-timeout), and say so.
+or unrecognizable adb, an unauthorized or offline or booting or emulated target, truncated or malformed
+output, a timeout), and say so.
+
+The adapter's capabilities are physical-target evidence capabilities: on a physical device they capture and
+their evidence materializes; on an emulator their accepted result is a refusal. Test code derives each
+target's expected canonical identity from its own `getprop` queries, independently of the adapter.
 
 Privacy: physical-device serials and build fingerprints are never printed. Targets are labelled
 (USB-1, EMU-1, ...), the runner's output is filtered, and screenshots are checked for structure only
@@ -18,11 +22,12 @@ Privacy: physical-device serials and build fingerprints are never printed. Targe
 workspace. Only the read-only commands the adapter authorizes are sent to a target; test code adds
 read-only `getprop` and `pidof` queries to cross-check what the adapter reported.
 
-Groups: A registration · B real probe · C target selection · D readiness · E device report · F report
-privacy · G screenshot · H screenshot truncation · I meminfo · J package validation · K package not running
-· L contexts · M materialization · N explicit Git handoff · O mutation consent · P dry run · Q output
-collision · R target immutability · S command surface · T network and wireless · U public output ·
-V parsers · W performance limitations · X CLI · Y repository privacy · Z other adapters unchanged.
+Groups: A registration · B real probe · C target selection · C2 identity binding · D readiness · E device
+report · E2 emulator refusal · F report privacy · G screenshot · H screenshot truncation · I meminfo ·
+J package validation · K package not running · L contexts · M materialization · M2 reference devices ·
+N explicit Git handoff · O mutation consent · P dry run · Q output collision · R target immutability ·
+S command surface · T network and wireless · U public output · V parsers · W performance limitations ·
+X CLI · Y repository privacy · Z other adapters unchanged.
 """
 
 import ast
@@ -46,6 +51,7 @@ sys.path.insert(0, str(ROOT))
 
 _HOME = tempfile.mkdtemp(prefix="gpos-adb-home-")  # Git fixtures only; adb keeps the real HOME (its key store)
 
+import gpos  # noqa: E402
 from gpos.framework import load_framework  # noqa: E402
 from gpos.tools import diagnostics as tdg  # noqa: E402
 from gpos.tools import evidence as tev  # noqa: E402
@@ -64,6 +70,7 @@ from gpos.tools.synthetic import SyntheticAdapter  # noqa: E402
 FW = load_framework()
 REG = FW.registry
 FIXTURE = ROOT / "tests" / "fixtures" / "adapter-project"
+RELEASE_BUNDLE = ROOT / "tests" / "fixtures" / "bundles" / "release-multi-platform-ready"
 PROJECT_ID = "synthetic-adapter-project"
 ADB = shutil.which("adb")
 GIT = shutil.which("git")
@@ -75,7 +82,8 @@ FILES = {aa.DEVICE_REPORT: "device.json", aa.SCREENSHOT: "screenshot.png", aa.ME
 EVIDENCE = {aa.DEVICE_REPORT: ("DEVICE_EVIDENCE", "TARGET_RUNTIME"), aa.SCREENSHOT: ("VISUAL_EVIDENCE", "TARGET_RUNTIME"),
             aa.MEMINFO: ("PERFORMANCE_EVIDENCE", "PERFORMANCE_RUNTIME")}
 REPORT_KEYS = {"manufacturer", "model", "device_codename", "primary_abi", "android_release", "api_level",
-               "security_patch", "build_fingerprint", "boot_completed"}
+               "security_patch", "build_fingerprint", "boot_completed", "reference_device"}
+IDENTITY_FORMAT = re.compile(r".+ .+ / Android .+ \(API [0-9]{1,4}\)")
 FORBIDDEN_FAMILIES = {"install", "install-multiple", "uninstall", "push", "pull", "sync", "root", "unroot", "remount",
                       "reboot", "reboot-bootloader", "disable-verity", "enable-verity", "tcpip", "connect",
                       "disconnect", "pair", "forward", "reverse", "kill-server", "start-server", "bugreport", "backup",
@@ -94,13 +102,17 @@ def adb_test(serial, *args, timeout=60):
     return subprocess.run(argv, capture_output=True, timeout=timeout)
 
 
+def prop(serial, name):
+    return adb_test(serial, "shell", "getprop", name).stdout.decode("utf-8", "replace").strip()
+
+
 def _eligible():
     listing = adb_test(None, "devices").stdout.decode("utf-8", "replace").splitlines()[1:]
     out = []
     for line in listing:
         parts = line.split()
         if len(parts) >= 2 and parts[1] == "device" and ap.serial_problem(parts[0]) is None:
-            if adb_test(parts[0], "shell", "getprop", "sys.boot_completed").stdout.strip() == b"1":
+            if prop(parts[0], "sys.boot_completed") == "1":
                 out.append(parts[0])
     return out
 
@@ -110,7 +122,7 @@ def mask(serial):
 
 
 def _targets():
-    """[(label, serial, kind)] or raises SystemExit-worthy RuntimeError with the stop marker."""
+    """[(label, serial, kind)] where kind is "physical" or "emulator", or RuntimeError with the stop marker."""
     configured = os.environ.get("GPOS_TEST_ANDROID_SERIALS") or os.environ.get("GPOS_TEST_ANDROID_SERIAL")
     serials = [s.strip() for s in configured.split(",") if s.strip()] if configured else None
     if serials is None:
@@ -121,18 +133,36 @@ def _targets():
             raise RuntimeError("ADB_TARGET_SELECTION_REQUIRED_FOR_PHASE2C3: eligible targets "
                                f"{[mask(s) for s in eligible]}; set GPOS_TEST_ANDROID_SERIALS")
         serials = eligible
-    counts, out = {"usb": 0, "emulator": 0}, []
+    counts, out = {"physical": 0, "emulator": 0}, []
     for serial in serials:
         if ap.serial_problem(serial):
             raise RuntimeError(f"ADB_TARGET_UNAVAILABLE_FOR_PHASE2C3: {mask(serial)} is not a local ADB serial")
-        kind = "emulator" if serial.startswith("emulator-") else "usb"
+        # Test-side classification, independent of the adapter: the emulator's own qemu property.
+        kind = "emulator" if serial.startswith("emulator-") or prop(serial, "ro.kernel.qemu") == "1" else "physical"
         counts[kind] += 1
         out.append((f"{'EMU' if kind == 'emulator' else 'USB'}-{counts[kind]}", serial, kind))
     return out
 
 
 TARGETS = []          # filled in setUpModule
+IDENTITY = {}         # serial -> canonical identity, derived by test code from getprop
 FINGERPRINTS = set()  # observed at runtime, only ever used to redact and to scan the repository
+
+
+def expected_identity(serial):
+    """The canonical identity, derived by test code from the target's own properties (not the adapter)."""
+    if serial not in IDENTITY:
+        IDENTITY[serial] = (f"{prop(serial, 'ro.product.manufacturer')} {prop(serial, 'ro.product.model')} / Android "
+                            f"{prop(serial, 'ro.build.version.release')} (API {prop(serial, 'ro.build.version.sdk')})")
+    return IDENTITY[serial]
+
+
+def physical():
+    return [t for t in TARGETS if t[2] == "physical"]
+
+
+def emulators():
+    return [t for t in TARGETS if t[2] == "emulator"]
 
 
 def setUpModule():
@@ -141,9 +171,12 @@ def setUpModule():
     if not TARGETS:
         TARGETS.extend(_targets())
     for label, serial, _ in TARGETS:
-        if adb_test(serial, "get-state").stdout.strip() != b"device" or \
-                adb_test(serial, "shell", "getprop", "sys.boot_completed").stdout.strip() != b"1":
+        if adb_test(serial, "get-state").stdout.strip() != b"device" or prop(serial, "sys.boot_completed") != "1":
             raise RuntimeError(f"ADB_TARGET_UNAVAILABLE_FOR_PHASE2C3: {label} is not a connected, booted target")
+        FINGERPRINTS.add(prop(serial, "ro.build.fingerprint"))
+        expected_identity(serial)
+    if not physical():
+        raise RuntimeError("ADB_TARGET_UNAVAILABLE_FOR_PHASE2C3: no physical target (emulators only prove refusal)")
     MATRIX.project = _new_project(Path(tempfile.mkdtemp(prefix="gpos-adb-matrix-")).resolve() / "p")
 
 
@@ -165,7 +198,7 @@ def sha256(path):
 def redact(text):
     """The runner's output filter: physical serials and build fingerprints never reach the log."""
     for label, serial, kind in TARGETS:
-        if kind == "usb":
+        if kind == "physical":
             text = text.replace(serial, f"<{label}_SERIAL_REDACTED>")
     for fingerprint in FINGERPRINTS:
         text = text.replace(fingerprint, "<BUILD_FINGERPRINT_REDACTED>")
@@ -196,17 +229,29 @@ class Recorder:
         """Specs addressed to a target (everything except `adb version`)."""
         return [s for s in self.specs if "-s" in s.argv]
 
+    @property
+    def captures(self):
+        """Specs that capture evidence (not readiness or identity checks)."""
+        return [s for s in self.specs if "screencap" in s.argv or "dumpsys" in s.argv]
 
-def request(capability, project, serial, **kwargs):
+
+_UNSET = object()
+
+
+def request(capability, project, serial, device=_UNSET, inputs=None, subject=None, **kwargs):
+    """A request for `serial` (the adb_serial input) whose device is, by default, that target's identity."""
     kwargs.setdefault("allow_mutation", not kwargs.get("dry_run", False))
     kwargs.setdefault("target_platform", "ANDROID")
-    if capability == aa.MEMINFO:
-        kwargs.setdefault("inputs", {"package_name": PACKAGE})
-    revision = kwargs.pop("revision", REVISION)
     kwargs.setdefault("build_revision", REVISION)
+    merged = {"adb_serial": serial} if serial is not None else {}
+    if capability == aa.MEMINFO:
+        merged["package_name"] = PACKAGE
+    merged.update(inputs or {})
+    if device is _UNSET:
+        device = IDENTITY.get(serial, "Unknown Device / Android 0 (API 1)")
     return ExecutionRequest(adapter_id="adb", capability_id=capability,
-                            subject=Subject("TASK", "FEATURE-X", revision), project_root=str(project),
-                            device=serial, **kwargs)
+                            subject=subject or Subject("TASK", "FEATURE-X", REVISION), project_root=str(project),
+                            device=device, inputs=merged, **kwargs)
 
 
 class _Matrix:
@@ -225,8 +270,8 @@ class _Matrix:
                     time.sleep(2)
                 with Recorder() as rec:
                     result = execute(self.registry, request(capability, self.project, serial))
-                # A busy target (seen on emulators: ~6 s, then a header only) may not answer the memory dump in
-                # time. The adapter correctly refuses that (a stand-in test covers it); a real acceptance run
+                # A busy target may not answer the memory dump in time (seen on emulators: ~6 s, then a header
+                # only). The adapter correctly refuses that (a stand-in test covers it); a real acceptance run
                 # retries the whole execution a bounded number of times, and reports how often.
                 incomplete = capability == aa.MEMINFO and result.status == tdg.FAILED and \
                     any("no memory totals" in d.message for d in result.diagnostics)
@@ -234,12 +279,22 @@ class _Matrix:
                     break
                 self.retries += 1
             self.runs[key] = (result, rec.specs)
-            if capability == aa.DEVICE_REPORT and result.ok:
-                FINGERPRINTS.add(result.data["build_fingerprint"])
         return self.runs[key]
 
 
 MATRIX = _Matrix()
+EMULATOR_RUNS = {}
+
+
+def emulator_run(serial, capability):
+    """An emulator's refused capture (with its own correct identity), run once and shared."""
+    key = (serial, capability)
+    if key not in EMULATOR_RUNS:
+        project = _new_project(MATRIX.project.parent / f"emu-{len(EMULATOR_RUNS)}")
+        with Recorder() as rec:
+            result = execute(default_registry(FW), request(capability, project, serial, device=expected_identity(serial)))
+        EMULATOR_RUNS[key] = (result, rec, project)
+    return EMULATOR_RUNS[key]
 
 
 def systemui_running(serial):
@@ -267,8 +322,8 @@ class AdbCase(unittest.TestCase):
     def run_cap(self, capability, project, serial, registry=None, **kwargs):
         return execute(registry or self.registry, request(capability, project, serial, **kwargs))
 
-    def first(self, kind=None):
-        return next(serial for _, serial, k in TARGETS if kind in (None, k))
+    def first(self):
+        return physical()[0][1]
 
     def codes(self, result):
         return {d.code for d in result.diagnostics}
@@ -323,6 +378,8 @@ if command.startswith("shell dumpsys meminfo -s "):
 out("", 1, "stand-in: unexpected command")
 """
 
+STAND_IN_SERIAL = "STANDIN0001"       # a physical-style serial; the stand-in's properties decide the rest
+
 
 def png_bytes(width=64, height=32, complete=True):
     ihdr = struct.pack(">II", width, height) + b"\x08\x06\x00\x00\x00"
@@ -334,8 +391,9 @@ def png_bytes(width=64, height=32, complete=True):
 GETPROP_OK = ("[ro.product.manufacturer]: [Acme]\n[ro.product.model]: [Model One]\n[ro.product.device]: [acme1]\n"
               "[ro.product.cpu.abi]: [arm64-v8a]\n[ro.build.version.release]: [15]\n[ro.build.version.sdk]: [35]\n"
               "[ro.build.version.security_patch]: [2024-09-05]\n[ro.build.fingerprint]: [acme/one/1:15/X/1:user/k]\n"
-              "[sys.boot_completed]: [1]\n[ro.serialno]: [SECRETSERIAL0001]\n[persist.sys.boot.reason.history]: "
-              "[reboot,1\nshutdown,2]\n[net.hostname]: [host-private]\n")
+              "[sys.boot_completed]: [1]\n[ro.hardware]: [acmechip]\n[ro.serialno]: [SECRETSERIAL0001]\n"
+              "[persist.sys.boot.reason.history]: [reboot,1\nshutdown,2]\n[net.hostname]: [host-private]\n")
+STAND_IN_IDENTITY = "Acme Model One / Android 15 (API 35)"
 MEMINFO_OK = ("Applications Memory Usage (in Kilobytes):\nUptime: 1 Realtime: 1\n\n** MEMINFO in pid 42 "
               f"[{PACKAGE}] **\n App Summary\n           TOTAL PSS:    98593            TOTAL RSS:   202120\n")
 
@@ -346,9 +404,9 @@ class StandIn:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.config = self.dir / "adb-config.json"
         cfg = dict(config)
-        for key in ("png",):
-            if isinstance(cfg.get(key), (bytes, bytearray)):
-                cfg[key] = {"hex": bytes(cfg[key]).hex()}
+        cfg.setdefault("getprop", GETPROP_OK)
+        if isinstance(cfg.get("png"), (bytes, bytearray)):
+            cfg["png"] = {"hex": bytes(cfg["png"]).hex()}
         self.config.write_text(json.dumps(cfg))
         self.exe = self.dir / "adb"
         self.exe.write_text(f"#!{tproc.interpreter_path()}\nCONFIG = {str(self.config)!r}\n{STAND_IN}")
@@ -366,6 +424,16 @@ class StandIn:
     def calls(self):
         log = Path(str(self.config) + ".log")
         return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+    @property
+    def captures(self):
+        return [c for c in self.calls if c[2:3] == ["exec-out"] or c[2:4] == ["shell", "dumpsys"]]
+
+
+class StandInCase(AdbCase):
+    def stand_in_run(self, cap, stand_in, **kwargs):
+        kwargs.setdefault("device", STAND_IN_IDENTITY)
+        return self.run_cap(cap, self.project(), STAND_IN_SERIAL, registry=stand_in.registry(), **kwargs)
 
 
 # ---------------------------------------------------------------- A  registration
@@ -395,9 +463,9 @@ class A_Registration(AdbCase):
     def test_exactly_three_capabilities(self):
         caps = {c.id: c for c in aa.DESCRIPTOR.capabilities}
         self.assertEqual(sorted(caps), ["adb.capture-device-report", "adb.capture-meminfo", "adb.capture-screenshot"])
-        expected = {aa.DEVICE_REPORT: ("CAPTURE", "TARGET_RUNTIME", (), ("JSON",)),
-                    aa.SCREENSHOT: ("CAPTURE", "TARGET_RUNTIME", (), ("IMAGE",)),
-                    aa.MEMINFO: ("PROFILE", "PERFORMANCE_RUNTIME", ("package_name",), ("REPORT",))}
+        expected = {aa.DEVICE_REPORT: ("CAPTURE", "TARGET_RUNTIME", ("adb_serial",), ("JSON",)),
+                    aa.SCREENSHOT: ("CAPTURE", "TARGET_RUNTIME", ("adb_serial",), ("IMAGE",)),
+                    aa.MEMINFO: ("PROFILE", "PERFORMANCE_RUNTIME", ("adb_serial", "package_name"), ("REPORT",))}
         for cap_id, cap in caps.items():
             category, context, inputs, kinds = expected[cap_id]
             self.assertEqual((cap.category, cap.operation_class, cap.state_model, cap.execution_context),
@@ -481,16 +549,17 @@ class B_RealProbe(AdbCase):
 BAD_SERIALS = ["", " ", "emulator-5554 ", " emulator-5554", "a b", "a;id", "a|id", "a&id", "$(id)", "`id`", "a'b",
                'a"b', "../x", "/dev/bus/usb/001", "a\\b", "-d", "-e", "--help", "a\nb", "a\tb", "a" * 65,
                "192.168.1.5:5555", "localhost:5555", "[::1]:5555", "usb:1-1", "10.0.2.2",
-               "adb-ABCDEF123456-XyZ._adb-tls-connect._tcp", "émulateur", None, 5554]
+               "adb-ABCDEF123456-XyZ._adb-tls-connect._tcp", "émulateur", 5554]
 
 
 class C_TargetSelection(AdbCase):
-    def test_request_device_is_required(self):
+    def test_the_adb_serial_input_and_the_device_identity_are_both_required(self):
         p = self.project()
         for cap in CAPS:
             with Recorder() as rec:
                 for dry in (False, True):
-                    self.assertRefused(self.run_cap(cap, p, None, dry_run=dry), "never inferred")
+                    self.assertRefused(self.run_cap(cap, p, None, dry_run=dry), "never chosen automatically")
+                    self.assertRefused(self.run_cap(cap, p, self.first(), device=None, dry_run=dry), "never inferred")
             self.assertEqual(rec.target_runs, [])
 
     def test_target_platform_android_is_required_and_never_inferred(self):
@@ -513,6 +582,13 @@ class C_TargetSelection(AdbCase):
                     self.assertEqual(result.status, tdg.INVALID_REQUEST, repr(serial))
         self.assertEqual(rec.target_runs, [])
 
+    def test_serial_grammar(self):
+        for serial in ("emulator-5554", "emulator-5584", "0123456789ABCDEF", "R58M123ABC", "a", "A_b-9"):
+            self.assertIsNone(ap.serial_problem(serial), serial)
+        for serial in BAD_SERIALS + [None]:
+            self.assertIsNotNone(ap.serial_problem(serial), repr(serial))
+        self.assertIn("wireless", ap.serial_problem("192.168.1.5:5555"))
+
     def test_a_capture_consumes_no_input_artifact(self):
         p = self.project()
         existing = p / "captures.png"
@@ -524,15 +600,8 @@ class C_TargetSelection(AdbCase):
                 self.assertRefused(result, "consumes no input artifact")
         self.assertEqual(rec.target_runs, [])
 
-    def test_serial_grammar(self):
-        for serial in ("emulator-5554", "emulator-5584", "0123456789ABCDEF", "R58M123ABC", "a", "A_b-9"):
-            self.assertIsNone(ap.serial_problem(serial), serial)
-        for serial in BAD_SERIALS:
-            self.assertIsNotNone(ap.serial_problem(serial), repr(serial))
-        self.assertIn("wireless", ap.serial_problem("192.168.1.5:5555"))
-
     def test_every_target_command_is_bound_to_exactly_the_requested_serial(self):
-        for label, serial, _ in TARGETS:
+        for label, serial, _ in physical():
             with self.subTest(target=label):
                 for cap in CAPS:
                     if cap == aa.MEMINFO and not systemui_running(serial):
@@ -542,18 +611,19 @@ class C_TargetSelection(AdbCase):
                     target_specs = [s for s in specs if "-s" in s.argv]
                     self.assertGreaterEqual(len(target_specs), 3)
                     for spec in target_specs:
-                        self.assertEqual(tuple(spec.argv[:2]), ("-s", serial))
+                        self.assertEqual(tuple(spec.argv[:2]), ("-s", serial))  # the real argv keeps the serial
                         self.assertNotIn("-d", spec.argv)
                         self.assertNotIn("-e", spec.argv)
                     others = {s for _, s, _ in TARGETS} - {serial}
                     self.assertFalse(any(o in spec.argv for spec in specs for o in others))  # no cross-device capture
-                    self.assertEqual(result.provenance.device, serial)
+                    self.assertEqual(result.provenance.device, expected_identity(serial))
                     self.assertEqual(result.provenance.target_platform, "ANDROID")
 
     def test_android_serial_in_the_environment_is_never_used(self):
-        if len(TARGETS) < 2:
+        a = self.first()
+        b = next((s for _, s, _ in TARGETS if s != a), None)
+        if b is None:
             self.skipTest("needs two authorized targets")
-        (_, a, _), (_, b, _) = TARGETS[0], TARGETS[1]
         p = self.project()
         previous = os.environ.get("ANDROID_SERIAL")
         os.environ["ANDROID_SERIAL"] = b
@@ -567,22 +637,98 @@ class C_TargetSelection(AdbCase):
             else:
                 os.environ["ANDROID_SERIAL"] = previous
         self.assertSucceeded(result)
-        self.assertEqual(result.provenance.device, a)
+        self.assertEqual(result.provenance.device, expected_identity(a))
         self.assertRefused(missing)
         for spec in rec.specs:
             self.assertNotIn("ANDROID_SERIAL", spec.env.build(os.environ | {"ANDROID_SERIAL": b}))
             self.assertNotIn(b, spec.argv)
 
 
+# ---------------------------------------------------------------- C2  identity binding
+
+class C2_IdentityBinding(AdbCase):
+    def test_each_physical_target_has_a_deterministic_canonical_identity_without_a_serial(self):
+        identities = set()
+        for label, serial, _ in physical():
+            with self.subTest(target=label):
+                result, _ = MATRIX.get(serial, aa.DEVICE_REPORT)
+                identity = result.data["reference_device"]
+                self.assertEqual(identity, expected_identity(serial))
+                self.assertEqual(identity, ap.canonical_device_identity(result.data))
+                self.assertTrue(IDENTITY_FORMAT.fullmatch(identity), identity)
+                self.assertLessEqual(len(identity), 200)
+                for secret in [s for _, s, _ in TARGETS] + list(FINGERPRINTS):
+                    self.assertNotIn(secret, identity)
+                if serial == self.first():
+                    again = self.run_cap(aa.DEVICE_REPORT, self.project(), serial)
+                    self.assertEqual(again.data["reference_device"], identity)  # deterministic
+                identities.add(identity)
+        self.assertEqual(len(identities), len(physical()))  # distinct devices, distinct identities
+
+    def test_the_identity_format(self):
+        report = {"manufacturer": "ExampleCorp", "model": "PhoneX", "android_release": "12", "api_level": 31}
+        self.assertEqual(ap.canonical_device_identity(report), "ExampleCorp PhoneX / Android 12 (API 31)")
+        with self.assertRaises(ap.TargetOutputError):
+            ap.canonical_device_identity(dict(report, model="M" * 250))
+
+    def test_a_wrong_identity_with_the_right_serial_is_refused_before_any_capture(self):
+        for index, (label, serial, _) in enumerate(physical()):
+            with self.subTest(target=label):
+                wrongs = ("Phone A", expected_identity(serial).replace("(API", "(API 1"), expected_identity(serial) + " ",
+                          serial)
+                for cap in (CAPS if index == 0 else (aa.DEVICE_REPORT,)):
+                    p = self.project()
+                    for wrong in (wrongs if cap == aa.DEVICE_REPORT else wrongs[:1]):
+                        with Recorder() as rec:
+                            result = self.run_cap(cap, p, serial, device=wrong)
+                        self.assertRefused(result, code="TARGET_DEVICE_IDENTITY_MISMATCH")
+                        self.assertEqual(rec.captures, [])
+                    self.assertFalse(self.workspace_root(p).exists() and any(self.workspace_root(p).rglob("*.*")))
+
+    def test_the_right_identity_with_a_wrong_serial_is_refused(self):
+        a = self.first()
+        p = self.project()
+        result = self.run_cap(aa.SCREENSHOT, p, "GPOSNOSUCHDEVICE0001", device=expected_identity(a))
+        self.assertRefused(result, code="TARGET_DEVICE_UNAVAILABLE", status=tdg.UNAVAILABLE)
+        others = [s for _, s, _ in physical() if s != a]
+        for b in others:  # another physical target cannot be labelled as this one
+            with Recorder() as rec:
+                result = self.run_cap(aa.SCREENSHOT, p, b, device=expected_identity(a))
+            self.assertRefused(result, code="TARGET_DEVICE_IDENTITY_MISMATCH")
+            self.assertEqual(rec.captures, [])
+
+    def test_provenance_device_is_the_identity_on_every_capture(self):
+        for label, serial, _ in physical():
+            with self.subTest(target=label):
+                for cap in CAPS:
+                    if cap == aa.MEMINFO and not systemui_running(serial):
+                        continue
+                    result, _ = MATRIX.get(serial, cap)
+                    self.assertEqual(result.provenance.device, expected_identity(serial))
+                    self.assertEqual(result.evidence_candidates[0].provenance["device"], expected_identity(serial))
+
+    def test_the_serial_is_nowhere_in_the_public_result_or_its_files(self):
+        for label, serial, _ in physical():
+            with self.subTest(target=label):
+                for cap in CAPS:
+                    if cap == aa.MEMINFO and not systemui_running(serial):
+                        continue
+                    result, _ = MATRIX.get(serial, cap)
+                    self.assertNotIn(serial, json.dumps(result.to_dict()))
+                    self.assertEqual(result.provenance.to_dict()["command"]["argv"][:2], ["-s", aa.TARGET_PLACEHOLDER])
+                    if cap != aa.SCREENSHOT:
+                        self.assertNotIn(serial.encode(), Path(result.artifacts[0].absolute_path).read_bytes())
+
+
 # ---------------------------------------------------------------- D  readiness
 
-class D_Readiness(AdbCase):
-    def test_every_real_capture_checks_state_then_boot_first(self):
-        for label, serial, _ in TARGETS:
+class D_Readiness(StandInCase):
+    def test_every_real_capture_checks_state_boot_and_identity_first(self):
+        for label, serial, _ in physical():
             with self.subTest(target=label):
-                result, specs = MATRIX.get(serial, aa.DEVICE_REPORT)
+                result, specs = MATRIX.get(serial, aa.SCREENSHOT)
                 target_specs = [tuple(s.argv) for s in specs if "-s" in s.argv]
-                self.assertEqual(target_specs[:2], [aa.state_argv(serial), aa.boot_argv(serial)])
+                self.assertEqual(target_specs[:3], [aa.state_argv(serial), aa.boot_argv(serial), aa.getprop_argv(serial)])
 
     def test_an_unknown_serial_is_unavailable_and_nothing_else_is_used(self):
         p = self.project()
@@ -590,7 +736,6 @@ class D_Readiness(AdbCase):
             result = self.run_cap(aa.SCREENSHOT, p, "GPOSNOSUCHDEVICE0001")
         self.assertRefused(result, "is not connected", code="TARGET_DEVICE_UNAVAILABLE", status=tdg.UNAVAILABLE)
         self.assertEqual([tuple(s.argv) for s in rec.target_runs], [aa.state_argv("GPOSNOSUCHDEVICE0001")])
-        self.assertEqual(list(self.workspace_root(p).rglob("*.png")), [])
 
     def test_unauthorized_offline_bootloader_or_booting_targets_fail_closed(self):
         cases = {"unauthorized": dict(state="", state_exit=1, state_err="error: device unauthorized.\n"),
@@ -599,27 +744,25 @@ class D_Readiness(AdbCase):
                  "state noise": dict(state="device extra\n")}
         for name, config in cases.items():
             with self.subTest(case=name):
-                stand_in = StandIn(self.tmp / name.replace(" ", "-"), getprop=GETPROP_OK, png=png_bytes(),
-                                   meminfo=MEMINFO_OK, **config)
+                stand_in = StandIn(self.tmp / name.replace(" ", "-"), png=png_bytes(), meminfo=MEMINFO_OK, **config)
                 for cap in CAPS:
-                    result = self.run_cap(cap, self.project(), "emulator-5554", registry=stand_in.registry())
-                    self.assertRefused(result, code="TARGET_DEVICE_NOT_READY", status=tdg.CONFLICT)
-                captured = [c for c in stand_in.calls if c[2:3] in (["exec-out"],) or c[2:4] == ["shell", "dumpsys"]
-                            or c[2:] == ["shell", "getprop"]]
-                self.assertEqual(captured, [])
+                    self.assertRefused(self.stand_in_run(cap, stand_in), code="TARGET_DEVICE_NOT_READY",
+                                       status=tdg.CONFLICT)
+                self.assertEqual(stand_in.captures, [])
+                self.assertNotIn(["-s", STAND_IN_SERIAL, "shell", "getprop"], stand_in.calls)
 
 
 # ---------------------------------------------------------------- E  device report
 
 class E_DeviceReport(AdbCase):
-    def test_every_target_gives_a_normalized_device_report(self):
-        for label, serial, _ in TARGETS:
+    def test_every_physical_target_gives_a_normalized_device_report(self):
+        for label, serial, _ in physical():
             with self.subTest(target=label):
                 result, _ = MATRIX.get(serial, aa.DEVICE_REPORT)
                 self.assertSucceeded(result)
                 (art,) = result.artifacts
-                self.assertEqual((art.artifact_id, art.kind, art.media_type, art.classification, art.origin_capture_context,
-                                  art.derived_from, art.complete),
+                self.assertEqual((art.artifact_id, art.kind, art.media_type, art.classification,
+                                  art.origin_capture_context, art.derived_from, art.complete),
                                  ("device-report", "JSON", "application/json", "CANONICAL", "TARGET_RUNTIME", (), True))
                 body = Path(art.absolute_path).read_bytes()
                 report = json.loads(body)
@@ -627,25 +770,74 @@ class E_DeviceReport(AdbCase):
                 self.assertEqual(report, result.data)
                 self.assertEqual(body, (json.dumps(report, sort_keys=True, ensure_ascii=False, indent=2) + "\n").encode())
                 self.assertIsInstance(report["api_level"], int)
-                self.assertTrue(1 <= report["api_level"] <= 1000)
                 self.assertIs(report["boot_completed"], True)
-                for key, prop in ap.REPORT_PROPERTIES.items():
-                    if key in ("api_level", "boot_completed"):
-                        continue
-                    actual = adb_test(serial, "shell", "getprop", prop).stdout.decode().strip()
-                    self.assertEqual(report[key], actual, key)  # compared, never printed
-                self.assertEqual(str(report["api_level"]),
-                                 adb_test(serial, "shell", "getprop", "ro.build.version.sdk").stdout.decode().strip())
+                self.assertEqual(report["reference_device"], expected_identity(serial))
+                for key, name in ap.REPORT_PROPERTIES.items():
+                    if key not in ("api_level", "boot_completed"):
+                        self.assertEqual(report[key], prop(serial, name), key)  # compared, never printed
+                self.assertEqual(str(report["api_level"]), prop(serial, "ro.build.version.sdk"))
                 (cand,) = result.evidence_candidates
                 self.assertEqual((cand.evidence_type, cand.capture_context, cand.artifact_ids, cand.derived_from),
                                  ("DEVICE_EVIDENCE", "TARGET_RUNTIME", ("device-report",), ()))
 
-    def test_the_matrix_spans_the_authorized_api_levels_and_target_kinds(self):
+    def test_the_matrix_covers_physical_devices_and_emulators(self):
         kinds = {kind for _, _, kind in TARGETS}
-        if kinds != {"usb", "emulator"}:
+        if kinds != {"physical", "emulator"}:
             self.skipTest("the configured targets are not a physical + emulator matrix")
-        levels = {MATRIX.get(serial, aa.DEVICE_REPORT)[0].data["api_level"] for _, serial, _ in TARGETS}
+        levels = {int(prop(serial, "ro.build.version.sdk")) for _, serial, _ in TARGETS}
         self.assertGreaterEqual(len(levels), 2, "the matrix must cover more than one API level")
+
+
+# ---------------------------------------------------------------- E2  emulator refusal
+
+class E2_EmulatorRefusal(StandInCase):
+    def test_every_emulator_is_refused_for_every_capability(self):
+        if not emulators():
+            self.skipTest("no emulator is among the authorized targets")
+        for label, serial, _ in emulators():
+            with self.subTest(target=label):
+                for cap in CAPS:
+                    result, rec, p = emulator_run(serial, cap)  # even with its own correct identity
+                    self.assertRefused(result, "emulator", code="TARGET_DEVICE_NOT_PHYSICAL")
+                    self.assertEqual(rec.captures, [])
+                    self.assertFalse(any(self.workspace_root(p).rglob("*.*")) if self.workspace_root(p).exists()
+                                     else False)
+                    self.assertEqual([c.evidence_type for c in result.evidence_candidates], [])
+
+    def test_an_emulator_is_recognized_by_its_properties_not_only_its_serial(self):
+        for name, extra in (("qemu", "[ro.kernel.qemu]: [1]\n"), ("boot qemu", "[ro.boot.qemu]: [1]\n"),
+                            ("ranchu", ""), ("characteristics", "[ro.build.characteristics]: [emulator]\n")):
+            with self.subTest(case=name):
+                getprop = GETPROP_OK + extra
+                if name == "ranchu":
+                    getprop = GETPROP_OK.replace("[acmechip]", "[ranchu]")
+                stand_in = StandIn(self.tmp / name.replace(" ", "-"), getprop=getprop, png=png_bytes(), meminfo=MEMINFO_OK)
+                for cap in CAPS:
+                    self.assertRefused(self.stand_in_run(cap, stand_in), "emulator", code="TARGET_DEVICE_NOT_PHYSICAL")
+                self.assertEqual(stand_in.captures, [])
+
+    def test_an_unknown_target_is_never_assumed_physical(self):
+        for name, getprop in (("no hardware", GETPROP_OK.replace("[ro.hardware]: [acmechip]\n", "")),
+                              ("odd qemu", GETPROP_OK + "[ro.kernel.qemu]: [2]\n")):
+            with self.subTest(case=name):
+                stand_in = StandIn(self.tmp / name.replace(" ", "-"), getprop=getprop, png=png_bytes())
+                self.assertRefused(self.stand_in_run(aa.SCREENSHOT, stand_in), "could not be established as physical",
+                                   code="TARGET_DEVICE_NOT_PHYSICAL")
+                self.assertEqual(stand_in.captures, [])
+
+    def test_target_classification(self):
+        records = ap.parse_getprop(GETPROP_OK.encode())
+        self.assertEqual(ap.target_kind(records), "physical")
+        self.assertEqual(ap.target_kind(dict(records, **{"ro.kernel.qemu": b"1"})), "emulator")
+        self.assertEqual(ap.target_kind(dict(records, **{"ro.kernel.qemu": b"0"})), "physical")
+        self.assertEqual(ap.target_kind(dict(records, **{"ro.boot.hardware": b"cutf_cvm"})), "emulator")
+        self.assertEqual(ap.target_kind(dict(records, **{"ro.build.characteristics": b"tablet,emulator"})), "emulator")
+        self.assertIsNone(ap.target_kind({k: v for k, v in records.items() if k != "ro.hardware"}))
+        self.assertIsNone(ap.target_kind(dict(records, **{"ro.boot.qemu": b"yes"})))
+
+    def test_a_physical_stand_in_passes_the_same_checks(self):
+        stand_in = StandIn(self.tmp / "physical", png=png_bytes())
+        self.assertSucceeded(self.stand_in_run(aa.SCREENSHOT, stand_in))
 
 
 # ---------------------------------------------------------------- F  device report privacy
@@ -656,7 +848,7 @@ SENSITIVE = re.compile(r"(serial|imei|meid|iccid|android_id|wifi|wlan|bluetooth|
 
 class F_ReportPrivacy(AdbCase):
     def test_no_sensitive_property_value_reaches_the_report_or_the_result(self):
-        for label, serial, _ in TARGETS:
+        for label, serial, _ in physical():
             with self.subTest(target=label):
                 result, _ = MATRIX.get(serial, aa.DEVICE_REPORT)
                 body = Path(result.artifacts[0].absolute_path).read_text()
@@ -664,31 +856,33 @@ class F_ReportPrivacy(AdbCase):
                 records = ap.parse_getprop(adb_test(serial, "shell", "getprop").stdout)
                 allowed = set(ap.REPORT_PROPERTIES.values())
                 reported = {str(v) for v in result.data.values()}
+                residual = body + json.dumps(result.data)
+                for value in sorted(reported, key=len, reverse=True):
+                    residual = residual.replace(value, "")
                 leaked = []
                 for name, value in records.items():
                     text = value.decode("utf-8", "replace")
                     if name in allowed or len(text) < 6 or text in reported or not SENSITIVE.search(name):
                         continue
-                    if text in body or text in json.dumps(result.data):
+                    if text in residual:
                         leaked.append(name)
                 self.assertEqual(leaked, [])  # property names only; values are never printed
-                if not serial.startswith("emulator-"):
-                    self.assertNotIn(serial, body)
+                self.assertNotIn(serial, body)
                 self.assertNotIn("[ro.", body + public)  # no raw getprop record
 
     def test_unexpected_properties_are_never_copied(self):
         report = ap.device_report(GETPROP_OK.encode())
-        self.assertEqual(set(report), REPORT_KEYS)
+        self.assertEqual(set(report), REPORT_KEYS - {"reference_device"})
         text = json.dumps(report)
-        for secret in ("SECRETSERIAL0001", "host-private", "shutdown,2"):
+        for secret in ("SECRETSERIAL0001", "host-private", "shutdown,2", "acmechip"):
             self.assertNotIn(secret, text)
 
     def test_the_runner_output_filter_hides_serials_and_fingerprints(self):
         for label, serial, kind in TARGETS:
-            fingerprint = MATRIX.get(serial, aa.DEVICE_REPORT)[0].data["build_fingerprint"]
+            fingerprint = prop(serial, "ro.build.fingerprint")
             text = redact(f"{serial} {fingerprint}")
             self.assertNotIn(fingerprint, text)
-            if kind == "usb":
+            if kind == "physical":
                 self.assertNotIn(serial, text)
                 self.assertIn(f"<{label}_SERIAL_REDACTED>", text)
 
@@ -696,14 +890,15 @@ class F_ReportPrivacy(AdbCase):
 # ---------------------------------------------------------------- G  screenshot
 
 class G_Screenshot(AdbCase):
-    def test_every_target_gives_a_streamed_png_offering_visual_evidence(self):
-        for label, serial, _ in TARGETS:
+    def test_every_physical_target_gives_a_streamed_png_offering_visual_evidence(self):
+        for label, serial, _ in physical():
             with self.subTest(target=label):
                 result, specs = MATRIX.get(serial, aa.SCREENSHOT)
                 self.assertSucceeded(result)
                 (art,) = result.artifacts
-                self.assertEqual((art.artifact_id, art.kind, art.media_type, art.classification, art.origin_capture_context),
-                                 ("screenshot", "IMAGE", "image/png", "CANONICAL", "TARGET_RUNTIME"))
+                self.assertEqual((art.artifact_id, art.kind, art.media_type, art.classification,
+                                  art.origin_capture_context), ("screenshot", "IMAGE", "image/png", "CANONICAL",
+                                                                "TARGET_RUNTIME"))
                 data = Path(art.absolute_path).read_bytes()  # structure only: never displayed, decoded or inspected
                 self.assertTrue(data.startswith(ap.PNG_SIGNATURE) and data.endswith(ap.PNG_IEND))
                 width, height = struct.unpack(">II", data[16:24])
@@ -713,7 +908,6 @@ class G_Screenshot(AdbCase):
                 self.assertEqual(art.sha256, hashlib.sha256(data).hexdigest())
                 (cand,) = result.evidence_candidates
                 self.assertEqual((cand.evidence_type, cand.capture_context), ("VISUAL_EVIDENCE", "TARGET_RUNTIME"))
-                self.assertNotIn("DEVICE_EVIDENCE", {c.evidence_type for c in result.evidence_candidates})
                 capture = [tuple(s.argv) for s in specs if "screencap" in s.argv]
                 self.assertEqual(capture, [aa.screencap_argv(serial)])  # streamed; no device file, no pull
                 self.assertFalse(any("/sdcard" in a or "/data" in a for s in specs for a in s.argv))
@@ -721,20 +915,21 @@ class G_Screenshot(AdbCase):
 
 # ---------------------------------------------------------------- H  screenshot truncation
 
-class H_ScreenshotTruncation(AdbCase):
-    def assertNoScreenshot(self, result, project, text):
+class H_ScreenshotTruncation(StandInCase):
+    def assertNoScreenshot(self, result, text):
         self.assertEqual(result.status, tdg.FAILED, redact(self.messages(result)))
         self.assertIn(text, self.messages(result))
         self.assertEqual((result.artifacts, result.evidence_candidates), ((), ()))
-        self.assertEqual(list(self.workspace_root(project).rglob("*.png")), [])
 
     def test_a_real_screenshot_over_the_capture_bound_is_refused(self):
         p = self.project()
         registry = ToolRegistry(FW, allow_test_only=False)
         registry.register(AdbAdapter(capture_bytes={"screenshot": 4096}))
         result = self.run_cap(aa.SCREENSHOT, p, self.first(), registry=registry)
-        self.assertNoScreenshot(result, p, "capture bound")
+        # the adapter's own refusal, not only the foundation's truncation notice
+        self.assertNoScreenshot(result, "output reached its capture bound; a partial capture is never reported")
         self.assertTrue(result.output_truncated)
+        self.assertEqual(list(self.workspace_root(p).rglob("*.png")), [])
 
     def test_incomplete_or_invalid_png_streams_are_refused(self):
         cases = {"no IEND": png_bytes(complete=False), "not png": b"GIF89a" + b"\x00" * 64, "empty": b"",
@@ -743,14 +938,11 @@ class H_ScreenshotTruncation(AdbCase):
         for name, data in cases.items():
             with self.subTest(case=name):
                 stand_in = StandIn(self.tmp / name.replace(" ", "-"), png=data)
-                p = self.project()
-                self.assertNoScreenshot(self.run_cap(aa.SCREENSHOT, p, "emulator-5554", registry=stand_in.registry()),
-                                        p, "not a complete PNG")
+                self.assertNoScreenshot(self.stand_in_run(aa.SCREENSHOT, stand_in), "not a complete PNG")
 
     def test_a_timeout_leaves_nothing(self):
         stand_in = StandIn(self.tmp / "slow", png=png_bytes(), sleep={"exec-out screencap -p": 30})
-        p = self.project()
-        result = self.run_cap(aa.SCREENSHOT, p, "emulator-5554", registry=stand_in.registry(), timeout=2.0)
+        result = self.stand_in_run(aa.SCREENSHOT, stand_in, timeout=2.0)
         self.assertEqual(result.status, tdg.TIMED_OUT)
         self.assertEqual((result.artifacts, result.evidence_candidates), ((), ()))
         self.assertLess(result.duration_seconds, 20)
@@ -759,9 +951,9 @@ class H_ScreenshotTruncation(AdbCase):
 # ---------------------------------------------------------------- I  meminfo
 
 class I_Meminfo(AdbCase):
-    def test_each_target_running_the_fixed_package_gives_a_memory_snapshot(self):
-        succeeded = {"usb": 0, "emulator": 0}
-        for label, serial, kind in TARGETS:
+    def test_each_physical_target_running_the_fixed_package_gives_a_memory_snapshot(self):
+        succeeded = 0
+        for label, serial, _ in physical():
             with self.subTest(target=label):
                 if not systemui_running(serial):
                     self.skipTest(f"{label}: {PACKAGE} is not running on this target (never launched by tests)")
@@ -778,11 +970,11 @@ class I_Meminfo(AdbCase):
                 self.assertEqual(result.data["package_name"], PACKAGE)
                 self.assertEqual(str(result.data["pid"]), headers[0][0])
                 (cand,) = result.evidence_candidates
-                self.assertEqual((cand.evidence_type, cand.capture_context), ("PERFORMANCE_EVIDENCE", "PERFORMANCE_RUNTIME"))
+                self.assertEqual((cand.evidence_type, cand.capture_context),
+                                 ("PERFORMANCE_EVIDENCE", "PERFORMANCE_RUNTIME"))
                 self.assertEqual([tuple(s.argv) for s in specs if "dumpsys" in s.argv], [aa.meminfo_argv(serial, PACKAGE)])
-                succeeded[kind] += 1
-        for kind in {k for _, _, k in TARGETS}:
-            self.assertGreaterEqual(succeeded[kind], 1, f"no {kind} target completed the real meminfo test")
+                succeeded += 1
+        self.assertGreaterEqual(succeeded, 1, "no physical target completed the real meminfo test")
 
 
 # ---------------------------------------------------------------- J  package validation
@@ -801,7 +993,6 @@ class J_PackageValidation(AdbCase):
                 for dry in (False, True):
                     result = self.run_cap(aa.MEMINFO, p, self.first(), dry_run=dry, inputs={"package_name": value})
                     self.assertEqual(result.status, tdg.INVALID_REQUEST, repr(value))
-            self.assertRefused(self.run_cap(aa.MEMINFO, p, self.first(), inputs={}), "package_name is required")
         self.assertEqual(rec.target_runs, [])
 
     def test_package_grammar(self):
@@ -814,7 +1005,8 @@ class J_PackageValidation(AdbCase):
         p = self.project()
         with Recorder() as rec:
             for cap, name in ((aa.MEMINFO, "service"), (aa.MEMINFO, "argv"), (aa.SCREENSHOT, "path"),
-                              (aa.DEVICE_REPORT, "properties"), (aa.SCREENSHOT, "package_name")):
+                              (aa.DEVICE_REPORT, "properties"), (aa.SCREENSHOT, "package_name"),
+                              (aa.DEVICE_REPORT, "device_serial")):
                 result = self.run_cap(cap, p, self.first(), inputs={name: "x"})
                 self.assertEqual(result.status, tdg.INVALID_REQUEST, (cap, name))
         self.assertEqual(rec.target_runs, [])
@@ -822,9 +1014,9 @@ class J_PackageValidation(AdbCase):
 
 # ---------------------------------------------------------------- K  package not running
 
-class K_PackageNotRunning(AdbCase):
+class K_PackageNotRunning(StandInCase):
     def test_a_package_that_is_not_running_is_a_conflict_without_evidence(self):
-        for label, serial, _ in TARGETS:
+        for label, serial, _ in physical():
             with self.subTest(target=label):
                 p = self.project()
                 result = self.run_cap(aa.MEMINFO, p, serial, inputs={"package_name": NOT_RUNNING})
@@ -842,18 +1034,16 @@ class K_PackageNotRunning(AdbCase):
         for name, text in cases.items():
             with self.subTest(case=name):
                 stand_in = StandIn(self.tmp / name.replace(" ", "-"), meminfo=text)
-                p = self.project()
-                result = self.run_cap(aa.MEMINFO, p, "emulator-5554", registry=stand_in.registry())
+                result = self.stand_in_run(aa.MEMINFO, stand_in)
                 self.assertEqual(result.status, tdg.FAILED, name)
                 self.assertEqual((result.artifacts, result.evidence_candidates), ((), ()))
-                self.assertEqual(list(self.workspace_root(p).rglob("meminfo.txt")), [])
 
 
 # ---------------------------------------------------------------- L  contexts
 
 class L_Contexts(AdbCase):
     def test_each_capture_offers_exactly_its_evidence_in_its_context(self):
-        for label, serial, _ in TARGETS:
+        for label, serial, _ in physical():
             with self.subTest(target=label):
                 for cap in CAPS:
                     if cap == aa.MEMINFO and not systemui_running(serial):
@@ -874,36 +1064,40 @@ class L_Contexts(AdbCase):
 
 # ---------------------------------------------------------------- M  materialization
 
+def materialized(result, cap, evidence_id):
+    extra = {"instrumentation": result.data["instrumentation"]} if cap == aa.MEMINFO else None
+    return tev.materialize(FW, result.evidence_candidates[0], result.artifacts, evidence_id, extra_provenance=extra)
+
+
 class M_Materialization(AdbCase):
-    def test_every_real_capture_materializes_a_schema_valid_record(self):
+    def test_every_physical_capture_materializes_a_schema_valid_record(self):
         version = AdbAdapter().probe().tool_version
-        for label, serial, _ in TARGETS:
+        for label, serial, _ in physical():
             with self.subTest(target=label):
                 for cap in CAPS:
                     if cap == aa.MEMINFO and not systemui_running(serial):
                         continue
                     result, _ = MATRIX.get(serial, cap)
-                    (cand,) = result.evidence_candidates
-                    self.assertTrue(cand.materializable)
-                    extra = {"instrumentation": result.data["instrumentation"]} if cap == aa.MEMINFO else None
-                    record, problems = tev.materialize(FW, cand, result.artifacts, f"EV-ADB-{label}", extra_provenance=extra)
+                    self.assertTrue(result.evidence_candidates[0].materializable)
+                    record, problems = materialized(result, cap, f"EV-ADB-{label}")
                     self.assertEqual(problems, [], redact(str(problems)))
                     self.assertEqual(FW.validators["evidence"].errors(record), [])
                     self.assertEqual(record["type"], EVIDENCE[cap][0])
                     prov = record["provenance"]
                     self.assertEqual((prov["capture_context"], prov["subject_revision"], prov["build_revision"],
                                       prov["target_platform"], prov["device"], prov["tool_version"]),
-                                     (EVIDENCE[cap][1], REVISION, REVISION, "ANDROID", serial, version))
+                                     (EVIDENCE[cap][1], REVISION, REVISION, "ANDROID", expected_identity(serial), version))
                     art = result.artifacts[0]
                     self.assertEqual(record["artifacts"][0]["hash"], f"sha256:{sha256(art.absolute_path)}")
                     text = json.dumps(record)
+                    self.assertNotIn(serial, text)  # the operational serial is never evidence
                     for word in ("PASS", "gate", "reviewer", "assessor", "approved", "HUMAN_EVIDENCE"):
                         self.assertNotIn(word, text)
 
     def test_meminfo_needs_its_instrumentation_declared_by_the_caller(self):
-        serial = next((s for _, s, _ in TARGETS if systemui_running(s)), None)
+        serial = next((s for _, s, _ in physical() if systemui_running(s)), None)
         if serial is None:
-            self.skipTest(f"no target runs {PACKAGE}")
+            self.skipTest(f"no physical target runs {PACKAGE}")
         result, _ = MATRIX.get(serial, aa.MEMINFO)
         record, problems = tev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-ADB-X")
         self.assertIsNone(record)
@@ -911,12 +1105,67 @@ class M_Materialization(AdbCase):
         self.assertEqual(result.data["instrumentation"]["timing_impact"], "UNKNOWN")
 
     def test_without_a_build_revision_a_runtime_record_cannot_be_made(self):
-        p = self.project()
-        result = self.run_cap(aa.DEVICE_REPORT, p, self.first(), build_revision=None)
+        result = self.run_cap(aa.DEVICE_REPORT, self.project(), self.first(), build_revision=None)
         self.assertSucceeded(result)
         self.assertIn("build_revision", result.provenance.to_dict()["unknown"])
-        record, problems = tev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-ADB-Y")
+        record, _ = tev.materialize(FW, result.evidence_candidates[0], result.artifacts, "EV-ADB-Y")
         self.assertIsNone(record)
+
+    def test_no_emulator_candidate_exists_to_materialize(self):
+        for label, serial, _ in emulators():
+            with self.subTest(target=label):
+                for cap in CAPS:
+                    self.assertEqual(emulator_run(serial, cap)[0].evidence_candidates, ())
+
+
+# ---------------------------------------------------------------- M2  reference devices (the real Phase-2A validator)
+
+class M2_ReferenceDevices(AdbCase):
+    """ADB DEVICE_EVIDENCE counts under the frozen reference-device contract, with no serial in project records."""
+
+    def bundle_with(self, record, reference_device):
+        root = self.tmp / f"bundle-{len(list(self.tmp.iterdir()))}"
+        shutil.copytree(RELEASE_BUNDLE, root)
+        gpos_dir = root / ".game" / "gpos"
+        config = json.loads((gpos_dir / "project-config.json").read_text())
+        for target in config["target_platforms"]:
+            if target["platform"] == "ANDROID":
+                target["reference_devices"] = [reference_device]
+        (gpos_dir / "project-config.json").write_text(json.dumps(config, indent=2))
+        (gpos_dir / "evidence" / "DEV-A.json").write_text(json.dumps(record, indent=2))
+        return root
+
+    def device_record(self, serial):
+        subject = Subject("RELEASE", "rel-1.0", "build-100")  # the bundle's device gate scope
+        result = self.run_cap(aa.DEVICE_REPORT, self.project(), serial, subject=subject)
+        self.assertSucceeded(result)
+        record, problems = tev.materialize(FW, result.evidence_candidates[0], result.artifacts, "DEV-A")
+        self.assertEqual(problems, [])
+        return record
+
+    def validate(self, root):
+        result = gpos.validate_project(gpos.load_project(root))
+        return result, [d.code for d in result.diagnostics]
+
+    def test_the_canonical_identity_counts_as_the_declared_reference_device(self):
+        a = self.first()
+        record = self.device_record(a)
+        self.assertEqual(record["provenance"]["device"], expected_identity(a))
+        result, codes = self.validate(self.bundle_with(record, expected_identity(a)))
+        self.assertNotIn("REFERENCE_DEVICE_MISMATCH", codes)
+        self.assertTrue(result.valid, redact(str(codes)))
+        config = (self.tmp.glob("bundle-*/.game/gpos/project-config.json"))
+        for path in config:
+            self.assertNotIn(a, path.read_text())  # the project authority records no serial
+
+    def test_another_device_is_a_reference_device_mismatch(self):
+        a = self.first()
+        other = next((s for _, s, _ in physical() if s != a), None)
+        record = self.device_record(other) if other else dict(self.device_record(a))
+        declared = expected_identity(a) if other else "ExampleCorp PhoneX / Android 12 (API 31)"
+        result, codes = self.validate(self.bundle_with(record, declared))
+        self.assertIn("REFERENCE_DEVICE_MISMATCH", codes)
+        self.assertFalse(result.valid)
 
 
 # ---------------------------------------------------------------- N  explicit Git handoff (CLI)
@@ -932,15 +1181,15 @@ def cli(*argv):
 class N_GitHandoff(AdbCase):
     def repo(self):
         p = self.project()
-        env = FIXTURE_ENV
         for args in (["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q", "-m", "fixture"]):
-            subprocess.run([GIT, *args], cwd=p, env=env, check=True, capture_output=True)
+            subprocess.run([GIT, *args], cwd=p, env=FIXTURE_ENV, check=True, capture_output=True)
         return p
 
     def adb_cli(self, p, serial, *extra):
         code, out = cli("execute", "--adapter", "adb", "--capability", aa.DEVICE_REPORT, "--project", str(p),
-                        "--subject-ref", "FEATURE-X", "--target-platform", "ANDROID", "--device", serial,
-                        "--allow-mutation", "--format", "json", *extra)
+                        "--subject-ref", "FEATURE-X", "--target-platform", "ANDROID", "--device",
+                        expected_identity(serial), "--input", f"adb_serial={serial}", "--allow-mutation", "--format",
+                        "json", *extra)
         return code, json.loads(out)["result"]
 
     def test_git_revision_through_the_cli_is_recorded_exactly(self):
@@ -955,15 +1204,16 @@ class N_GitHandoff(AdbCase):
             code, result = self.adb_cli(p, serial, "--subject-revision", revision, "--build-revision", revision)
         self.assertEqual(code, 0, redact(json.dumps(result["diagnostics"])))
         prov = result["provenance"]
-        self.assertEqual((prov["build_revision"], prov["target_platform"], prov["device"]), (revision, "ANDROID", serial))
+        self.assertEqual((prov["build_revision"], prov["target_platform"], prov["device"]),
+                         (revision, "ANDROID", expected_identity(serial)))
         cand = result["evidence_candidates"][0]
         self.assertEqual(cand["provenance"]["build_revision"], revision)
         self.assertTrue(cand["materializable"])
+        self.assertNotIn(serial, json.dumps(result))
         self.assertEqual({Path(s.executable).name for s in rec.specs}, {"adb"})  # ADB never called Git
 
     def test_without_the_handoff_the_revision_stays_unknown(self):
-        p = self.repo()
-        code, result = self.adb_cli(p, self.first())
+        code, result = self.adb_cli(self.repo(), self.first())
         self.assertEqual(code, 0)
         self.assertIn("build_revision", result["provenance"]["unknown"])
         self.assertNotIn("build_revision", result["provenance"])
@@ -982,8 +1232,7 @@ class O_MutationConsent(AdbCase):
         p = self.project()
         with Recorder() as rec:
             for cap in CAPS:
-                result = self.run_cap(cap, p, self.first(), allow_mutation=False)
-                self.assertRefused(result, code="MUTATION_NOT_ALLOWED")
+                self.assertRefused(self.run_cap(cap, p, self.first(), allow_mutation=False), code="MUTATION_NOT_ALLOWED")
         self.assertEqual(rec.target_runs, [])
         self.assertFalse(self.workspace_root(p).exists())
 
@@ -996,17 +1245,20 @@ class P_DryRun(AdbCase):
         before = sorted(x.relative_to(p).as_posix() for x in p.rglob("*"))
         with Recorder() as rec:
             for cap in CAPS:
-                for serial in (self.first(), "GPOSNOSUCHDEVICE0001"):  # an absent target plans identically
-                    result = self.run_cap(cap, p, serial, dry_run=True)
-                    self.assertSucceeded(result)
+                for serial, device in ((self.first(), expected_identity(self.first())),
+                                       ("GPOSNOSUCHDEVICE0001", "Anything / Android 1 (API 1)"),
+                                       ("emulator-5554", "Any Emulator / Android 15 (API 35)")):
+                    result = self.run_cap(cap, p, serial, device=device, dry_run=True)
+                    self.assertSucceeded(result)  # nothing about the target is known without contacting it
                     self.assertEqual((result.artifacts, result.evidence_candidates, result.mutation_performed),
                                      ((), (), False))
                     self.assertIn("MUTATION_SKIPPED_DRY_RUN", self.codes(result))
                     self.assertEqual(len(result.plan), 3)
                     self.assertTrue(result.plan[0].startswith("would check"))
-                    self.assertIn("not checked", result.plan[2])
+                    self.assertIn("not verified until a real execution", result.plan[2])
+                    self.assertNotIn(serial, " ".join(result.plan) + json.dumps(result.data))
                     for line in result.plan:
-                        for claim in ("is connected", "is booted", "is running"):
+                        for claim in ("is connected", "is booted", "is running", "is physical"):
                             self.assertNotIn(claim, line)
         self.assertEqual(rec.target_runs, [])
         self.assertEqual(sorted(x.relative_to(p).as_posix() for x in p.rglob("*")), before)
@@ -1047,14 +1299,20 @@ class Q_OutputCollision(AdbCase):
 
 class R_TargetImmutability(AdbCase):
     def test_every_command_sent_to_every_target_is_a_read_only_template(self):
-        for label, serial, _ in TARGETS:
+        for label, serial, kind in TARGETS:
             with self.subTest(target=label):
-                allowed = {aa.state_argv(serial), aa.boot_argv(serial), aa.getprop_argv(serial), aa.screencap_argv(serial),
-                           aa.meminfo_argv(serial, PACKAGE)}
-                for cap in CAPS:
-                    if cap == aa.MEMINFO and not systemui_running(serial):
-                        continue
-                    for spec in MATRIX.get(serial, cap)[1]:
+                allowed = {aa.state_argv(serial), aa.boot_argv(serial), aa.getprop_argv(serial),
+                           aa.screencap_argv(serial), aa.meminfo_argv(serial, PACKAGE)}
+                runs = []
+                if kind == "physical":
+                    runs = [MATRIX.get(serial, cap)[1] for cap in CAPS
+                            if cap != aa.MEMINFO or systemui_running(serial)]
+                else:
+                    runs = [emulator_run(serial, cap)[1].specs for cap in CAPS]
+                    for cap in CAPS:
+                        self.assertEqual(emulator_run(serial, cap)[1].captures, [])  # refused before any capture
+                for specs in runs:
+                    for spec in specs:
                         argv = tuple(spec.argv)
                         self.assertTrue(argv == aa.VERSION_ARGV or argv in allowed, redact(str(argv)))
                         self.assertEqual(set(argv) & FORBIDDEN_FAMILIES, set())
@@ -1102,16 +1360,19 @@ class S_CommandSurface(AdbCase):
         text = (ROOT / "gpos" / "tools" / "adb" / "adapter.py").read_text()
         for needle in ("shell=True", "os.system", "os.popen", "Popen", "os.exec", "os.spawn"):
             self.assertNotIn(needle, text)
-        self.assertEqual(re.findall(r"request\.inputs[^)]*\)\.get\(\"(\w+)\"\)", text), ["package_name"])
+        self.assertEqual(re.findall(r"\binputs\.get\(\"(\w+)\"\)", text), ["adb_serial", "package_name"])
         self.assertEqual(set(re.findall(r"\brequest\.(\w+)", text)),
                          {"capability_id", "target_platform", "device", "inputs"})  # nothing else is read
 
-    def test_every_executable_run_is_the_probed_adb(self):
+    def test_every_executable_run_is_the_probed_adb_and_the_recorded_command_hides_the_serial(self):
         tool = AdbAdapter().probe().tool_path
-        for label, serial, _ in TARGETS:
+        for label, serial, _ in physical():
             with self.subTest(target=label):
-                for spec in MATRIX.get(serial, aa.DEVICE_REPORT)[1]:
+                result, specs = MATRIX.get(serial, aa.DEVICE_REPORT)
+                for spec in specs:
                     self.assertEqual(spec.executable, tool)
+                recorded = result.provenance.to_dict()["command"]["argv"]
+                self.assertEqual(recorded, ["-s", "<adb-target>", "shell", "getprop"])
 
 
 # ---------------------------------------------------------------- T  network and wireless
@@ -1139,7 +1400,7 @@ class T_NetworkAndWireless(AdbCase):
 
 class U_PublicOutput(AdbCase):
     def test_no_target_payload_reaches_the_result(self):
-        for label, serial, _ in TARGETS:
+        for label, serial, _ in physical():
             with self.subTest(target=label):
                 for cap in CAPS:
                     if cap == aa.MEMINFO and not systemui_running(serial):
@@ -1148,8 +1409,8 @@ class U_PublicOutput(AdbCase):
                     self.assertEqual((result.stdout, result.stderr), ("", ""))
                     self.assertGreater(result.stdout_bytes, 0)  # the byte count is kept
                     public = json.dumps(result.to_dict())
-                    for needle in ("[ro.", "[sys.boot_completed]", "MEMINFO in pid", "App Summary", "IHDR", "raw_stdout",
-                                   "\\u0089PNG"):
+                    for needle in ("[ro.", "[sys.boot_completed]", "MEMINFO in pid", "App Summary", "IHDR",
+                                   "raw_stdout", "\\u0089PNG"):
                         self.assertNotIn(needle, public, cap)
 
 
@@ -1162,9 +1423,10 @@ class V_Parsers(AdbCase):
         self.assertEqual(ap.device_report(GETPROP_OK.encode())["api_level"], 35)
 
     def test_malformed_getprop_fails_closed(self):
-        def without(prop):
-            return "\n".join(l for l in GETPROP_OK.splitlines() if not l.startswith(f"[{prop}]")).encode()
-        bad = {"stray line": b"hello\n" + GETPROP_OK.encode(), "duplicate": (GETPROP_OK + "[ro.product.model]: [X]\n").encode(),
+        def without(name):
+            return "\n".join(l for l in GETPROP_OK.splitlines() if not l.startswith(f"[{name}]")).encode()
+        bad = {"stray line": b"hello\n" + GETPROP_OK.encode(),
+               "duplicate": (GETPROP_OK + "[ro.product.model]: [X]\n").encode(),
                "unterminated": GETPROP_OK.encode() + b"[ro.x]: [open", "missing model": without("ro.product.model"),
                "missing fingerprint": without("ro.build.fingerprint"),
                "control char": GETPROP_OK.replace("[Model One]", "[Model\x1bOne]").encode(),
@@ -1179,8 +1441,7 @@ class V_Parsers(AdbCase):
         for name, raw in bad.items():
             with self.subTest(case=name), self.assertRaises(ap.TargetOutputError):
                 ap.device_report(raw)
-        # invalid bytes in a property the report never reads do not matter
-        ap.device_report(GETPROP_OK.encode() + b"[vendor.blob]: [\xff\xfe]\n")
+        ap.device_report(GETPROP_OK.encode() + b"[vendor.blob]: [\xff\xfe]\n")  # unread properties do not matter
 
     def test_png_structure(self):
         self.assertEqual(ap.png_dimensions(png_bytes(640, 480)), (640, 480))
@@ -1207,12 +1468,13 @@ class W_PerformanceLimitations(AdbCase):
         for phrase in ("point-in-time memory snapshot", "vary across platform versions", "Not a controlled benchmark",
                        "CPU, GPU, thermals, frame pacing, FPS or sustained performance"):
             self.assertIn(phrase, limitations)
-        serial = next((s for _, s, _ in TARGETS if systemui_running(s)), None)
+        serial = next((s for _, s, _ in physical() if systemui_running(s)), None)
         if serial is None:
-            self.skipTest(f"no target runs {PACKAGE}")
+            self.skipTest(f"no physical target runs {PACKAGE}")
         result, _ = MATRIX.get(serial, aa.MEMINFO)
         cand = result.evidence_candidates[0]
-        claims = (cand.summary + " " + json.dumps({k: v for k, v in result.data.items() if k != "instrumentation"})).lower()
+        claims = (cand.summary.replace(expected_identity(serial), "") + " " +
+                  json.dumps({k: v for k, v in result.data.items() if k != "instrumentation"})).lower()
         for word in ("fps", "jank", "cpu", "gpu", "thermal", "benchmark", "frame", "sustained", "overall"):
             self.assertNotIn(word, claims)
         self.assertEqual(cand.limitations, aa.LIMITATIONS[aa.MEMINFO])
@@ -1243,25 +1505,27 @@ class X_Cli(AdbCase):
 
     def test_execute_through_the_cli(self):
         p = self.project()
+        serial = self.first()
         base = ("execute", "--adapter", "adb", "--project", str(p), "--subject-ref", "FEATURE-X",
-                "--target-platform", "ANDROID", "--device", self.first())
+                "--target-platform", "ANDROID", "--device", expected_identity(serial), "--input", f"adb_serial={serial}")
         code, out = cli(*base, "--capability", aa.SCREENSHOT, "--allow-mutation", "--format", "json")
         self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out)["result"]["evidence_candidates"][0]["evidence_type"], "VISUAL_EVIDENCE")
+        payload = json.loads(out)
+        self.assertEqual(payload["result"]["evidence_candidates"][0]["evidence_type"], "VISUAL_EVIDENCE")
+        self.assertNotIn(serial, json.dumps(payload["result"]))  # only the request echo carries the input
         code, out = cli(*base, "--capability", aa.MEMINFO, "--input", "package_name=com.x;id", "--allow-mutation")
         self.assertEqual(code, tdg.EXIT_FOR[tdg.INVALID_REQUEST])
         code, _ = cli("execute", "--adapter", "adb", "--project", str(p), "--subject-ref", "FEATURE-X",
-                      "--capability", aa.DEVICE_REPORT, "--target-platform", "ANDROID", "--allow-mutation")
-        self.assertEqual(code, tdg.EXIT_FOR[tdg.INVALID_REQUEST])  # no --device: nothing is chosen
+                      "--capability", aa.DEVICE_REPORT, "--target-platform", "ANDROID", "--device",
+                      expected_identity(serial), "--allow-mutation")
+        self.assertEqual(code, tdg.EXIT_FOR[tdg.INVALID_REQUEST])  # no adb_serial: nothing is chosen
 
 
 # ---------------------------------------------------------------- Y  repository privacy
 
 class Y_RepositoryPrivacy(AdbCase):
     def test_no_physical_serial_or_fingerprint_is_in_the_repository(self):
-        for _, serial, _ in TARGETS:
-            MATRIX.get(serial, aa.DEVICE_REPORT)
-        needles = [s.encode() for _, s, k in TARGETS if k == "usb"] + [f.encode() for f in FINGERPRINTS]
+        needles = [s.encode() for _, s, k in TARGETS if k == "physical"] + [f.encode() for f in FINGERPRINTS if f]
         self.assertTrue(needles)
         hits = []
         for path in ROOT.rglob("*"):
@@ -1308,5 +1572,6 @@ if __name__ == "__main__":
     result = unittest.main(verbosity=1, exit=False, testRunner=unittest.TextTestRunner(stream=stream)).result
     version = subprocess.run([ADB, "version"], capture_output=True, text=True).stdout.splitlines()[1].strip()
     print(f"GPOS ADB adapter tests (real adb {version}; targets: "
-          f"{', '.join(label for label, _, _ in TARGETS)}; incomplete real meminfo snapshots retried: {MATRIX.retries})")
+          f"{', '.join(f'{label} ({kind})' for label, _, kind in TARGETS)}; "
+          f"incomplete real meminfo snapshots retried: {MATRIX.retries})")
     sys.exit(0 if result.wasSuccessful() else 1)

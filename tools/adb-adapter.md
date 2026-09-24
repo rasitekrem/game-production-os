@@ -2,11 +2,13 @@
 
 Code: [`gpos/tools/adb/`](../gpos/tools/adb/__init__.py) · adapter id `adb` · status: the first production target-device adapter, built on the frozen [tool adapter foundation](adapter-foundation.md) (`v1.0.0-alpha.12`) without changing it.
 
-The adapter answers three questions about one explicitly named Android target:
+The adapter answers three questions about one explicitly named **physical** Android target:
 
 1. which exact target produced this evidence (a device report);
 2. what the target displayed at one instant (a screenshot);
 3. what memory state one explicitly named, running package had at one instant (a meminfo snapshot).
+
+**Physical targets only.** `DEVICE_EVIDENCE` is observation on physical target hardware, and emulators and simulators are not `DEVICE_EVIDENCE` ([core/EVIDENCE-RULES.md](../core/EVIDENCE-RULES.md)). The three capabilities are therefore physical-target evidence capabilities: an Android emulator is refused before anything is captured (see [Physical targets only](#physical-targets-only)).
 
 **No production capability changes Android target state.** There is no install, uninstall, launch, force-stop, clear, input, settings or permission change, file transfer, reboot, root or remount, screen recording, logcat streaming, bug report, Perfetto trace, shell runner, generic dumpsys or wireless pairing. Each of those needs its own Human Review.
 
@@ -56,16 +58,65 @@ Observed on the real targets, and handled in code:
 | a busy emulator sometimes answers `dumpsys meminfo -s` after about 6 s with the header only, without memory figures (2 of 15 calls on one emulator; never on the physical devices) | refused as "no memory totals": not a usable snapshot, never evidence. The adapter does not retry on its own; the real-target test matrix retries the whole execution up to four times and reports the count |
 | a screenshot stream is a complete PNG ending in IEND (0.13–0.45 MiB at up to 1600×2560) | a stream without IEND, or one over the capture bound, is refused; no partial file is written |
 
-## Device selection
+## Two identities: the operational serial and the GPOS device
+
+A target has two identities, and the adapter never lets one stand in for the other.
+
+| | `adb_serial` input | `request.device` |
+|---|---|---|
+| what it is | the exact local ADB serial | the canonical GPOS reference-device identity |
+| used for | selecting the target: `adb -s <adb_serial> …` | provenance `device`; matched exactly against a project's `reference_devices` |
+| persists in evidence | **never** | yes |
+| example | (a USB serial) | `ExampleCorp PhoneX / Android 12 (API 31)` |
 
 Every capability requires:
 
 - `request.target_platform` = `ANDROID`. It is caller-owned provenance and is never inferred, even though the adapter is for Android. Missing or anything else is `INVALID_REQUEST`.
-- `request.device` = the **exact ADB serial**. It is the target selector and the provenance device, one value used unchanged. Missing is `INVALID_REQUEST`.
+- the `adb_serial` input: the exact local ADB serial. Missing or malformed is `INVALID_REQUEST`.
+- `request.device`: the target's canonical identity. Missing is `INVALID_REQUEST`.
 
-Every target command binds that serial with `-s <serial>`. There is no `-d`, no `-e`, no first-device fallback, and no "if one device exists, use it". The ANDROID_SERIAL variable never reaches adb, because the foundation inherits only its environment allowlist; a test proves a set value is ignored. The CLI uses the existing `--device` and `--target-platform` options. There is no separate serial option.
+Every target command binds the serial with `-s <adb_serial>`. There is no `-d`, no `-e`, no first-device fallback, and no "if one device exists, use it". The ANDROID_SERIAL variable never reaches adb, because the foundation inherits only its environment allowlist; a test proves a set value is ignored. The CLI uses `--input adb_serial=<serial>`, plus the existing `--device` and `--target-platform` options. No generic foundation target-selector field was added.
 
-The serial grammar is narrow on purpose: letters, digits, `-` and `_`, starting with a letter or digit, at most 64 characters. It accepts USB serials and emulator serials such as `emulator-5554`. It refuses:
+### The canonical reference-device identity
+
+```
+<manufacturer> <model> / Android <release> (API <api level>)
+```
+
+- It is built by `canonical_device_identity(report)` in [`parsers.py`](../gpos/tools/adb/parsers.py) from four allowlisted device-report fields: `ro.product.manufacturer`, `ro.product.model`, `ro.build.version.release` and `ro.build.version.sdk`.
+- It is deterministic and at most 200 characters.
+- It never contains a serial, build fingerprint, Android ID or network identifier.
+- It is the same value on every capture from the same physical target: device report, screenshot and meminfo all carry it as `provenance.device`.
+
+### Identity verification
+
+Before any capture, the adapter verifies the caller's claim against the real target:
+
+1. It selects the target with `adb_serial`.
+2. It establishes readiness: connected and fully booted.
+3. It reads the fixed identity properties with one `getprop`.
+4. It derives the canonical identity.
+5. It requires `request.device` to equal it **exactly**.
+
+A mismatch is `TARGET_DEVICE_IDENTITY_MISMATCH` (`INVALID_REQUEST`), with no artifact and no evidence. A caller therefore cannot label a capture from Phone B as Phone A. The operational target, the observed physical identity and the GPOS provenance are bound together, and no hardware serial is stored in project evidence.
+
+### Physical targets only
+
+After readiness, the same `getprop` capture classifies the target:
+
+- **Emulator.** The target is an emulator when any of these hold:
+  - `ro.kernel.qemu` or `ro.boot.qemu` is `1`;
+  - `ro.hardware` or `ro.boot.hardware` is a virtual hardware name (`goldfish`, `ranchu`, `vbox86`, `cutf_cvm`);
+  - `ro.build.characteristics` includes `emulator`;
+  - the serial is an `emulator-NNNN` transport. This is a positive signal only; it is never the sole basis for "physical".
+- **Physical.** The target is physical only positively: a hardware name is reported, it is not a virtual one, and no qemu property is set to anything but `0`.
+- **Unknown.** Anything else, such as no hardware name or an unexpected qemu value, is unknown. An unknown target is never assumed physical.
+
+An emulator or an unknown target is refused with `TARGET_DEVICE_NOT_PHYSICAL` (`INVALID_REQUEST`) before any capture: no artifact and no evidence. This applies even when the caller supplies the emulator's own correct identity. Emulator evidence (`RUNTIME_EVIDENCE` in `DIAGNOSTIC_RUNTIME`) is not part of this phase.
+
+The two authorized test emulators showed `ro.kernel.qemu` = `1`, `ro.boot.qemu` = `1`, `ro.hardware` = `ranchu` and characteristics `emulator`. The two physical devices showed a real hardware name (`qcom`) and no qemu property set.
+
+The `adb_serial` grammar is narrow on purpose: letters, digits, `-` and `_`, starting with a letter or digit, at most 64 characters. It accepts USB serials and emulator serials such as `emulator-5554`. It refuses:
 - `:` — TCP/IP `host:port` targets and `usb:` device paths;
 - `.` — IP addresses and mDNS service names such as `adb-…._adb-tls-connect._tcp`;
 - whitespace, quotes, slashes, shell syntax and a leading `-`.
@@ -86,7 +137,7 @@ This is not an adb command runner. The complete surface:
 | probe | `adb version` |
 | connection state | `adb -s <serial> get-state` |
 | boot completion | `adb -s <serial> shell getprop sys.boot_completed` |
-| device report | `adb -s <serial> shell getprop` |
+| identity, physical-target check, device report | `adb -s <serial> shell getprop` |
 | screenshot | `adb -s <serial> exec-out screencap -p` |
 | meminfo | `adb -s <serial> shell dumpsys meminfo -s <package>` |
 
@@ -113,6 +164,7 @@ Before any capture, and never in a dry run:
    - an unknown serial is `TARGET_DEVICE_UNAVAILABLE` (`UNAVAILABLE`);
    - `offline`, `bootloader`, unauthorized or anything else is `TARGET_DEVICE_NOT_READY` (`CONFLICT`).
 2. `getprop sys.boot_completed` must print exactly `1`. Otherwise `TARGET_DEVICE_NOT_READY`: the documented `device` state alone does not mean Android has finished booting.
+3. One `getprop` capture must parse as a device report. Then the target must be physical (`TARGET_DEVICE_NOT_PHYSICAL` otherwise), and its canonical identity must equal `request.device` (`TARGET_DEVICE_IDENTITY_MISMATCH` otherwise).
 
 All the commands of one execution share its timeout as a single deadline.
 
@@ -120,9 +172,9 @@ All the commands of one execution share its timeout as a single deadline.
 
 | Capability | Category | Observes | Inputs | Writes | Evidence |
 |---|---|---|---|---|---|
-| `adb.capture-device-report` | `CAPTURE` | `TARGET_RUNTIME` | — | `device.json`, `JSON`, `application/json` | `DEVICE_EVIDENCE` |
-| `adb.capture-screenshot` | `CAPTURE` | `TARGET_RUNTIME` | — | `screenshot.png`, `IMAGE`, `image/png` | `VISUAL_EVIDENCE` |
-| `adb.capture-meminfo` | `PROFILE` | `PERFORMANCE_RUNTIME` | `package_name` | `meminfo.txt`, `REPORT`, `text/plain` | `PERFORMANCE_EVIDENCE` |
+| `adb.capture-device-report` | `CAPTURE` | `TARGET_RUNTIME` | `adb_serial` | `device.json`, `JSON`, `application/json` | `DEVICE_EVIDENCE` |
+| `adb.capture-screenshot` | `CAPTURE` | `TARGET_RUNTIME` | `adb_serial` | `screenshot.png`, `IMAGE`, `image/png` | `VISUAL_EVIDENCE` |
+| `adb.capture-meminfo` | `PROFILE` | `PERFORMANCE_RUNTIME` | `adb_serial`, `package_name` | `meminfo.txt`, `REPORT`, `text/plain` | `PERFORMANCE_EVIDENCE` |
 
 All three are `MUTATING` (host workspace only; explicit `allow_mutation` consent, else `MUTATION_NOT_ALLOWED` with nothing started), `STATELESS`, support dry run, take no lease, and consume no input artifact.
 
@@ -141,11 +193,12 @@ One `getprop` capture, of which only these properties are read:
 | `security_patch` | `ro.build.version.security_patch` |
 | `build_fingerprint` | `ro.build.fingerprint` |
 | `boot_completed` | `sys.boot_completed`, which must be `1`, reported as `true` |
+| `reference_device` | the canonical identity derived from the fields above |
 
 - Every property is required. Every value must be printable UTF-8 text of at most 256 characters with no surrounding whitespace. The API level must be an integer from 1 to 1000, and the security patch a `YYYY-MM-DD` date.
 - Nothing else is ever copied, whatever the target prints: no serial number, IMEI, Android ID, network address, Wi-Fi, account, user or installed-app data.
 - The file is canonical JSON with sorted keys in UTF-8, and the same object is the result's data.
-- The ADB serial is not repeated inside the file: provenance already binds the evidence to it.
+- The ADB serial never appears in the file. The build fingerprint stays in the report under its existing contract, but it is not the provenance `device`.
 
 ### Screenshot
 
@@ -192,7 +245,7 @@ With a subject revision, and the explicitly supplied `build_revision` (or `build
 - the capture context;
 - `subject_revision` and `build_revision`;
 - `target_platform` = `ANDROID`;
-- `device` = the exact serial;
+- `device` = the canonical reference-device identity, never the serial;
 - the adb Platform-Tools `tool_version`;
 - the artifact hash.
 
@@ -203,6 +256,20 @@ The evidence schema also requires an **instrumentation** declaration for `PERFOR
 
 No gate status, verdict, reviewer or Human Review is created.
 
+### Reference devices
+
+The frozen Phase-2A validator counts `DEVICE_EVIDENCE` toward a platform that lists `reference_devices` only when the evidence's `device` exactly equals a listed identifier. A project therefore lists the canonical identity:
+
+```json
+{ "platform": "ANDROID", "tier": "PRIMARY", "reference_devices": ["ExampleCorp PhoneX / Android 12 (API 31)"] }
+```
+
+This is proven end to end with the real validator, unchanged:
+- a real device report from Physical A, materialized, validates with **no** `REFERENCE_DEVICE_MISMATCH` against a project that lists Physical A's identity;
+- a report from Physical B against the same project gives `REFERENCE_DEVICE_MISMATCH`.
+
+No serial appears in the project config or the evidence record.
+
 ### Explicit Git handoff
 
 No ADB capability calls Git. The alpha.12 CLI path carries a revision explicitly:
@@ -212,7 +279,7 @@ python3 -m gpos.tools execute --adapter git --capability git.resolve-provenance 
     --project P --subject-ref FEATURE-X --format json
 python3 -m gpos.tools execute --adapter adb --capability adb.capture-device-report \
     --project P --subject-ref FEATURE-X --subject-revision <SHA> --build-revision <SHA> \
-    --target-platform ANDROID --device <SERIAL> --allow-mutation --format json
+    --target-platform ANDROID --device "<IDENTITY>" --input adb_serial=<SERIAL> --allow-mutation --format json
 ```
 
 - The first command's JSON result contains the `repository_revision` used as `<SHA>` in the second.
@@ -221,22 +288,27 @@ python3 -m gpos.tools execute --adapter adb --capability adb.capture-device-repo
 
 ## Dry run and output collisions
 
-A dry run validates the target platform, the serial's syntax, the package name, the evidence declaration and output collisions. It then returns a plan:
+A dry run validates the target platform, the `adb_serial` syntax, that `request.device` is a non-empty identity string, the package name, the evidence declaration and output collisions. It then returns a plan:
 
 ```
-would check the connection state and boot completion of ADB target <serial>
+would check the connection state, boot completion and physical hardware of the ADB target named by adb_serial, and compare its canonical identity with '<IDENTITY>'
 would capture device.json (JSON) from that target and offer DEVICE_EVIDENCE (TARGET_RUNTIME)
-no ADB target command, workspace or file is created by a dry run; target availability is not checked
+no ADB target command, workspace or file is created by a dry run; connection, boot, physical hardware and identity are not verified until a real execution
 ```
 
-It sends **no target-directed command**, creates no workspace or file, and offers no evidence. It never claims that a target is connected, booted or running an app. Only the probe's `adb version` may run.
+It sends **no target-directed command**, creates no workspace or file, and offers no evidence. It does not confirm connection, boot, physical versus emulator, or the serial-to-identity match, and never claims any of them. Only the probe's `adb version` may run.
 
 An existing `device.json`, `screenshot.png` or `meminfo.txt`, or a symlink at that path (for example in a caller-named output directory), is refused in both the dry run and the real run, before any target command. The file is left untouched. The real write also uses exclusive creation, so an existing file is never overwritten.
 
 ## Privacy
 
 - Target output (properties, pixels, memory text) is parsed from the private raw capture, or copied into the evidence file. Public `stdout` and `stderr` are empty, and the raw capture is blanked before the process outcome reaches the result. Byte counts, exit codes and timing are kept.
-- The recorded command contains the serial, which is already caller-supplied device provenance.
+- `adb_serial` is execution input, not evidence identity. The real process argv carries `-s <serial>`, but the command recorded in provenance replaces it with `<adb-target>`. The serial is also absent from:
+  - `device.json` and result data;
+  - evidence summaries and artifact descriptions;
+  - diagnostics and the dry-run plan;
+  - materialized evidence.
+- The CLI's JSON output echoes the caller's request, including the `adb_serial` input. That echo is the caller's own execution input, not persistent evidence identity.
 - The device report reads nine allowlisted properties and nothing else.
 - The tests never print a physical serial or a build fingerprint:
   - targets are labelled USB-1, EMU-1 and so on;
@@ -259,7 +331,9 @@ It also does not claim OS or device sandboxing. What it guarantees is narrower: 
 | Situation | Status | Code |
 |---|---|---|
 | captured | `SUCCESS` | — |
-| no or bad `target_platform`, device, serial or package; network serial; output exists; input artifact supplied | `INVALID_REQUEST` | `INVALID_TOOL_REQUEST` |
+| no or bad `target_platform`, device, `adb_serial` or package; network serial; output exists; input artifact supplied | `INVALID_REQUEST` | `INVALID_TOOL_REQUEST` |
+| emulator, or not established as physical | `INVALID_REQUEST` | `TARGET_DEVICE_NOT_PHYSICAL` |
+| `request.device` is not the selected target's identity | `INVALID_REQUEST` | `TARGET_DEVICE_IDENTITY_MISMATCH` |
 | capture without consent | `INVALID_REQUEST` | `MUTATION_NOT_ALLOWED` |
 | serial not connected | `UNAVAILABLE` | `TARGET_DEVICE_UNAVAILABLE` |
 | offline, unauthorized, bootloader or still booting | `CONFLICT` | `TARGET_DEVICE_NOT_READY` |
@@ -269,7 +343,7 @@ It also does not claim OS or device sandboxing. What it guarantees is narrower: 
 | adb missing, or only on a relative PATH entry | `UNAVAILABLE` | `TOOL_NOT_FOUND` |
 | unrecognized `adb version` | `INCOMPATIBLE` | `TOOL_VERSION_UNSUPPORTED` |
 
-The three target codes are generic to device adapters, not specific to ADB.
+The five target codes are generic to device adapters, not specific to ADB.
 
 ## Security review
 
@@ -280,23 +354,26 @@ The three target codes are generic to device adapters, not specific to ADB.
 | arbitrary dumpsys | none: `meminfo -s` only |
 | install, uninstall, push, pull, reboot, root, settings, app lifecycle | none authorized; tested at the template, source-constant and runtime-argv level |
 | wireless ADB | none: network serials refused, no connect/pair/tcpip, auto-connect disabled for servers the adapter starts |
-| target auto-selection / serial ambiguity | none: the exact serial is required and bound with `-s`; ANDROID_SERIAL, `-d` and `-e` are never used |
+| target auto-selection / serial ambiguity | none: the exact `adb_serial` is required and bound with `-s`; ANDROID_SERIAL, `-d` and `-e` are never used |
+| mislabelled device | refused: `request.device` must equal the identity observed on the selected target |
+| emulator evidence presented as device evidence | refused: emulators, and targets not established as physical, produce nothing |
 | target output leak | none: raw capture parsed or copied into the evidence file, then blanked |
 | screenshot content | never decoded or inspected; tests check structure only |
 | hardware identifiers in the repository | none: runtime scan for physical serials and fingerprints |
 | raw getprop leak | none: nine allowlisted properties only |
 | performance overclaim | none: a memory snapshot only, with explicit limitations; instrumentation declared `UNKNOWN` |
-| fabricated target platform, device id or build revision | none: all three come from the request, unchanged, or stay unknown |
+| fabricated target platform, device id or build revision | none: the platform and build revision come from the request unchanged, or stay unknown; the device identity must match the target's observation |
+| serial in evidence | none: `<adb-target>` in recorded commands; never in provenance, the report or a record |
 
 ## Limitations
 
-- Local USB and emulator targets only; wireless ADB is out of scope.
+- Local physical USB targets only. Emulator evidence and wireless ADB are out of scope.
+- Emulator detection recognizes the Android emulator (goldfish/ranchu), Cuttlefish and Genymotion by their documented virtual hardware and qemu properties. A virtual device that hides every such property would look physical; any unreadable signal fails closed.
 - A pre-existing ADB server keeps its own configuration, including mDNS.
 - The adb client uses the default server port. A server started by the adapter lacks any vendor keys the user set only through the environment, so the adapter does not inherit ADB_VENDOR_KEYS or ANDROID_ADB_SERVER_PORT.
 - Meminfo requires the package's process to be running already; the adapter never launches it.
-- The device serial is recorded in provenance, as the brief requires, so a materialized record identifies the physical device.
-- The frozen Phase-2A validator counts `DEVICE_EVIDENCE` toward a platform that lists `reference_devices` only when the evidence's `device` **exactly** equals a listed identifier. Because this adapter records the ADB serial, a project that lists reference devices by model name gets `REFERENCE_DEVICE_MISMATCH` for ADB device evidence. For it to count, the project config must list the exact serial, which puts a hardware identifier into project records. The evidence schema describes `device` as "Device model and OS version". This design tension is left to Human Review; the adapter does not guess a second identity.
-- Real-runtime tests ran on macOS hosts only (Windows and Linux hosts were not exercised), against 2 physical devices (API 31) and 2 emulators (API 35).
+- Two units of the same model and OS release share one canonical identity, by design: a reference device is a model and OS, not a serial.
+- Real-runtime tests ran on macOS hosts only (Windows and Linux hosts were not exercised), against 2 physical devices (API 31, full capture) and 2 emulators (API 35, refusal verified).
 
 ## Tests
 
@@ -305,16 +382,16 @@ GPOS_TEST_ANDROID_SERIALS=<serial>[,<serial>...] python3 tests/test_adb_adapter.
 GPOS_TEST_ANDROID_SERIALS=<serial>[,<serial>...] python3 tests/mutate_adb_adapter.py
 ```
 
-GPOS_TEST_ANDROID_SERIALS is test-only and names the targets a human authorized. Without it, the suite uses the single eligible target, or stops with ADB_TARGET_UNAVAILABLE_FOR_PHASE2C3 or ADB_TARGET_SELECTION_REQUIRED_FOR_PHASE2C3. It never falls back to mocks. Stand-in programs cover only deterministic error cases: a missing or unrecognizable adb, unauthorized, offline or booting targets, truncated or malformed output, and a timeout.
+GPOS_TEST_ANDROID_SERIALS is test-only and names the targets a human authorized. Without it, the suite uses the single eligible target, or stops with ADB_TARGET_UNAVAILABLE_FOR_PHASE2C3 or ADB_TARGET_SELECTION_REQUIRED_FOR_PHASE2C3. It never falls back to mocks. Stand-in programs cover only deterministic error cases: a missing or unrecognizable adb, unauthorized, offline, booting or property-identified emulated targets, truncated or malformed output, and a timeout.
 
 Groups A–Z cover:
 
 - registration and the real probe;
-- target selection and readiness;
-- the device report and its privacy;
+- target selection, identity binding and readiness;
+- the device report, emulator refusal and report privacy;
 - screenshot and truncation;
 - meminfo, package validation and a package that is not running;
-- contexts and materialization;
+- contexts, materialization and the reference-device validator;
 - the explicit Git handoff through the CLI;
 - mutation consent, dry run and output collision;
 - target immutability, the command surface, network and wireless;

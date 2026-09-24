@@ -11,7 +11,8 @@ not match exactly once is "NOT APPLIED" and also fails, so the list cannot rot.
 A mutation is a list of edits. An edit is (file, anchor, replacement), or ("CREATE", file, content) for a
 defect that adds a file (a committed snapshot); content may be a function of the authorized targets, so no
 device identifier is ever written into this harness. Mutations 1-38 are the ones the Phase 2C-3 brief
-requires; the rest defend further guarantees.
+requires, the identity and physical-target group the evidence-authority hardening requires; the rest
+defend further guarantees.
 """
 
 import argparse
@@ -28,10 +29,11 @@ ROOT = Path(__file__).resolve().parent.parent
 ADAPTER, PARSERS, REGISTRY = "gpos/tools/adb/adapter.py", "gpos/tools/adb/parsers.py", "gpos/tools/registry.py"
 
 PRODUCTION = "(AdbAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter())"
-DEVICE_DECL = '"TARGET_RUNTIME", "DEVICE_EVIDENCE",\n             "JSON", (),'
-MEMINFO_DECL = '"PERFORMANCE_RUNTIME", "PERFORMANCE_EVIDENCE",\n             "REPORT", ("package_name",),'
+DEVICE_DECL = '"TARGET_RUNTIME", "DEVICE_EVIDENCE",\n             "JSON", ("adb_serial",),'
+MEMINFO_DECL = '"PERFORMANCE_RUNTIME", "PERFORMANCE_EVIDENCE",\n             "REPORT", ("adb_serial", "package_name"),'
 DRY_RUN = "        if context.dry_run:\n            return AdapterOutcome(\n"
 COLLISION = "        if output.exists() or output.is_symlink():\n            return _refuse(cap, f\"the workspace already holds"
+EMU = '        if kind != "physical":\n'
 TEMPLATES_END = "def meminfo_argv(serial, package):\n    return (\"-s\", serial, \"shell\", \"dumpsys\", \"meminfo\", \"-s\", package)\n"
 
 
@@ -56,11 +58,14 @@ MUTATIONS = [
     ("3 target_platform ANDROID requirement removed", [
         (ADAPTER, "        if request.target_platform != TARGET_PLATFORM:\n", "        if False:\n")]),
     ("4 request.device requirement removed", [
+        (ADAPTER, "        if not isinstance(identity, str) or not identity.strip() or len(identity) > parsers.MAX_IDENTITY:\n",
+         "        if False:\n")]),
+    ("4b adb_serial requirement removed", [
         (ADAPTER, "        problem = parsers.serial_problem(serial)\n",
          "        problem = parsers.serial_problem(serial) if serial else None\n")]),
     ("5 automatic target selection introduced", [
-        (ADAPTER, "        serial = request.device\n",
-         '        serial = request.device or os.environ.get("ANDROID_SERIAL") or "emulator-5554"\n')]),
+        (ADAPTER, '        serial = inputs.get("adb_serial")\n',
+         '        serial = inputs.get("adb_serial") or os.environ.get("ANDROID_SERIAL") or "emulator-5554"\n')]),
     ("6 TCP/wireless serial accepted", [
         (PARSERS, '    if ":" in value or "." in value:\n', "    if False:\n"),
         (PARSERS, 'SERIAL = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")',
@@ -118,7 +123,7 @@ MUTATIONS = [
          "    _capture(\"adb.shell\", \"RUN\", \"Run a shell command on the target.\", \"TARGET_RUNTIME\", "
          "\"RUNTIME_EVIDENCE\", \"TEXT\", (\"command\",), \"runs a caller command on the target\"),\n)")]),
     ("22 caller-selected dumpsys service", [
-        (ADAPTER, MEMINFO_DECL, MEMINFO_DECL.replace('("package_name",)', '("package_name", "service")')),
+        (ADAPTER, MEMINFO_DECL, MEMINFO_DECL.replace('("adb_serial", "package_name")', '("adb_serial", "package_name", "service")')),
         (ADAPTER, 'run.step(meminfo_argv(serial, package), "meminfo",',
          'run.step(("-s", serial, "shell", "dumpsys", (context.request.inputs or {}).get("service", "meminfo"), '
          '"-s", package), "meminfo",')]),
@@ -127,10 +132,10 @@ MUTATIONS = [
     ("24 meminfo claims TARGET_RUNTIME", [
         (ADAPTER, MEMINFO_DECL, MEMINFO_DECL.replace("PERFORMANCE_RUNTIME", "TARGET_RUNTIME"))]),
     ("25 meminfo claims an overall benchmark / FPS result", [
-        (ADAPTER, 'summary=f"Point-in-time memory snapshot of {package} on the Android target",',
-         'summary=f"Overall performance benchmark of {package}: FPS and memory on the Android target",')]),
+        (ADAPTER, 'summary=f"Point-in-time memory snapshot of {package} on {identity}",',
+         'summary=f"Overall performance benchmark of {package}: FPS and memory on {identity}",')]),
     ("26 dry run contacts the target", [
-        (ADAPTER, DRY_RUN, "        if context.dry_run and _Runner(context, self._capture).ready(serial) is None:\n"
+        (ADAPTER, DRY_RUN, "        if context.dry_run and _Runner(context, self._capture, serial).ready(serial) is None:\n"
                            "            return AdapterOutcome(\n")]),
     ("27 dry run writes an artifact", [
         (ADAPTER, DRY_RUN, "        if context.dry_run:\n            output.parent.mkdir(parents=True, exist_ok=True)\n"
@@ -144,7 +149,7 @@ MUTATIONS = [
     ("32 the adapter imports subprocess", [
         (ADAPTER, "import json\nimport os\n", "import json\nimport os\nimport subprocess\n")]),
     ("33 the caller can choose the adb executable", [
-        (ADAPTER, DEVICE_DECL, DEVICE_DECL.replace('"JSON", (),', '"JSON", ("adb",),')),
+        (ADAPTER, DEVICE_DECL, DEVICE_DECL.replace('"JSON", ("adb_serial",),', '"JSON", ("adb_serial", "adb"),')),
         (ADAPTER, "        self.spec = proc.ToolProcessSpec(executable=self.context.probe.tool_path, argv=argv,",
          "        self.spec = proc.ToolProcessSpec(executable=(self.context.request.inputs or {}).get(\"adb\", "
          "self.context.probe.tool_path), argv=argv,")]),
@@ -156,10 +161,10 @@ MUTATIONS = [
     ("35 a target serial is committed into a test snapshot", [
         ("CREATE", "tests/fixtures/adb-snapshots/device.json", a_physical_serial)]),
     ("36 Git is automatically called by the ADB adapter", [
-        (ADAPTER, "        run = _Runner(context, self._capture)\n",
+        (ADAPTER, "        run = _Runner(context, self._capture, serial)\n",
          "        context.run(proc.ToolProcessSpec(executable=shutil.which(\"git\"), argv=(\"rev-parse\", \"HEAD\"),\n"
          "                                         cwd=str(context.project_root), timeout=5.0))\n"
-         "        run = _Runner(context, self._capture)\n")]),
+         "        run = _Runner(context, self._capture, serial)\n")]),
     ("37 build_revision is fabricated", [
         (ADAPTER, "                             data=report)",
          "                             data=dict(report, build_revision=report[\"build_fingerprint\"]))")]),
@@ -186,6 +191,35 @@ MUTATIONS = [
     ("probe fabricates a version from the protocol line alone", [
         (ADAPTER, "    if not protocol or not tools:\n        return None, None\n    return protocol.group(1), tools.group(1)",
          "    if not protocol:\n        return None, None\n    return protocol.group(1), (tools.group(1) if tools else protocol.group(1))")]),
+    # --- evidence-authority hardening: identity and physical targets
+    ("adb_serial removed; request.device used as the -s target again", [
+        (ADAPTER, '        serial = inputs.get("adb_serial")\n', "        serial = request.device\n")]),
+    ("canonical identity comparison removed", [(ADAPTER, "        if identity != observed:\n", "        if False:\n")]),
+    ("the serial is required as provenance.device (old contract)", [
+        (ADAPTER, "        if identity != observed:\n", "        if identity != serial:\n")]),
+    ("the serial is copied into device.json", [
+        (ADAPTER, "        report = dict(report, reference_device=identity)\n",
+         "        report = dict(report, reference_device=identity, adb_serial=run.serial)\n")]),
+    ("the recorded command exposes the serial", [
+        (ADAPTER, "        argv = tuple(TARGET_PLACEHOLDER if a == self.serial else a for a in self.spec.argv)\n",
+         "        argv = tuple(self.spec.argv)\n")]),
+    ("the canonical identity drifts from the reference-device format", [
+        (PARSERS, '    identity = (f"{report[\'manufacturer\']} {report[\'model\']} / Android {report[\'android_release\']} "',
+         '    identity = (f"{report[\'model\']} / Android {report[\'android_release\']} "')]),
+    ("emulator detection removed", [
+        (ADAPTER, '        kind = "emulator" if serial.startswith("emulator-") else parsers.target_kind(records)\n',
+         '        kind = "physical"\n')]),
+    ("emulator detection relies on the serial prefix only", [
+        (ADAPTER, '        kind = "emulator" if serial.startswith("emulator-") else parsers.target_kind(records)\n',
+         '        kind = "emulator" if serial.startswith("emulator-") else "physical"\n')]),
+    ("an emulator may create DEVICE_EVIDENCE", [(ADAPTER, EMU, '        if kind != "physical" and cap != DEVICE_REPORT:\n')]),
+    ("an emulator screenshot may be TARGET_RUNTIME evidence", [
+        (ADAPTER, EMU, '        if kind != "physical" and cap != SCREENSHOT:\n')]),
+    ("an emulator meminfo may be PERFORMANCE_RUNTIME evidence", [
+        (ADAPTER, EMU, '        if kind != "physical" and cap != MEMINFO:\n')]),
+    ("an unknown target defaults to physical", [
+        (PARSERS, '    if not value("ro.hardware") or qemu - {"0"}:\n        return None\n',
+         '    if not value("ro.hardware") or qemu - {"0"}:\n        return "physical"\n')]),
     ("an input artifact is silently accepted", [
         (ADAPTER, "        if context.input_artifacts:\n            return _refuse(", "        if False:\n            return _refuse(")]),
 ]

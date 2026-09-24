@@ -29,7 +29,8 @@ MAX_PACKAGE = 255
 def serial_problem(value):
     """None when `value` is a usable local ADB serial, else the reason it is refused."""
     if not isinstance(value, str) or not value:
-        return "request.device must name the exact ADB serial of the target; it is never inferred"
+        return ("the adb_serial input must name the exact ADB serial of the target; a target is never chosen "
+                "automatically")
     if ":" in value or "." in value:
         return (f"device {value[:80]!r} is a network (TCP/IP or wireless mDNS) target; wireless ADB is not "
                 f"supported in this phase, only local USB and emulator serials")
@@ -134,6 +135,53 @@ def device_report(raw):
         raise TargetOutputError("sys.boot_completed is not 1")
     report["boot_completed"] = True
     return report
+
+
+# ---------------------------------------------------------------- physical target and its GPOS identity
+
+# Read to classify the target, never copied. The Android emulator (goldfish / ranchu) sets ro.kernel.qemu and
+# ro.boot.qemu to 1 and its build characteristics to `emulator`; Cuttlefish and Genymotion virtual devices
+# report their own virtual hardware names. Real targets observed: ro.hardware `qcom`, no qemu property set.
+EMULATOR_PROPERTIES = ("ro.kernel.qemu", "ro.boot.qemu", "ro.hardware", "ro.boot.hardware", "ro.build.characteristics")
+VIRTUAL_HARDWARE = {"goldfish", "ranchu", "vbox86", "cutf_cvm"}
+MAX_IDENTITY = 200
+
+
+def target_kind(records):
+    """"physical", "emulator", or None when the properties cannot establish either.
+
+    Physical is concluded only positively: a hardware name is reported, it is not a known virtual one, no
+    qemu property is set to anything but 0, and the build does not call itself an emulator. Any indication
+    of emulation is an emulator; anything that cannot be read is unknown, never assumed physical.
+    """
+    def value(prop):
+        raw = records.get(prop, b"")
+        return raw.decode("ascii", errors="replace").strip() if isinstance(raw, (bytes, bytearray)) else ""
+    qemu = {value("ro.kernel.qemu"), value("ro.boot.qemu")} - {""}
+    hardware = {value("ro.hardware"), value("ro.boot.hardware")} - {""}
+    if "1" in qemu or hardware & VIRTUAL_HARDWARE or \
+            "emulator" in {c.strip() for c in value("ro.build.characteristics").split(",")}:
+        return "emulator"
+    if not value("ro.hardware") or qemu - {"0"}:
+        return None
+    return "physical"
+
+
+def canonical_device_identity(report):
+    """The GPOS reference-device identity of a physical target, from its public device report:
+
+        <manufacturer> <model> / Android <release> (API <api level>)
+
+    e.g. `ExampleCorp PhoneX / Android 12 (API 31)`. Deterministic, at most 200 characters, and built only
+    from allowlisted report fields: never a serial, fingerprint, Android ID or network identifier. This is
+    the value a request's `device` must equal, the value provenance records, and the value a project lists
+    in `reference_devices`.
+    """
+    identity = (f"{report['manufacturer']} {report['model']} / Android {report['android_release']} "
+                f"(API {report['api_level']})")
+    if len(identity) > MAX_IDENTITY:
+        raise TargetOutputError("the target's canonical device identity is longer than 200 characters")
+    return identity
 
 
 # ---------------------------------------------------------------- screencap -> PNG

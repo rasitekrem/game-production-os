@@ -8,7 +8,7 @@ Maturity promotions of skills are recorded here, each with the Human Decision an
 
 Builds on the frozen Phase-2C-2 tree (`v1.0.0-alpha.12`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, to the registry, or to any frozen foundation module. Projects must pin `gpos_version` `1.0.0-alpha.13`.
 
-The first production target-device adapter. It reads evidence from one explicitly named Android target through ADB, and **no production capability changes Android target state**.
+The first production target-device adapter. It reads evidence from one explicitly named **physical** Android target through ADB, and **no production capability changes Android target state**.
 
 ### Added
 
@@ -16,7 +16,10 @@ The first production target-device adapter. It reads evidence from one explicitl
   - `adb.capture-device-report` (`CAPTURE`): nine allowlisted system properties as canonical `device.json` → `DEVICE_EVIDENCE` / `TARGET_RUNTIME`;
   - `adb.capture-screenshot` (`CAPTURE`): a PNG streamed with `exec-out screencap -p`, with no file on the device → `VISUAL_EVIDENCE` / `TARGET_RUNTIME`;
   - `adb.capture-meminfo` (`PROFILE`): `dumpsys meminfo -s <package>` for one named, running package → `PERFORMANCE_EVIDENCE` / `PERFORMANCE_RUNTIME`.
-- Explicit targets only: `target_platform` must be `ANDROID`, and `device` must be the exact local ADB serial, bound with `-s` on every target command. Nothing is inferred: no `-d` or `-e`, ANDROID_SERIAL is never inherited, and there is no first-device fallback. Network serials (`host:port`, mDNS names) are refused, and wireless auto-connect is disabled for any server the adapter's client starts.
+- Two identities, never confused:
+  - the `adb_serial` input is only the operational selector: the exact local serial, bound with `-s` on every target command. There is no `-d` or `-e`, ANDROID_SERIAL is never inherited, and there is no first-device fallback. Network serials are refused, and wireless auto-connect is disabled for any server the adapter's client starts. The serial is replaced by `<adb-target>` in recorded commands and never enters evidence.
+  - `request.device` is the canonical GPOS reference-device identity, `<manufacturer> <model> / Android <release> (API <level>)`. Before any capture the adapter derives it from the selected target and requires an exact match (`TARGET_DEVICE_IDENTITY_MISMATCH` otherwise). A project lists that identity in `reference_devices`, and the unchanged Phase-2A validator counts the evidence; a test proves both the match and the mismatch.
+- Physical targets only: `DEVICE_EVIDENCE` is observation on physical hardware, and emulators are not (core/EVIDENCE-RULES.md). A target identified as an emulator by its qemu and hardware properties, or one that cannot be established as physical, is refused with `TARGET_DEVICE_NOT_PHYSICAL` before any capture.
 - A closed, read-only command surface: `version`, `get-state`, `getprop sys.boot_completed`, `getprop`, `exec-out screencap -p`, `dumpsys meminfo -s <package>`. The only variable slots are the validated serial and application id.
 - Readiness before every capture: `get-state` must be `device`, and `sys.boot_completed` must be `1`. A dry run contacts no target.
 - Strict parsers (`gpos/tools/adb/parsers.py`) over the private raw capture:
@@ -24,9 +27,9 @@ The first production target-device adapter. It reads evidence from one explicitl
   - a complete-PNG structure check (the image is never decoded);
   - a meminfo check that the output describes exactly the requested process, with totals.
   - A package with no running process is a conflict; zeros are never invented.
-- `TARGET_DEVICE_UNAVAILABLE`, `TARGET_DEVICE_NOT_READY` and `TARGET_PROCESS_NOT_RUNNING`, generic to device adapters.
+- `TARGET_DEVICE_UNAVAILABLE`, `TARGET_DEVICE_NOT_READY`, `TARGET_PROCESS_NOT_RUNNING`, `TARGET_DEVICE_NOT_PHYSICAL` and `TARGET_DEVICE_IDENTITY_MISMATCH`, generic to device adapters.
 - [tools/adb-adapter.md](tools/adb-adapter.md), with the first-party Android documentation consulted.
-- A real-target integration suite (`tests/test_adb_adapter.py`, groups A–Z, run on 2 physical devices plus 2 emulators across API 31 and 35) and a bounded mutation harness (`tests/mutate_adb_adapter.py`).
+- A real-target integration suite (`tests/test_adb_adapter.py`, groups A–Z, run on 2 physical devices, which capture, and 2 emulators, which are refused, across API 31 and 35) and a bounded mutation harness (`tests/mutate_adb_adapter.py`).
 
 ### Changed
 

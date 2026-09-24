@@ -1,7 +1,7 @@
 ---
 name: camera-composition
 maturity: DRAFT
-gpos_version: 1.0.0-alpha.14
+gpos_version: 1.0.0-alpha.15
 may_own_gates: [CAMERA_COMPOSITION]
 ---
 

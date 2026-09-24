@@ -285,6 +285,23 @@ MUTATIONS = [
      '        build_revision=args.build_revision, build_id=args.build_id,', '        build_revision=args.build_revision, build_id=None,'),
     ('the CLI drops --device', 'gpos/tools/cli.py',
      '        target_platform=args.target_platform, device=args.device)', '        target_platform=args.target_platform, device=None)'),
+    # --- network semantics (Phase 2C-5): FORBIDDEN default, TOOL_INHERENT allowlisted and disclosed
+    ('TOOL_INHERENT usable by any adapter', 'gpos/tools/validation.py',
+     '    elif aid not in pol["network_semantic_adapters"].get(net, []):\n', '    elif False:\n'),
+    ('TOOL_INHERENT without a disclosure', 'gpos/tools/validation.py', '    elif not disclosure:\n', '    elif False:\n'),
+    ('FORBIDDEN may carry a disclosure', 'gpos/tools/validation.py',
+     '        if disclosure:\n            _problem(out, aid, f"network {net!r} is the default', '        if False:\n            _problem(out, aid, f"network {net!r} is the default'),
+    ('any network value accepted', 'gpos/tools/validation.py',
+     '    if net not in pol["network_semantics"]:\n', '    if False:\n'),
+    ('the TOOL_INHERENT allowlist names another adapter', 'core/registry.json',
+     '"TOOL_INHERENT": [\n        "unity"\n      ]', '"TOOL_INHERENT": [\n        "unity",\n        "git"\n      ]'),
+    ('a FORBIDDEN adapter silently becomes TOOL_INHERENT', [
+        ('core/registry.json', '"TOOL_INHERENT": [\n        "unity"\n      ]', '"TOOL_INHERENT": [\n        "unity",\n        "git"\n      ]'),
+        ('gpos/tools/git/adapter.py', 'supported_platforms=("WINDOWS", "MACOS", "LINUX"), capabilities=CAPABILITIES,',
+         'supported_platforms=("WINDOWS", "MACOS", "LINUX"), capabilities=CAPABILITIES, network="TOOL_INHERENT", '
+         'network_disclosure=("git may fetch",),')]),
+    ('an execution request carries a network destination', 'gpos/tools/execution.py',
+     '    request_id: str = None\n\n    def with_id', '    request_id: str = None\n    registry_url: str = None\n\n    def with_id'),
 ]
 
 

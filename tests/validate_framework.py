@@ -46,7 +46,7 @@ GATES = REGISTRY["gates"]
 SUBJECTIVE_DISCIPLINE_GATES = sorted(g for g, d in GATES.items() if d["subjective"] and g != "HUMAN_REVIEW")
 TRIGGERS = list(REGISTRY["mandatory_human_review_triggers"])
 CONDITIONS = list(REGISTRY["evidence_conditions"])
-VERSION = "1.0.0-alpha.14"
+VERSION = "1.0.0-alpha.15"
 GATE_OWNERS = [s for s in REGISTRY["skills"] if any(s in d["permitted_owners"] for d in GATES.values())] + ["HUMAN"]
 
 

@@ -151,7 +151,9 @@ def register_production_adapters(registry):
 
     Phase 2C-1 added the local Git provenance adapter; Phase 2C-2 adds the two local media adapters, one
     per executable (ffprobe for inspection, FFmpeg for derived media), so that execution provenance names
-    exactly one tool. Phase 2C-3 adds the Android Debug Bridge target-device adapter. Phase 2C-4 adds the Blender DCC adapter. TEST_ONLY adapters never appear here; a caller that wants the synthetic reference
+    exactly one tool. Phase 2C-3 adds the Android Debug Bridge target-device adapter. Phase 2C-4 adds the
+    Blender DCC adapter. Phase 2C-5 adds the Unity engine adapter (batch plane). TEST_ONLY adapters never
+    appear here; a caller that wants the synthetic reference
     adapter registers it separately, into a registry constructed with `allow_test_only=True`.
     """
     from .adb import AdbAdapter
@@ -159,7 +161,8 @@ def register_production_adapters(registry):
     from .ffmpeg import FfmpegAdapter
     from .ffprobe import FfprobeAdapter
     from .git import GitAdapter
-    for adapter in (AdbAdapter(), BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter()):
+    from .unity import UnityAdapter
+    for adapter in (AdbAdapter(), BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter(), UnityAdapter()):
         registry.register(adapter)
     return registry
 

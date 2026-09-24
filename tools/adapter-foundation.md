@@ -259,8 +259,19 @@ A mutating real tool may still leave partial external state. Each future adapter
 - **Filesystem**: project-root bounded by default; extra scopes only by explicit adapter contract.
 - **Process**: one audited boundary; no shell; no agent-facing command execution.
 - **Secrets**: environment values are never copied into results, and every string a caller can see is redacted — not only captured process output but every surface an adapter controls: diagnostics and their details, parsed result data, the recorded command and environment, artifact descriptions, evidence summaries, limitations and notes, and probe text including an exception message. A credential-named key (`{"token": "…"}`) or command-line flag (`["--password", "…"]`) redacts its value even though the name and the value are separate elements. A value a result cannot carry is refused rather than stringified. This is deliberately not a universal secret scanner.
-- **Network**: off. The foundation makes no network call, discovers no plugin, downloads nothing and installs nothing. Registration is explicit Python. A future adapter may one day declare a network capability; the default stays off.
+- **Network**: off. The foundation makes no network call, discovers no plugin, downloads nothing and installs nothing. Registration is explicit Python. See [Network semantics](#network-semantics-phase-2c-5) for what a descriptor may declare.
 - **Records**: tool execution never writes to `.game/gpos/`.
+
+## Network semantics (Phase 2C-5)
+
+Every descriptor declares a network semantic from the registry's closed set (`tool_adapter_policy` `network_semantics`); validation fails closed.
+
+| Semantic | Meaning | Who may declare it | Disclosure |
+|---|---|---|---|
+| `FORBIDDEN` | the default: GPOS provides no networking capability and the adapter's tool performs no network activity the adapter enables | every adapter | none allowed |
+| `TOOL_INHERENT` | GPOS still provides no networking capability, takes no URL, host, endpoint, registry, proxy or credential and originates no network operation; the external tool's own process tree may use the network as a consequence of running (the tool, its vendor services, supported package resolution, project and test code it loads). No operating-system confinement is claimed | only the adapter ids `network_semantic_adapters` lists (Phase 2C-5: `unity`) | required: `AdapterDescriptor.network_disclosure`, non-empty statements |
+
+Nothing else changed: the process boundary gained no socket, HTTP or URL facility, no execution request field or input names a network destination, and git, ffmpeg, ffprobe, adb and blender stay `FORBIDDEN` with no disclosure (tests pin each of them).
 
 ## What Phase 2C-0 does not contain
 

@@ -1369,12 +1369,15 @@ class E01_NoReferenceImport(unittest.TestCase):
         # Claude Code and Codex. Phase 2C-2: the two production media tool adapters, their shared constants and
         # the production registry that registers them legitimately name FFmpeg. Phase 2C-3: the ADB adapter and
         # the registry legitimately name adb. Phase 2C-4: the Blender DCC adapter and the registry legitimately
-        # name Blender. Nothing else in gpos/ names any of them, and engine integrations stay out of gpos/.)
+        # name Blender. Phase 2C-5: the Unity engine adapter and the registry legitimately name Unity. Nothing
+        # else in gpos/ names any of them.)
         media = {"gpos/tools/media_common.py", "gpos/tools/registry.py"}
         for p in (ROOT / "gpos").rglob("*.py"):
             text = p.read_text().lower()
             rel = p.relative_to(ROOT).as_posix()
-            words = ("unity", "github")
+            words = ("github",)
+            if not (rel == "gpos/tools/registry.py" or rel.startswith("gpos/tools/unity/")):
+                words += ("unity",)
             if not (rel == "gpos/tools/registry.py" or rel.startswith("gpos/tools/blender/")):
                 words += ("blender",)
             if not (rel == "gpos/tools/registry.py" or rel.startswith("gpos/tools/adb/")):

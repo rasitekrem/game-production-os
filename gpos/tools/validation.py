@@ -56,9 +56,7 @@ def validate_descriptor(framework, descriptor, allow_test_only=False):
     if test_markers and not allow_test_only:
         _problem(problems, aid, f"{aid} is declared {sorted(test_markers)[0]}; a test-only adapter is never registered "
                                 f"as a production tool adapter")
-    if descriptor.network != pol["network"]:
-        _problem(problems, aid, f"network {descriptor.network!r} is not permitted: the tool foundation default is "
-                                f"{pol['network']!r} and Phase 2C-0 adds no network capability")
+    problems += network_problems(pol, descriptor)
     if not descriptor.capabilities:
         _problem(problems, aid, "an adapter must declare at least one capability")
     seen = set()
@@ -69,6 +67,30 @@ def validate_descriptor(framework, descriptor, allow_test_only=False):
         seen.add(cap.id)
         problems += validate_capability(framework, aid, cap)
     return dg.sort(problems)
+
+
+def network_problems(pol, descriptor):
+    """The descriptor's network semantic, fail closed. FORBIDDEN is the default and carries no disclosure;
+    any other semantic must be in the registry's closed set, be allowlisted for this adapter id, and
+    disclose what the external tool may do. A network semantic never grants GPOS itself any networking."""
+    out, aid, net = [], descriptor.adapter_id, descriptor.network
+    disclosure = descriptor.network_disclosure
+    if not isinstance(disclosure, tuple) or not all(isinstance(d, str) and d.strip() for d in disclosure):
+        _problem(out, aid, "network_disclosure must be a tuple of non-empty statements")
+        return out
+    if net == pol["network"]:
+        if disclosure:
+            _problem(out, aid, f"network {net!r} is the default and takes no network_disclosure")
+        return out
+    if net not in pol["network_semantics"]:
+        _problem(out, aid, f"network {net!r} is not permitted: the registry network semantics are "
+                           f"{pol['network_semantics']}")
+    elif aid not in pol["network_semantic_adapters"].get(net, []):
+        _problem(out, aid, f"network {net!r} is allowlisted only for {pol['network_semantic_adapters'].get(net, [])}; "
+                           f"{aid!r} keeps the default {pol['network']!r}")
+    elif not disclosure:
+        _problem(out, aid, f"network {net!r} requires a network_disclosure stating what the external tool may do")
+    return out
 
 
 def validate_capability(framework, adapter_id, cap):

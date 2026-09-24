@@ -97,7 +97,8 @@ class AdapterDescriptor:
     minimum_tool_version: str = None
     compatibility_notes: tuple = ()
     filesystem_scopes: tuple = ()     # extra absolute scopes beyond the project root, if the contract needs them
-    network: str = "FORBIDDEN"        # the foundation default; no adapter in Phase 2C-0 changes it
+    network: str = "FORBIDDEN"        # registry tool_adapter_policy network_semantics; FORBIDDEN is the default
+    network_disclosure: tuple = ()    # required, and only allowed, for a non-default network semantic
 
     @property
     def test_only(self):
@@ -114,6 +115,7 @@ class AdapterDescriptor:
                 "availability": self.availability, "minimum_tool_version": self.minimum_tool_version,
                 "compatibility_notes": list(self.compatibility_notes),
                 "filesystem_scopes": list(self.filesystem_scopes), "network": self.network,
+                "network_disclosure": list(self.network_disclosure),
                 "test_only": self.test_only,
                 "capabilities": [c.to_dict() for c in self.capabilities]}
 

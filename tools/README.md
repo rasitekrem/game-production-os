@@ -25,6 +25,8 @@ The **Android ADB evidence adapter** (Phase 2C-3) is the first target-device ada
 
 The **Blender DCC adapter** (Phase 2C-4) is the first DCC adapter. It inspects one `.blend` file (bounded counts and names, never paths) and renders one still of its authored scene, camera and frame, offering `VISUAL_EVIDENCE` in `DCC_RENDER` for an `ASSET` only: asset inspection evidence, never runtime, motion or presentation proof. Every Blender process runs one fixed, audited helper from factory settings, with auto-execution and scripts disabled, offline, and with an isolated per-execution user-resource directory. The caller supplies no Python, script, option, engine, camera or output path, and the `.blend` is never saved. See [blender-adapter.md](blender-adapter.md).
 
+The **Unity engine adapter** (Phase 2C-5) is the first engine adapter, batch plane only. `unity.inspect-project` statically reports a Unity project's exact Editor version and checks its package sources; `unity.run-editmode-tests` and `unity.run-playmode-tests` run the Unity Test Framework in a fresh batch-mode Editor and offer `TEST_EVIDENCE` in `AUTOMATED_TEST` when at least one test executed. The Editor is found only under the Unity Hub root and must match the project's version exactly; remote package sources are refused before launch; Package Manager configuration is isolated per execution; the command is fixed. It declares the `TOOL_INHERENT` network semantic: GPOS originates no network operation, but Unity's own process tree may use the network. See [unity-adapter.md](unity-adapter.md).
+
 ## Planned concepts (not implemented)
 
 | Tool | Purpose | Constraints |

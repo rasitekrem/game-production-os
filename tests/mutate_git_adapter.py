@@ -28,8 +28,8 @@ ADAPTER, STATUS, REGISTRY = "gpos/tools/git/adapter.py", "gpos/tools/git/status.
 
 MUTATIONS = [
     ("1 production registry forgets Git", [
-        (REGISTRY, "(AdbAdapter(), BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter())",
-         "(AdbAdapter(), BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter())")]),
+        (REGISTRY, "(AdbAdapter(), BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter(), UnityAdapter())",
+         "(AdbAdapter(), BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter(), UnityAdapter())")]),
     ("2 TEST_ONLY synthetic enters the production registry", [
         (REGISTRY, "        registry.register(adapter)\n    return registry",
          "        registry.register(adapter)\n    registry.allow_test_only = True\n"

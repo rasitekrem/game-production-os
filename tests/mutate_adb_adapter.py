@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ADAPTER, PARSERS, REGISTRY = "gpos/tools/adb/adapter.py", "gpos/tools/adb/parsers.py", "gpos/tools/registry.py"
 
-PRODUCTION = "(AdbAdapter(), BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter())"
+PRODUCTION = "(AdbAdapter(), BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter(), UnityAdapter())"
 DEVICE_DECL = '"TARGET_RUNTIME", "DEVICE_EVIDENCE",\n             "JSON", ("adb_serial",),'
 MEMINFO_DECL = '"PERFORMANCE_RUNTIME", "PERFORMANCE_EVIDENCE",\n             "REPORT", ("adb_serial", "package_name"),'
 DRY_RUN = "        if context.dry_run:\n            return AdapterOutcome(\n"
@@ -50,7 +50,7 @@ def extra_template(name, body):
 
 MUTATIONS = [
     ("1 adb absent from the production registry", [
-        (REGISTRY, PRODUCTION, "(BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter())")]),
+        (REGISTRY, PRODUCTION, "(BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter(), UnityAdapter())")]),
     ("2 TEST_ONLY synthetic enters the production registry", [
         (REGISTRY, "        registry.register(adapter)\n    return registry",
          "        registry.register(adapter)\n    registry.allow_test_only = True\n"

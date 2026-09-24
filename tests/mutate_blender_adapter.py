@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ADAPTER, HELPER = "gpos/tools/blender/adapter.py", "gpos/tools/blender/helper.py"
 PARSER, REGISTRY = "gpos/tools/blender/parser.py", "gpos/tools/registry.py"
 
-PRODUCTION = "(AdbAdapter(), BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter())"
+PRODUCTION = "(AdbAdapter(), BlenderAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter(), UnityAdapter())"
 BASELINE = 'BASELINE = ("--background", "--factory-startup", "--disable-autoexec", "--offline-mode", "-noaudio")'
 INPUT_KINDS = 'input_kinds=("scene_name", "frame"),'
 SPEC = "            spec = proc.ToolProcessSpec(executable=context.probe.tool_path, argv=argv,\n"
@@ -66,7 +66,7 @@ def evidence_claim(evidence_type, context):
 
 MUTATIONS = [
     ("1 blender absent from the production registry", [
-        (REGISTRY, PRODUCTION, "(AdbAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter())")]),
+        (REGISTRY, PRODUCTION, "(AdbAdapter(), FfmpegAdapter(), FfprobeAdapter(), GitAdapter(), UnityAdapter())")]),
     ("2 TEST_ONLY synthetic enters the production registry", [
         (REGISTRY, "        registry.register(adapter)\n    return registry",
          "        registry.register(adapter)\n    registry.allow_test_only = True\n"

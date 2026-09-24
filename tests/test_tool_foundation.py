@@ -198,12 +198,12 @@ class A01_Registry(TmpCase):
         """Phase 2C-4 boundary: the production adapters are ADB, Blender, FFmpeg, ffprobe and Git; TEST_ONLY never
         enters."""
         r = default_registry(FW)
-        self.assertEqual(r.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git"])
+        self.assertEqual(r.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "unity"])
         self.assertFalse(r.allow_test_only)
         with self.assertRaises(AdapterRegistrationError) as cm:
             r.register(SyntheticAdapter())
         self.assertIn("TEST_ONLY", str(cm.exception))
-        self.assertEqual(r.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git"])
+        self.assertEqual(r.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "unity"])
 
     def test_register_valid_adapter(self):
         r = registry()
@@ -1293,9 +1293,9 @@ class K01_Determinism(TmpCase):
 
 class L01_Boundaries(TmpCase):
     def test_only_the_declared_production_adapters_exist(self):
-        """Phase 2C-4 boundary: exactly five production adapter packages (adb/, blender/, ffmpeg/, ffprobe/, git/)
-        and one shared media-constants module beside the foundation."""
-        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git"])
+        """Phase 2C-5 boundary: exactly six production adapter packages (adb/, blender/, ffmpeg/, ffprobe/, git/,
+        unity/) and one shared media-constants module beside the foundation."""
+        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "unity"])
         modules = sorted(p.relative_to(ROOT / "gpos" / "tools").as_posix()
                          for p in (ROOT / "gpos" / "tools").rglob("*.py"))
         self.assertEqual(modules, ["__init__.py", "__main__.py", "adb/__init__.py", "adb/adapter.py", "adb/parsers.py",
@@ -1307,7 +1307,8 @@ class L01_Boundaries(TmpCase):
                                    "git/__init__.py", "git/adapter.py", "git/status.py", "leases.py",
                                    "media_common.py", "model.py", "paths.py", "process.py", "provenance.py",
                                    "redaction.py", "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
-                                   "synthetic/helper.py", "validation.py"])
+                                   "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/project.py",
+                                   "unity/results.py", "validation.py"])
 
     def test_the_synthetic_adapter_is_test_only_and_git_is_not(self):
         from gpos.tools.git import GitAdapter
@@ -1317,11 +1318,13 @@ class L01_Boundaries(TmpCase):
         self.assertFalse(GitAdapter().descriptor.test_only)
 
     def test_only_each_production_adapter_names_its_own_tool_executable(self):
-        """Every other real tool stays unnamed everywhere; `git`, `ffmpeg`, `ffprobe`, `adb` and `blender` may each
-        be named only inside their own adapter package (gpos/tools/git/, ffmpeg/, ffprobe/, adb/, blender/)."""
+        """Every other real tool stays unnamed everywhere; `git`, `ffmpeg`, `ffprobe`, `adb`, `blender` and `unity`
+        may each be named only inside their own adapter package (gpos/tools/git/, ffmpeg/, ffprobe/, adb/, blender/,
+        unity/)."""
         import ast
         forbidden = {"git", "ffmpeg", "ffprobe", "adb", "blender", "unity", "unityhub", "gh"}
-        packages = {name: ROOT / "gpos" / "tools" / name for name in ("git", "ffmpeg", "ffprobe", "adb", "blender")}
+        packages = {name: ROOT / "gpos" / "tools" / name for name in ("git", "ffmpeg", "ffprobe", "adb", "blender",
+                                                                       "unity")}
         for path in (ROOT / "gpos").rglob("*.py"):
             allowed = {name for name, package in packages.items() if package in path.parents}
             for node in ast.walk(ast.parse(path.read_text())):
@@ -1395,7 +1398,7 @@ class M01_Cli(TmpCase):
     def test_list_shows_only_production_adapters_without_test_adapters(self):
         code, out = self.cli("list")
         self.assertEqual(code, 0)
-        self.assertIn("5 tool adapter", out)
+        self.assertIn("6 tool adapter", out)
         for name in ("adb ", "blender ", "ffmpeg ", "ffprobe ", "git "):
             self.assertIn(name, out)
         self.assertNotIn("synthetic", out)
@@ -2052,10 +2055,10 @@ class N09_AcceptedArchitectureUnchanged(TmpCase):
     def test_registries_stay_separate_and_production_is_exactly_the_production_adapters(self):
         from gpos.adapters.backends import BACKENDS
         self.assertEqual(sorted(BACKENDS), ["claude-code", "codex"])
-        for name in ("adb", "blender", "ffmpeg", "ffprobe", "git"):
+        for name in ("adb", "blender", "ffmpeg", "ffprobe", "git", "unity"):
             self.assertNotIn(name, BACKENDS)
             self.assertNotIn(name, REG["adapter_ids"])
-        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git"])
+        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "unity"])
 
     def test_the_frozen_prohibitions_hold(self):
         self.assertEqual(POLICY["forbidden_evidence_types"], ["HUMAN_EVIDENCE"])
@@ -2311,6 +2314,74 @@ class P01_RawCapture(TmpCase):
         self.assertEqual(result.status, tdg.SUCCESS)
         self.assertIn("SECRETS_REDACTED", self.codes(result))
         self.assertIn("API_KEY=[REDACTED]", result.stdout)
+
+
+# ---------------------------------------------------------------- Q  network semantics (Phase 2C-5)
+
+class Q01_NetworkSemantics(unittest.TestCase):
+    """FORBIDDEN stays the default; TOOL_INHERENT is a closed, allowlisted, disclosed exception (Unity only)."""
+
+    def unity_descriptor(self, **changes):
+        from gpos.tools.unity import DESCRIPTOR
+        return dataclasses.replace(DESCRIPTOR, **changes)
+
+    def problems(self, d, allow_test_only=False):
+        return " ".join(p.message for p in tval.validate_descriptor(FW, d, allow_test_only=allow_test_only))
+
+    def test_the_registry_vocabulary(self):
+        self.assertEqual(POLICY["network"], "FORBIDDEN")
+        self.assertEqual(POLICY["network_semantics"], ["FORBIDDEN", "TOOL_INHERENT"])
+        self.assertEqual(POLICY["network_semantic_adapters"], {"TOOL_INHERENT": ["unity"]})
+
+    def test_every_other_production_adapter_is_forbidden_with_no_disclosure(self):
+        reg = default_registry(FW)
+        for adapter in (reg.get(a) for a in reg.adapter_ids()):
+            d = adapter.descriptor
+            with self.subTest(adapter=d.adapter_id):
+                if d.adapter_id == "unity":
+                    self.assertEqual(d.network, "TOOL_INHERENT")
+                    self.assertTrue(d.network_disclosure)
+                else:
+                    self.assertEqual((d.network, d.network_disclosure), ("FORBIDDEN", ()))
+        self.assertEqual((SyntheticAdapter().descriptor.network, SyntheticAdapter().descriptor.network_disclosure),
+                         ("FORBIDDEN", ()))
+
+    def test_the_unity_descriptor_is_valid(self):
+        self.assertEqual(self.problems(self.unity_descriptor()), "")
+
+    def test_tool_inherent_is_refused_for_any_other_adapter(self):
+        for aid in ("git", "blender", "adb", "ffmpeg", "ffprobe", "unity-2", "synthetic"):
+            with self.subTest(adapter=aid):
+                self.assertIn("allowlisted only for ['unity']", self.problems(self.unity_descriptor(adapter_id=aid),
+                                                                             allow_test_only=True))
+
+    def test_disclosure_rules_fail_closed(self):
+        self.assertIn("requires a network_disclosure", self.problems(self.unity_descriptor(network_disclosure=())))
+        self.assertIn("non-empty statements", self.problems(self.unity_descriptor(network_disclosure=("",))))
+        self.assertIn("non-empty statements", self.problems(self.unity_descriptor(network_disclosure=["x"])))
+        self.assertIn("takes no network_disclosure",
+                      self.problems(descriptor(network_disclosure=("it talks",)), allow_test_only=True))
+        for value in ("ALLOWED", "OPEN", "tool_inherent", "", None):
+            with self.subTest(value=value):
+                self.assertIn("not permitted", self.problems(self.unity_descriptor(network=value)))
+
+    def test_no_request_field_or_input_names_a_network_destination(self):
+        fields = {f.name for f in dataclasses.fields(ExecutionRequest)}
+        for word in ("url", "host", "endpoint", "registry", "proxy", "credential", "network", "port"):
+            self.assertFalse([f for f in fields if word in f], word)
+        reg = default_registry(FW)
+        for adapter in (reg.get(a) for a in reg.adapter_ids()):
+            for cap in adapter.descriptor.capabilities:
+                for kind in cap.input_kinds:
+                    self.assertFalse(any(w in kind for w in ("url", "host", "endpoint", "registry", "proxy", "port")),
+                                     (cap.id, kind))
+
+    def test_the_process_boundary_gained_no_network_surface(self):
+        import ast
+        tree = ast.parse((ROOT / "gpos" / "tools" / "process.py").read_text())
+        names = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+        names |= {n.module.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
+        self.assertEqual(names & {"socket", "ssl", "http", "urllib", "requests", "asyncio"}, set())
 
 
 if __name__ == "__main__":

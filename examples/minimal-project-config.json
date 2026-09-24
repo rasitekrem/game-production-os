@@ -4,7 +4,7 @@
     "id": "example-project",
     "name": "Example Project"
   },
-  "gpos_version": "1.0.0-alpha.14",
+  "gpos_version": "1.0.0-alpha.15",
   "engine": {
     "name": "UNDECIDED"
   },

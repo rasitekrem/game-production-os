@@ -1,6 +1,6 @@
 # Level Design
 
-> **GPOS template** · `1.0.0-alpha.14` · copy to `.game/LEVEL-DESIGN.md` · see [templates/README.md](README.md)
+> **GPOS template** · `1.0.0-alpha.15` · copy to `.game/LEVEL-DESIGN.md` · see [templates/README.md](README.md)
 >
 > Document authority status: `PROPOSED` <!-- becomes LOCKED only by Human Decision; cite the DECISIONS.md entry -->
 > Locked by decision: `UNDECIDED`

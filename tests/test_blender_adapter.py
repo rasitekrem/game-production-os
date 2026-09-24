@@ -294,13 +294,13 @@ class StandIn:
 
 class A_Registration(BlenderCase):
     def test_production_registry_is_exactly_the_five_adapters(self):
-        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git"])
+        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "unity"])
 
     def test_synthetic_stays_out_of_production(self):
         registry = default_registry(FW)
         with self.assertRaises(Exception):
             registry.register(SyntheticAdapter())
-        self.assertEqual(registry.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git"])
+        self.assertEqual(registry.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "unity"])
 
     def test_descriptor(self):
         self.assertEqual(tval.validate_descriptor(FW, ba.DESCRIPTOR, allow_test_only=False), [])
@@ -1323,7 +1323,7 @@ class Z_Cli(BlenderCase):
     def test_list_describe_capabilities_probe(self):
         code, out = cli("list")
         self.assertEqual(code, 0)
-        self.assertIn("5 tool adapter", out)
+        self.assertIn("6 tool adapter", out)
         self.assertIn("blender 1.0.0 · DCC · 2 capabilities", out)
         code, out = cli("describe", "blender")
         self.assertEqual(code, 0)

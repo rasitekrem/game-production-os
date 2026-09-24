@@ -4,6 +4,35 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.15] — Phase 2C-5: Unity engine adapter (batch plane)
+
+Builds on the frozen Phase-2C-4 tree (`v1.0.0-alpha.14`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The only foundation change is the network semantic below. Projects must pin `gpos_version` `1.0.0-alpha.15`.
+
+The first production engine adapter, batch plane only. The live Editor plane (session, bridge, IPC, capture) is deferred; it is architectural intent, not part of this release.
+
+### Added
+
+- **Foundation: network semantics.** `tool_adapter_policy` gains `network_semantics` (`FORBIDDEN`, `TOOL_INHERENT`) and `network_semantic_adapters` (`TOOL_INHERENT` → `unity` only); `AdapterDescriptor` gains `network_disclosure`. Validation fails closed: `FORBIDDEN` stays the default and takes no disclosure; `TOOL_INHERENT` requires an allowlisted adapter id and a non-empty disclosure; any other value is refused. `TOOL_INHERENT` means GPOS still provides no networking capability, takes no network destination and originates no network operation, while the external tool's own process tree may use the network; no operating-system confinement is claimed. The process boundary gained nothing, and git, ffmpeg, ffprobe, adb and blender stay `FORBIDDEN`.
+- `gpos/tools/unity/`: the `unity` adapter (`ENGINE`, `CLI`, `STATELESS`, macOS only, network `TOOL_INHERENT` with a disclosure) with three capabilities:
+  - `unity.inspect-project` (`INSPECT`, `READ_ONLY`, `OFFLINE_ANALYSIS`): static project layout, the exact Editor version the project requires, and package-source safety. No Unity process and no installed Editor needed.
+  - `unity.run-editmode-tests` and `unity.run-playmode-tests` (`RUN`, `MUTATING`, `AUTOMATED_TEST`, single-writer lease on the resolved project root, dry run): the Unity Test Framework in a fresh batch-mode Editor; `TEST_EVIDENCE` in `AUTOMATED_TEST` only when valid results record at least one executed test.
+- Hub-only Editor discovery with exact names (never PATH); exactly one usable Hub Editor in this release (none: unavailable; several: version unsupported). A project must require exactly the probed version: no fallback, upgrade or downgrade.
+- A static package-source preflight before any launch: no scoped registries, registry overrides, Git, URL or out-of-scope local dependencies, and no unsupported lock-file sources; the project is never rewritten.
+- Package Manager isolation per execution: empty GPOS-owned user and global configuration files and a GPOS runtime package cache.
+- A fixed command: never `-quit`, `-accept-apiupdate`, `-noUpm`, `-nographics` or `-executeMethod`; Accelerator upload and download disabled.
+- A strict NUnit results reader and a classifier that never reads an exit code alone. Diagnostics `ENGINE_PROJECT_UNSUPPORTED`, `ENGINE_EDITOR_VERSION_UNAVAILABLE`, `ENGINE_PROJECT_LOCKED`, `ENGINE_LICENSE_UNAVAILABLE`, `ENGINE_TESTS_NOT_EXECUTED` and `TESTS_FAILED`, generic to engine adapters.
+- [tools/unity-adapter.md](tools/unity-adapter.md), including the side-effect inventory (Unity-managed project files and user-level Unity state) and the security review.
+- A real-Unity integration suite (`tests/test_unity_adapter.py`, groups A–Z, Unity 6000.5.8f1, generated projects only, guarded against any unaccepted change to Unity Editor preferences or to the user's Package Manager configuration) and a bounded mutation harness (`tests/mutate_unity_adapter.py`).
+
+### Changed
+
+- `default_registry()` now contains exactly `adb`, `blender`, `ffmpeg`, `ffprobe`, `git` and `unity`.
+- Phase-boundary tests evolved to the Phase-2C-5 boundary without weakening any other assertion (the word "unity" only in the Unity package and the registry; the module list; the six-adapter registry and CLI counts; the harness registry anchors). The foundation suite and harness gained the network-semantic tests and mutations.
+
+### Notes
+
+- Research record: the Phase 2C-5 synthetic experiments A–K (A–G, I–K complete; H not run, not required) established the batch contract, including that `-noUpm` prevents the package-provided Test Framework from compiling and that Unity's own project lock is only defence in depth.
+
 ## [1.0.0-alpha.14] — Phase 2C-4: Blender DCC inspection and visual-evidence adapter
 
 Builds on the frozen Phase-2C-3 tree (`v1.0.0-alpha.13`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, to the registry, or to any frozen foundation module. Projects must pin `gpos_version` `1.0.0-alpha.14`.

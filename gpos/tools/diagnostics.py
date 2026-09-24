@@ -67,16 +67,19 @@ CODES = {
     "TARGET_DEVICE_IDENTITY_MISMATCH": (INVALID_REQUEST, "the requested device identity is not the identity the selected target reports"),
     # DCC source (Phase 2C-4): generic to any DCC adapter
     "DCC_SOURCE_NOT_ACCEPTED": (INVALID_REQUEST, "the DCC source or its selected scene does not meet the evidence render contract"),
+    "ENGINE_PROJECT_UNSUPPORTED": (INVALID_REQUEST, "the engine project is not a supported project for this adapter: layout, version file or package sources"),
     # version control (Phase 2C-1): generic to any repository adapter, not specific to one tool
     "REPOSITORY_NOT_FOUND": (INVALID_REQUEST, "the version-control tool found no work tree at the project root"),
     "REPOSITORY_ROOT_MISMATCH": (INVALID_REQUEST, "the repository top level is not the GPOS project root"),
     # tool availability (UNAVAILABLE)
     "TOOL_NOT_FOUND": (UNAVAILABLE, "the tool this adapter drives is not available"),
+    "ENGINE_LICENSE_UNAVAILABLE": (UNAVAILABLE, "the engine editor reported that no usable licence was available"),
     # target device (Phase 2C-3): generic to any device adapter, not specific to one tool
     "TARGET_DEVICE_UNAVAILABLE": (UNAVAILABLE, "the named target device is not connected to the device tool"),
     "ADAPTER_NOT_READY": (UNAVAILABLE, "the adapter has not established that its tool is available and compatible"),
     # compatibility (INCOMPATIBLE)
     "TOOL_VERSION_UNSUPPORTED": (INCOMPATIBLE, "the installed tool version is outside the adapter's supported range"),
+    "ENGINE_EDITOR_VERSION_UNAVAILABLE": (INCOMPATIBLE, "the exact engine editor version the project requires is not the installed, probed editor"),
     "PLATFORM_UNSUPPORTED": (INCOMPATIBLE, "the adapter does not support this platform"),
     "GPOS_VERSION_INCOMPATIBLE": (INCOMPATIBLE, "the project pins a GPOS version this toolchain does not implement"),
     # single writer (CONFLICT)
@@ -87,8 +90,10 @@ CODES = {
     "REPOSITORY_STATE_CONFLICT": (CONFLICT, "the repository has no exact committed revision (uncommitted work or no commit yet)"),
     "TARGET_DEVICE_NOT_READY": (CONFLICT, "the named target device is connected but not ready (offline, unauthorized or still booting)"),
     "TARGET_PROCESS_NOT_RUNNING": (CONFLICT, "the named application process is not running on the target device"),
+    "ENGINE_PROJECT_LOCKED": (CONFLICT, "the engine project is already open or locked by another editor instance"),
     # execution (FAILED / TIMED_OUT / CANCELLED)
     "EXECUTION_FAILED": (FAILED, "the tool executed and reported failure"),
+    "ENGINE_TESTS_NOT_EXECUTED": (FAILED, "the test run completed without executing any test; no test evidence exists"),
     "ARTIFACT_MISSING": (FAILED, "a declared artifact does not exist on disk"),
     "ARTIFACT_HASH_FAILED": (FAILED, "an artifact could not be hashed"),
     "EXECUTION_TIMEOUT": (TIMED_OUT, "the deadline passed; the process was terminated"),
@@ -100,6 +105,7 @@ CODES = {
     "ARTIFACT_INCOMPLETE": (INFO, "an artifact was produced by an execution that did not finish; it is not evidence"),
     "SECRETS_REDACTED": (INFO, "credential-shaped values were redacted from captured text"),
     "MUTATION_SKIPPED_DRY_RUN": (INFO, "dry run: the planned mutation was not performed"),
+    "TESTS_FAILED": (INFO, "tests executed and one or more failed; the failures are recorded as test evidence, never as a passing result"),
     "LEASE_ACQUIRED": (INFO, "a single-writer lease was acquired for this execution"),
     "LEASE_STALE": (INFO, "a lease looks abandoned; recovery is explicit and never automatic"),
     "EVIDENCE_NOT_MATERIALIZABLE": (INFO, "the candidate is offered but cannot become a GPOS evidence record yet"),

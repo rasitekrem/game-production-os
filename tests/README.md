@@ -132,6 +132,24 @@ Real integration tests for the Phase-2C-4 Blender adapter (`gpos/tools/blender/`
 
 `mutate_blender_adapter.py` is its bounded mutation harness.
 
+## Unity adapter tests
+
+```bash
+python3 tests/test_unity_adapter.py
+```
+
+Real integration tests for the Phase-2C-5 Unity batch adapter (`gpos/tools/unity/`), run against the one Unity Editor installed under the Unity Hub root. Without exactly one, the suite stops with UNITY_RUNTIME_UNAVAILABLE_FOR_PHASE2C5; it never falls back to mocks. Every Unity project is generated for the run by `unity_fixture_builder.py` inside a temporary GPOS project, and none contains a hanging test (the adapter always runs a platform's whole test set). A module guard fails the suite if any Unity Editor preference other than the six accepted Unity-owned keys changes, or if the user's Package Manager configuration files change (existence, size and time only; never read). Stand-in programs cover only deterministic error cases. Groups A–Z cover:
+
+- registration, the `TOOL_INHERENT` network semantic, discovery and the probe;
+- static inspection with zero, one or several Editors, the project path and the exact version rule;
+- manifest and lock-file package sources;
+- Package Manager isolation, the command template, the lease and Unity's project lock;
+- real EditMode runs (pass, failures, zero tests, compile failure) and real PlayMode runs;
+- the results reader, classification, dry run, mutation consent and project side effects;
+- privacy, materialization, the command surface and the CLI.
+
+`mutate_unity_adapter.py` is its bounded mutation harness; it runs the suite with GPOS_UNITY_TEST_FAST=1, which starts no real Unity process.
+
 ## Fixtures
 
 **Schema fixtures** — `fixtures/valid/*.json` and `fixtures/invalid/*.json` are patches applied to a valid example:

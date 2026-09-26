@@ -1,23 +1,23 @@
-# Unity live Editor plane (Phase 2C-6A)
+# Unity live Editor plane (Phase 2C-6A, Scene authoring Phase 2C-6B1)
 
-Code: [`gpos/tools/unity/live.py`](../gpos/tools/unity/live.py) and the fixed bridge package in [`gpos/tools/unity/live_bridge/`](../gpos/tools/unity/live_bridge/manifest.json) · adapter id `unity` (the same adapter as the [batch plane](unity-adapter.md)) · status: live session foundation. Built on the [tool adapter foundation](adapter-foundation.md), extended by SESSION leases, lease modes and the `OUTCOME_UNKNOWN` result status.
+Code: [`gpos/tools/unity/live.py`](../gpos/tools/unity/live.py) and the fixed bridge package in [`gpos/tools/unity/live_bridge/`](../gpos/tools/unity/live_bridge/manifest.json) · adapter id `unity` (the same adapter as the [batch plane](unity-adapter.md)) · bridge `com.gpos.live-bridge` 1.1.0, protocol `gpos.unity.live/2` · status: live session foundation plus [Scene authoring](unity-live-authoring.md). Built on the [tool adapter foundation](adapter-foundation.md), extended by SESSION leases, lease modes and the `OUTCOME_UNKNOWN` result status.
 
 The live plane lets an agent work with a Unity Editor that a Human already has open, after the Human approves it **inside the Editor**. It is a closed set of operations through a fixed, audited GPOS Editor bridge:
 
 | Capability | Class | Lease mode | What it does |
 |---|---|---|---|
-| `unity.live-install-bridge` | `MUTATING`, `STATELESS`, `OFFLINE_ANALYSIS` | `EXECUTION` | writes the audited bridge package into a closed project |
+| `unity.live-install-bridge` | `MUTATING`, `STATELESS`, `OFFLINE_ANALYSIS` | `EXECUTION` | writes the audited bridge package into a closed project, or upgrades an exact earlier released bridge there |
 | `unity.live-status` | `READ_ONLY`, `EDITOR` | `NONE` | bridge and session facts from files and process identity; sends nothing to the Editor |
 | `unity.live-attach` | `MUTATING`, `EDITOR` | `SESSION_OPEN` | Human approval in the Editor, then the SESSION lease, then the bridge binds the session |
 | `unity.live-detach` | `MUTATING`, `EDITOR` | `SESSION_CLOSE` | unbind and release; release after a proven clean close; or recover a stale session after Human approval |
 | `unity.live-inspect` | `READ_ONLY`, `EDITOR` | `SESSION_REQUIRED` | bounded facts: session, focus, compilation, Play Mode, scenes, a bounded hierarchy summary |
 | `unity.live-enter-playmode`, `unity.live-pause`, `unity.live-resume`, `unity.live-exit-playmode` | `MUTATING`, `EDITOR` | `SESSION_REQUIRED` | the Editor's Play Mode state only |
 
-None produces evidence. There is no generic command, no C#, no reflection target, no `-executeMethod`, no menu execution, no input injection, no authoring, no capture, no Editor launch, quit, focus or restart, and no MCP transport. Input for every capability: `unity_project`, exactly as in the batch plane.
+None produces evidence. There is no generic command, no C#, no reflection target, no `-executeMethod`, no menu execution, no input injection, no capture, no Editor launch, quit, focus or restart, and no MCP transport. Input for every capability: `unity_project`, exactly as in the batch plane. The twelve Scene-authoring capabilities of alpha.17 use the same session and bridge; see [unity-live-authoring.md](unity-live-authoring.md).
 
 ## Bootstrap
 
-The alpha.16 bootstrap order is fixed; there is no hot install into an open project.
+The bootstrap order is fixed; there is no hot install or upgrade in an open project.
 
 1. The Unity project is closed (`unity.live-install-bridge` refuses with `ENGINE_PROJECT_LOCKED` while `Temp/UnityLockfile` exists).
 2. GPOS installs the bridge: `Packages/com.gpos.live-bridge/`, staged in the GPOS runtime area and moved into place with one atomic rename. `Packages/manifest.json` is not edited, and no Package Manager, registry, Git or network is involved.
@@ -25,7 +25,31 @@ The alpha.16 bootstrap order is fixed; there is no hot install into an open proj
 4. The bridge reaches READY.
 5. An attach can be proposed.
 
-An identical installed package is left alone (`LIVE_BRIDGE_ALREADY_INSTALLED`, no mutation). A modified, missing or extra file, an extra directory, a symbolic link or a wrong file type is `LIVE_BRIDGE_UNTRUSTED` and is never overwritten or repaired. A later bridge change will therefore be refused on projects that hold this one: upgrading needs its own review. The installer runs the batch plane's static project preflight first, so a project with remote package sources is refused.
+An identical installed package is left alone (`LIVE_BRIDGE_ALREADY_INSTALLED`, no mutation). An exact earlier released bridge is [upgraded](#upgrading-the-bridge). Anything else is `LIVE_BRIDGE_UNTRUSTED` and is never overwritten or repaired: a modified, missing or extra file, an extra directory, a symbolic link, a wrong file type, or a package GPOS does not know (including a "newer" one). The installer runs the batch plane's static project preflight first, so a project with remote package sources is refused.
+
+## Upgrading the bridge
+
+Earlier released bridges are release content. [`live_bridge/history/1.0.0.json`](../gpos/tools/unity/live_bridge/history/1.0.0.json) is byte for byte the manifest frozen in `v1.0.0-alpha.16`, and the code pins its protocol and package digest (`gpos.unity.live/1`, `546b3cfb…8c66`). A test reads the manifest from the frozen tag and fails when the copy or the pin differs. `unity.live-status` reports the installed package as ABSENT, EXACT, PREVIOUS (with its version) or UNTRUSTED. GPOS never talks to an earlier bridge: its sessions and Scene authoring need 1.1.0, so a PREVIOUS package is `LIVE_BRIDGE_INCOMPATIBLE` until it is upgraded.
+
+`unity.live-install-bridge` upgrades a PREVIOUS package only while the project is closed (`ENGINE_PROJECT_LOCKED` otherwise), holding its `EXECUTION` writer lease. Replacing a directory is not one atomic step, so it is a transaction:
+
+1. Stage the new package in the GPOS runtime area and verify it against its manifest.
+2. Write the transaction record `.game/gpos-runtime/unity/install-txn/<project key>.json`.
+3. Re-verify the installed package against the pinned old manifest, then move it to the transaction's backup.
+4. Move the staged package into `Packages/`.
+5. Verify the installed package byte for byte.
+6. Verify and remove the backup file by file, remove the transaction's empty directories, and clear the record.
+
+Each move is one rename on one file system (a cross-device move is refused, never copied). The record is at most 4 KiB, strict JSON with exact keys. It holds identifiers and metadata only: schema, transaction id (32 hex digits), project key and relative Unity project, old and new version and digest, phase and start time. The staging and backup directories are derived from the GPOS runtime root, fixed names and the validated transaction id (`.game/gpos-runtime/unity/install-staging/<id>/` and `install-backup/<id>/`); no path is ever read from the record. A runtime directory on the way that is a symbolic link is refused.
+
+**Recovery.** When a record exists, the next `unity.live-install-bridge` classifies what is actually on disk. Each place (installed, backup, staging) is absent, exactly a known release, a strict subset of one release's exact files, or UNKNOWN:
+
+- the new bridge is installed exactly: finish (remove the backup only if it is exactly, or a subset of, the old release; clear the record);
+- the old bridge is still installed and nothing was moved: roll back (discard only an exact staged copy, clear the record, then upgrade again);
+- nothing is installed and the backup is the exact old bridge: place the exact staged new bridge and finish, or, with no exact staged copy, restore the old bridge and upgrade again;
+- anything else, including unknown content in the installed or backup place, or a record that cannot be trusted exactly: `LIVE_BRIDGE_UPGRADE_INCOMPLETE`, and nothing is changed.
+
+A finished or rolled-back recovery reports `LIVE_BRIDGE_UPGRADE_RECOVERED`, and a completed upgrade `LIVE_BRIDGE_UPGRADED`. Unknown content is never removed or overwritten: an unknown staging directory stays where it is, and there is no force repair and no downgrade. A crash before the record exists leaves at most a verified staged copy in the runtime area, which a later upgrade does not use.
 
 ## The fixed bridge
 
@@ -56,12 +80,16 @@ The folders keep nothing older than 10 minutes and at most 256 files each.
 
 ## Protocol
 
-A request has exactly: schema, request id (equal to its file name), session id (only for commands that act on a session), owner (`KIND:ID`), the bridge boot id it is addressed to, one command from a closed list, a fixed argument set, `issued_utc` and `start_deadline_utc` (at most 120 s later). Requests are at most 64 KiB and responses at most 256 KiB; JSON is strict (duplicate keys, trailing data and non-JSON numbers are refused; depth at most 8). Response statuses: OK, REFUSED, FAILED, INTERRUPTED.
+A request (schema `gpos.unity.live.request/2`; responses `gpos.unity.live.response/2`) has exactly: schema, request id (equal to its file name), session id (only for commands that act on a session), owner (`KIND:ID`), the bridge boot id it is addressed to, one command from a closed list, a fixed argument set, `issued_utc` and `start_deadline_utc` (at most 120 s later). Requests are at most 64 KiB and responses at most 256 KiB; JSON is strict (duplicate keys, trailing data and non-JSON numbers are refused; depth at most 8). Response statuses: OK, REFUSED, FAILED, INTERRUPTED.
 
 ```
 status  propose-attach  attach-status  abandon-proposal  bind  propose-recovery  recovery-status
 consume-recovery  unbind  inspect  enter-playmode  exit-playmode  pause  resume
+object-inspect  component-types  properties  create-gameobject  delete-gameobject  set-parent
+set-gameobject  set-transform  add-component  remove-component  set-property  save-scene
 ```
+
+Every argument key of an authoring command is always present; an absent value is `null`.
 
 There is no approval command: approval exists only as a button in the Editor window.
 
@@ -69,7 +97,7 @@ There is no approval command: approval exists only as a button in the Editor win
 
 **Deadlines and waiting.** A request whose start deadline passed before the bridge could start it is refused `LIVE_REQUEST_EXPIRED` and never runs. When GPOS stops waiting, it tries to rename the request into withdrawn/; exactly one of that rename and the bridge's claim can succeed. A withdrawn request never runs (`LIVE_REQUEST_WITHDRAWN`, `CANCELLED`). If the bridge had already claimed it and no answer arrived, the result is `LIVE_OUTCOME_UNKNOWN` with status `OUTCOME_UNKNOWN` (exit 9): the effect is unknown, `mutation_performed` is true for a mutating capability, nothing is retried, and the caller must re-read `unity.live-status`. The frozen `TIMED_OUT` status is never used for live operations.
 
-**Busy Editor.** Play Mode commands are refused `EDITOR_BUSY` while Unity is compiling, importing, reloading, quitting, in a Play Mode transition or finishing another transition. Nothing is queued.
+**Busy Editor.** Play Mode commands are refused `EDITOR_BUSY` while Unity is compiling, importing, reloading, quitting, in a Play Mode transition or finishing another transition. Scene-authoring commands run only in Edit Mode with nothing pending. Nothing is queued.
 
 ## Human approval
 
@@ -127,6 +155,7 @@ A SESSION lease blocks every batch writer on the same project before Unity is la
 python3 tests/test_unity_live.py
 python3 tests/test_unity_live_bridge_core.py
 python3 tests/mutate_unity_live.py
+python3 tests/test_unity_authoring.py      # Scene authoring and the bridge upgrade
 ```
 
 The fast groups drive the GPOS side against [`tests/unity_live_fake_bridge.py`](../tests/unity_live_fake_bridge.py), a Python stand-in for the protocol. The bridge's Unity-free C# core (JSON, protocol, journal, proposals, transitions) is compiled and tested with the Mono bundled with the installed Editor. The real groups open disposable synthetic projects in lab-owned batch-mode Editors. There, the test-only [testkit package](../tests/unity_live_testkit/com.gpos.live-bridge-testkit/Editor/Testkit.cs) starts the production bridge and presses its production approval method for test-named owners; it is never installed by GPOS and gives the production bridge no switch. Windowed behaviour and the real approval button are validated by a Human-attended release-candidate checklist on one disposable synthetic windowed Editor.

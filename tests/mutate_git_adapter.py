@@ -98,6 +98,8 @@ MUTATIONS = [
         (ADAPTER, "        if top.exit_code != 0:\n", "        if False:\n")]),
     ("path-bearing output leaks into the result", [
         (ADAPTER, '    return replace(outcome, stdout="", raw_stdout=b"", raw_stderr=b"")', "    return outcome")]),
+    ("a commit id may end in a newline (alpha.17)", [
+        (STATUS, "    if not unborn and not OBJECT_ID.fullmatch(oid):", "    if not unborn and not OBJECT_ID.match(oid):")]),
 ]
 
 

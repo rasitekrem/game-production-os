@@ -1307,7 +1307,8 @@ class L01_Boundaries(TmpCase):
                                    "git/__init__.py", "git/adapter.py", "git/status.py", "leases.py",
                                    "media_common.py", "model.py", "paths.py", "process.py", "provenance.py",
                                    "redaction.py", "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
-                                   "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/bridge_install.py",
+                                   "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/authoring.py",
+                                   "unity/bridge_install.py",
                                "unity/identity.py", "unity/live.py", "unity/live_ipc.py", "unity/live_status.py",
                                "unity/project.py",
                                    "unity/results.py", "validation.py"])
@@ -2666,6 +2667,70 @@ class R01_SessionLeases(TmpCase):
                          "--format", "json"], stdout=out)
         self.assertEqual(code, tdg.EXIT_FOR[tdg.INVALID_REQUEST])
         self.assertIn("names no existing session", out.getvalue())
+
+
+class S01_WholeStringIdentifiers(TmpCase):
+    """alpha.17: every identity grammar matches the whole string. A pattern ending in `$` also matches before a final
+    newline, so each otherwise-valid value followed by LF or CRLF must be refused where it is validated."""
+
+    ENDINGS = ("\n", "\r\n")
+
+    def setUp(self):
+        super().setUp()
+        self.reg = ToolRegistry(FW, allow_test_only=True)
+        self.reg.register(SessionFake())
+        self.p = self.project()
+
+    def run_cap(self, cap, **kwargs):
+        return execute(self.reg, ExecutionRequest(adapter_id="synthetic", capability_id=f"synthetic.{cap}",
+                                                  subject=Subject("TASK", "TASK-1"), project_root=str(self.p),
+                                                  **kwargs))
+
+    def test_session_id_and_owner(self):
+        self.assertEqual(lease_mod.session_owner(AGENT), "AGENT:worker-1")
+        resource = f"{SESSION_KIND}:{self.p.resolve()}"
+        for end in self.ENDINGS:
+            with self.subTest(end=end):
+                self.assertIsNone(lease_mod.session_owner(Actor("AGENT", "worker-1" + end)))
+                with self.assertRaises(lease_mod.LeaseHeld) as ctx:
+                    lease_mod.acquire(self.p, "synthetic", resource, "AGENT:worker-1" + end, "2026-09-26T00:00:00Z",
+                                      scope=lease_mod.SESSION, session={"session_id": SID})
+                self.assertEqual(ctx.exception.code, "LEASE_INVALID")
+                with self.assertRaises(lease_mod.LeaseHeld) as ctx:
+                    lease_mod.acquire(self.p, "synthetic", resource, "AGENT:worker-1", "2026-09-26T00:00:00Z",
+                                      scope=lease_mod.SESSION, session={"session_id": SID + end})
+                self.assertEqual(ctx.exception.code, "LEASE_INVALID")
+        self.assertIsNone(lease_mod.holder(self.p, "synthetic", resource))
+
+    def test_request_actor_and_session_id(self):
+        for end in self.ENDINGS:
+            with self.subTest(end=end):
+                r = self.run_cap("session-inspect", actor=AGENT, session_id=SID + end)
+                self.assertEqual(r.status, tdg.INVALID_REQUEST)
+                self.assertIn("session_id must be 32 lower-case hexadecimal characters",
+                              " ".join(d.message for d in r.diagnostics))
+                r = self.run_cap("example", actor=Actor("AGENT", "worker-1" + end))
+                self.assertEqual(r.status, tdg.INVALID_REQUEST)
+                self.assertIn("not a usable cross-record identifier", " ".join(d.message for d in r.diagnostics))
+        self.assertEqual(self.run_cap("example", actor=AGENT).status, tdg.SUCCESS)
+
+    def test_adapter_capability_version_and_artifact_ids(self):
+        self.assertEqual(tval.validate_descriptor(FW, descriptor(), allow_test_only=True), [])
+        for end in self.ENDINGS:
+            with self.subTest(end=end):
+                def messages(problems):
+                    return " ".join(d.message for d in problems)
+                self.assertIn("must be a lower-case identifier", messages(tval.validate_descriptor(
+                    FW, descriptor(adapter_id="synthetic" + end), allow_test_only=True)))
+                self.assertIn("must be a semantic version", messages(tval.validate_descriptor(
+                    FW, descriptor(adapter_version="1.0.0" + end), allow_test_only=True)))
+                self.assertIn("must be a lower-case identifier", messages(tval.validate_capability(
+                    FW, "synthetic", capability(id="synthetic.example" + end))))
+                problems = art.declaration_problems((art.ArtifactSpec("report" + end, "TEXT", str(self.tmp / "r")),),
+                                                    capability(artifact_kinds=("TEXT",)), REG["tool_artifact_kinds"])
+                self.assertEqual([p[0] for p in problems], ["INVALID_ARTIFACT_CLAIM"])
+        self.assertEqual(art.declaration_problems((art.ArtifactSpec("report", "TEXT", str(self.tmp / "r")),),
+                                                  capability(artifact_kinds=("TEXT",)), REG["tool_artifact_kinds"]), [])
 
 
 if __name__ == "__main__":

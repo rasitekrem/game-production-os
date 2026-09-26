@@ -1,6 +1,6 @@
 # Game Production OS
 
-Version `1.0.0-alpha.16` · Phase 2C-6A (Unity live session foundation) on the frozen Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation, Phase-2C-1 Git provenance adapter, Phase-2C-2 media evidence adapters, Phase-2C-3 Android ADB adapter, Phase-2C-4 Blender DCC adapter and Phase-2C-5 Unity batch plane · all skills `DRAFT`
+Version `1.0.0-alpha.17` · Phase 2C-6B1 (Unity live Scene authoring core) on the frozen Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation, Phase-2C-1 Git provenance adapter, Phase-2C-2 media evidence adapters, Phase-2C-3 Android ADB adapter, Phase-2C-4 Blender DCC adapter, Phase-2C-5 Unity batch plane and Phase-2C-6A Unity live session foundation · all skills `DRAFT`
 
 A model-independent production framework for AI-assisted professional game development. It makes AI agents work like a disciplined, multidisciplinary game studio — with clear creative authority, specialist ownership, independent quality gates and typed evidence — instead of like a generic software agent that calls a feature done once the tests pass.
 
@@ -38,8 +38,8 @@ templates/     Authority skeletons for a project's .game/ directory
 schemas/       JSON Schemas for project config, task routing, gate, evidence and Human Decision records
 examples/      One minimal valid instance per schema (generic)
 adapters/      Agent adapter documentation (Claude Code, Codex) and later-phase boundaries
-tools/         Tool documentation (production validator, tool adapter foundation, Git, media, ADB, Blender and Unity adapters, Unity live plane)
-gpos/          Validator (2A), agent adapters (2B), tool adapter foundation (2C-0), Git adapter (2C-1), media adapters (2C-2), ADB adapter (2C-3), Blender adapter (2C-4), Unity adapter (2C-5 batch plane, 2C-6A live plane)
+tools/         Tool documentation (production validator, tool adapter foundation, Git, media, ADB, Blender and Unity adapters, Unity live plane and Scene authoring)
+gpos/          Validator (2A), agent adapters (2B), tool adapter foundation (2C-0), Git adapter (2C-1), media adapters (2C-2), ADB adapter (2C-3), Blender adapter (2C-4), Unity adapter (2C-5 batch plane, 2C-6A live plane, 2C-6B1 Scene authoring)
 tests/         Framework validation, production-validator tests, fixtures and synthetic bundles
 ```
 
@@ -150,7 +150,7 @@ Adapter and tool boundaries: [adapters/README.md](adapters/README.md), [tools/RE
 
 ## Versioning
 
-Semantic Versioning, currently `1.0.0-alpha.16` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
+Semantic Versioning, currently `1.0.0-alpha.17` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
 
 | Bump | When |
 |---|---|

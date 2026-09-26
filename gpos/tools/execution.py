@@ -65,7 +65,7 @@ def vocabulary_problems(framework, request, capability):
     if actor is not None:
         if actor.kind not in reg["actor_kinds"]:
             out.append(bad(f"actor kind {actor.kind!r} is not a GPOS actor kind {reg['actor_kinds']}"))
-        if not isinstance(actor.id, str) or not ACTOR_ID.match(actor.id or ""):
+        if not isinstance(actor.id, str) or not ACTOR_ID.fullmatch(actor.id or ""):
             out.append(bad(f"actor id {actor.id!r} is not a usable cross-record identifier"))
     if request.target_platform is not None and request.target_platform not in reg["platforms"]:
         out.append(bad(f"target platform {request.target_platform!r} is not in registry platforms {reg['platforms']}"))
@@ -99,7 +99,7 @@ def _session_request_problems(request, capability):
     if request.session_id is not None:
         if not capability.takes_session_id:
             out.append(f"{cap} names no existing session, so a session_id has no meaning for it")
-        elif not isinstance(request.session_id, str) or not lease_mod.SESSION_ID.match(request.session_id):
+        elif not isinstance(request.session_id, str) or not lease_mod.SESSION_ID.fullmatch(request.session_id):
             out.append("session_id must be 32 lower-case hexadecimal characters")
     elif capability.takes_session_id:
         out.append(f"{cap} acts on an existing session and needs session_id")

@@ -106,7 +106,7 @@ def _state(oid, head, staged, unstaged, untracked, conflicted):
     if oid is None or head is None:
         raise StatusParseError("the branch headers are missing; the output is incomplete")
     unborn = oid == INITIAL
-    if not unborn and not OBJECT_ID.match(oid):
+    if not unborn and not OBJECT_ID.fullmatch(oid):
         raise StatusParseError(f"branch.oid {oid[:80]!r} is not a commit object id")
     detached = head == DETACHED
     if unborn and detached:

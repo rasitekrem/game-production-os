@@ -60,6 +60,14 @@ namespace Gpos.LiveBridge
             return phase == Edit || phase == Playing || phase == Paused ? null : phase;
         }
 
+        // Why a Scene-authoring command must not start now (EDITOR_BUSY), or null: authoring happens only in Edit Mode
+        // with no pending transition — never while playing, paused, compiling, updating, reloading or quitting.
+        public static string AuthoringBusy(string phase, bool pending)
+        {
+            if (pending) return "PENDING_OPERATION";
+            return phase == Edit ? null : phase;
+        }
+
         // The state-precondition refusal for an Editor-state command, or null.
         public static string Precondition(string command, string phase)
         {

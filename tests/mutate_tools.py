@@ -339,6 +339,25 @@ MUTATIONS = [
      'INTERNAL_ERROR: 8, OUTCOME_UNKNOWN: 9}', 'INTERNAL_ERROR: 8, OUTCOME_UNKNOWN: 2}'),
     ('an unknown live outcome is reported as FAILED', 'gpos/tools/diagnostics.py',
      '    "LIVE_OUTCOME_UNKNOWN": (OUTCOME_UNKNOWN,', '    "LIVE_OUTCOME_UNKNOWN": (FAILED,'),
+    # --- alpha.17: identity grammars match the whole string (a final LF or CRLF is refused)
+    ('a session owner may end in a newline', 'gpos/tools/leases.py',
+     '    return owner if SESSION_OWNER.fullmatch(owner) else None', '    return owner if SESSION_OWNER.match(owner) else None'),
+    ('a SESSION lease owner may end in a newline', 'gpos/tools/leases.py',
+     'or not SESSION_OWNER.fullmatch(owner_id):', 'or not SESSION_OWNER.match(owner_id):'),
+    ('a SESSION lease id may end in a newline', 'gpos/tools/leases.py',
+     'not SESSION_ID.fullmatch(str(session.get("session_id", ""))):', 'not SESSION_ID.match(str(session.get("session_id", ""))):'),
+    ('a request session_id may end in a newline', 'gpos/tools/execution.py',
+     'not lease_mod.SESSION_ID.fullmatch(request.session_id):', 'not lease_mod.SESSION_ID.match(request.session_id):'),
+    ('an actor id may end in a newline', 'gpos/tools/execution.py',
+     'not ACTOR_ID.fullmatch(actor.id or "")', 'not ACTOR_ID.match(actor.id or "")'),
+    ('an adapter id may end in a newline', 'gpos/tools/validation.py',
+     'not ID.fullmatch(aid or "")', 'not ID.match(aid or "")'),
+    ('an adapter version may end in a newline', 'gpos/tools/validation.py',
+     'not VERSION.fullmatch(descriptor.adapter_version or "")', 'not VERSION.match(descriptor.adapter_version or "")'),
+    ('a capability id may end in a newline', 'gpos/tools/validation.py',
+     'not ID.fullmatch(cap.id or "")', 'not ID.match(cap.id or "")'),
+    ('an artifact id may end in a newline', 'gpos/tools/artifacts.py',
+     'not ARTIFACT_ID.fullmatch(aid or "")', 'not ARTIFACT_ID.match(aid or "")'),
 ]
 
 

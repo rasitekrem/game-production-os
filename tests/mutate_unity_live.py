@@ -145,11 +145,11 @@ MUTATIONS = [
     ("the installer ignores an open project", "live", [(LIVE, "    if lock.exists() or lock.is_symlink():\n", "    if False:\n")]),
     ("the installer follows symbolic links", "live", [(INSTALL, "            st = os.lstat(path)\n", "            st = os.stat(path)\n")]),
     ("extra files in the installed package are ignored", "live", [
-        (INSTALL, '    differences += [f"{p}: not part of the audited bridge" for p in sorted(set(found) - set(expected))]\n', "")]),
+        (INSTALL, '    out += [f"{p}: not part of the audited bridge" for p in sorted(set(found) - set(expected))]\n', "")]),
     ("extra directories in the installed package are ignored", "live", [
-        (INSTALL, '    differences += [f"{d}/: not part of the audited bridge" for d in sorted(extra_dirs)]\n', "")]),
+        (INSTALL, '    out += [f"{d}/: not part of the audited bridge" for d in sorted(extra_dirs)]\n', "")]),
     ("modified installed files are ignored", "live", [
-        (INSTALL, '    differences += [f"{p}: modified" for p in sorted(set(expected) & set(found)) if expected[p] != found[p]]\n', "")]),
+        (INSTALL, '    out += [f"{p}: modified" for p in sorted(set(expected) & set(found)) if expected[p] != found[p]]\n', "")]),
     ("the GPOS-owned source is not verified", "live", [
         (INSTALL, '    if problems or sorted(entries, key=lambda e: e["path"]) != sorted(manifest["files"], key=lambda e: e["path"]):',
          "    if False:")]),
@@ -189,7 +189,7 @@ MUTATIONS = [
     ("C#: the session requirement is not enforced", "core", [
         (CORE + "Protocol.cs", "            if (spec.Session && (r.SessionId == null || !Hex32.IsMatch(r.SessionId)))", "            if (false)")]),
     ("C#: the owner kind is optional", "core", [
-        (CORE + "Protocol.cs", 'new Regex("^[A-Z][A-Z_]*:[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$")', 'new Regex("^[A-Za-z0-9:._@-]{1,80}$")')]),
+        (CORE + "Protocol.cs", 'new Regex("^[A-Z][A-Z_]*:[A-Za-z0-9][A-Za-z0-9._@-]{0,63}\\\\z")', 'new Regex("^[A-Za-z0-9:._@-]{1,80}\\\\z")')]),
     ("C#: the start window is unbounded", "core", [
         (CORE + "Protocol.cs", "            if (r.DeadlineTicks <= r.IssuedTicks ||\n                r.DeadlineTicks - r.IssuedTicks > TimeSpan.FromSeconds(MaxStartWindowSeconds).Ticks)",
          "            if (r.DeadlineTicks <= r.IssuedTicks)")]),
@@ -212,7 +212,8 @@ MUTATIONS = [
         (CORE + "Transitions.cs", '                if (playing && willChange && p.Events.Contains("EnteredPlayMode")) return new[] { "OK", null };',
          '                if (p.Events.Contains("ExitingEditMode")) return new[] { "OK", null };')]),
     ("C#: a pending transition does not make the Editor busy", "core", [
-        (CORE + "Transitions.cs", '            if (pending) return "PENDING_OPERATION";\n', "")]),
+        (CORE + "Transitions.cs", '            if (pending) return "PENDING_OPERATION";\n            return phase == Edit || phase == Playing || phase == Paused ? null : phase;',
+         '            return phase == Edit || phase == Playing || phase == Paused ? null : phase;')]),
     ("C#: transitions never time out", "core", [
         (CORE + "Transitions.cs", '            if (now > p.Deadline) return new[] { "FAILED", "TRANSITION_TIMEOUT" };\n', "")]),
     ("C#: duplicate JSON keys accepted", "core", [(CORE + "Json.cs", '                if (d.ContainsKey(key)) throw new JsonProblem("duplicate key");\n', "")]),

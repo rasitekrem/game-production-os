@@ -58,7 +58,7 @@ def session_owner(actor):
     if actor is None or not isinstance(actor.kind, str) or not isinstance(actor.id, str):
         return None
     owner = f"{actor.kind}:{actor.id}"
-    return owner if SESSION_OWNER.match(owner) else None
+    return owner if SESSION_OWNER.fullmatch(owner) else None
 
 
 def scope_of(record):
@@ -130,9 +130,9 @@ def acquire(root, adapter_id, resource_id, owner_id, now, request_id=None, metad
     if scope not in SCOPES:
         raise LeaseHeld("LEASE_INVALID", f"lease scope {scope!r} is not one of {list(SCOPES)}")
     if scope == SESSION:
-        if not isinstance(owner_id, str) or not SESSION_OWNER.match(owner_id):
+        if not isinstance(owner_id, str) or not SESSION_OWNER.fullmatch(owner_id):
             raise LeaseHeld("LEASE_INVALID", f"a SESSION lease needs a canonical KIND:ID owner, not {owner_id!r}")
-        if not isinstance(session, dict) or not SESSION_ID.match(str(session.get("session_id", ""))):
+        if not isinstance(session, dict) or not SESSION_ID.fullmatch(str(session.get("session_id", ""))):
             raise LeaseHeld("LEASE_INVALID", "a SESSION lease needs a session binding with a 32-hex session_id")
     elif session is not None:
         raise LeaseHeld("LEASE_INVALID", "an EXECUTION lease takes no session binding")

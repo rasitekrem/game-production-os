@@ -29,6 +29,8 @@ The **Unity engine adapter** (Phase 2C-5) is the first engine adapter, batch pla
 
 The same adapter's **live Editor plane** (Phase 2C-6A) works with a Unity Editor a Human already has open, through a fixed, audited GPOS bridge package. GPOS installs the bridge into a closed project. After the Human approves inside the Editor, GPOS holds one SESSION lease per GPOS project (the batch plane's resource). It exchanges bounded, strict, at-most-once requests with the bridge over local files: status, bounded inspection, and entering, pausing, resuming and exiting Play Mode as Editor state only. A stale session ends only through a separate Human-approved recovery. It never launches, quits, focuses or restarts an Editor, injects no input, runs no caller code and produces no evidence. See [unity-live-bridge.md](unity-live-bridge.md).
 
+**Live Scene authoring** (Phase 2C-6B1) adds twelve fixed capabilities on that session through bridge 1.1.0. It inspects, creates, deletes, moves and sets GameObjects, Transforms, catalogued components and allowlisted serialized properties of the open, saved Scene, and saves that Scene to its own path. Objects are named only by `GlobalObjectId`. Every mutation carries tokens of an earlier inspection and is refused as a conflict when they changed. Every mutation runs as one named Undo group, is read back, and is reverted, with verification, on any mismatch. Prefab-instance content, assets, cross-Scene references, arrays, managed references and Save As are refused. `unity.live-install-bridge` upgrades an exact earlier released bridge in a closed project with a crash-recoverable transaction. See [unity-live-authoring.md](unity-live-authoring.md).
+
 ## Planned concepts (not implemented)
 
 | Tool | Purpose | Constraints |

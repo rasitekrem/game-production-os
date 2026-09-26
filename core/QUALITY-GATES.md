@@ -1,6 +1,6 @@
 # Quality Gates
 
-Status: normative · GPOS `1.0.0-alpha.16` · Elaborates [P2](PRINCIPLES.md#p2--game-production-not-generic-software), [P3](PRINCIPLES.md#p3--independent-quality-gates)
+Status: normative · GPOS `1.0.0-alpha.17` · Elaborates [P2](PRINCIPLES.md#p2--game-production-not-generic-software), [P3](PRINCIPLES.md#p3--independent-quality-gates)
 
 Machine-readable source: [`registry.json`](registry.json) → `gates`, `review_policies`, `mandatory_human_review_triggers`, `evidence_conditions`. Record format: [`schemas/gate.schema.json`](../schemas/gate.schema.json).
 

@@ -55,7 +55,7 @@ def skill_namespace(project_id):
 
 def agent_skill_id(namespace, skill):
     name = f"{SKILL_PREFIX}{namespace}-{skill}"
-    if len(name) > AGENT_SKILL_NAME_MAX or not AGENT_SKILL_NAME.match(name) or "--" in name:
+    if len(name) > AGENT_SKILL_NAME_MAX or not AGENT_SKILL_NAME.fullmatch(name) or "--" in name:
         raise AdapterError("SOURCE_INVALID", f"generated skill id {name!r} is not a valid Agent Skills name")
     return name
 

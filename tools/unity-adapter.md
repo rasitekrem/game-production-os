@@ -1,6 +1,6 @@
 # Unity engine adapter: batch plane (Phase 2C-5)
 
-This page describes the batch plane. The same `unity` adapter also has a live Editor plane (Phase 2C-6A), described in [unity-live-bridge.md](unity-live-bridge.md).
+This page describes the batch plane. The same `unity` adapter also has a live Editor plane (Phase 2C-6A), described in [unity-live-bridge.md](unity-live-bridge.md), with Scene authoring (Phase 2C-6B1), described in [unity-live-authoring.md](unity-live-authoring.md).
 
 Code: [`gpos/tools/unity/`](../gpos/tools/unity/__init__.py) · adapter id `unity` · status: the first production engine adapter. It is built on the frozen [tool adapter foundation](adapter-foundation.md), extended only by the `TOOL_INHERENT` network semantic (see [Network](#network)).
 
@@ -9,7 +9,7 @@ The adapter answers two questions about one Unity project inside a GPOS project:
 1. is it a supported Unity project, and which exact Editor does it require (static inspection);
 2. what do its EditMode or PlayMode tests report when the Unity Test Framework runs them in a fresh batch-mode Editor.
 
-**The batch plane.** It has no live Editor session; that is the [live plane](unity-live-bridge.md). Neither plane has capture, build, deployment, profiling, video or audio; scene, prefab or asset authoring; `-executeMethod`, arbitrary C# or menu invocation; general package installation or API migration. Each needs its own Human Review.
+**The batch plane.** It has no live Editor session; that is the [live plane](unity-live-bridge.md). The batch plane has no authoring at all; the live plane authors the open Scene through [fixed commands](unity-live-authoring.md) only. Neither plane has capture, build, deployment, profiling, video or audio; prefab or asset authoring; `-executeMethod`, arbitrary C# or menu invocation; general package installation or API migration. Each needs its own Human Review.
 
 **This is not a Unity automation interface.** The caller never supplies an executable, an Editor version, a method, C#, a test filter or category, a graphics mode, a network destination, a registry, a proxy, a credential or any Unity argument. The only input is `unity_project`.
 

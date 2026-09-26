@@ -121,7 +121,7 @@ def declaration_problems(specs, capability, registry_kinds, known=()):
     declared, inputs = set(capability.artifact_kinds), {a.artifact_id for a in known}
     for spec in specs:
         aid = spec.artifact_id
-        if not isinstance(aid, str) or not ARTIFACT_ID.match(aid or ""):
+        if not isinstance(aid, str) or not ARTIFACT_ID.fullmatch(aid or ""):
             problems.append(("INVALID_ARTIFACT_CLAIM", str(aid),
                              f"artifact id {aid!r} must be a lower-case identifier"))
             continue

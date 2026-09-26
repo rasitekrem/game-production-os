@@ -9,7 +9,7 @@ using System.Reflection;
 
 namespace Gpos.LiveBridge
 {
-    static class CoreTests
+    static partial class CoreTests
     {
         const string Boot = "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0";
         const string Sid = "5e55105e55105e55105e55105e551055";

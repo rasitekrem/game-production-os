@@ -22,7 +22,7 @@ namespace Gpos.LiveBridge
         public const int RetentionMinutes = 10;
         public const int MaxFilesPerFolder = 256;
         public const int MaxEventsBytes = 256 * 1024;
-        static readonly Regex RequestName = new Regex("^[0-9a-f]{32}\\.json$");
+        static readonly Regex RequestName = new Regex("^[0-9a-f]{32}\\.json\\z");
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false, true);
 
         [DllImport("libc", SetLastError = true)] static extern int rename(string from, string to);

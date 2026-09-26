@@ -550,6 +550,8 @@ class K_Paths(GitCase):
             "short ordinary record": head + "1 .M N... path\0",
             "bad XY": head + f"1 ZZ N... 1 1 1 {oid} {oid} p\0",
             "bad oid": "# branch.oid not-a-sha\0# branch.head main\0",
+            "oid with a trailing LF": f"# branch.oid {oid}\n\0# branch.head main\0",
+            "oid with a trailing CRLF": f"# branch.oid {oid}\r\n\0# branch.head main\0",
             "unborn and detached": "# branch.oid (initial)\0# branch.head (detached)\0",
         }
         for name, text in bad.items():

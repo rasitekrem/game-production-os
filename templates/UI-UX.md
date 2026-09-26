@@ -1,6 +1,6 @@
 # UI / UX
 
-> **GPOS template** · `1.0.0-alpha.16` · copy to `.game/UI-UX.md` · see [templates/README.md](README.md)
+> **GPOS template** · `1.0.0-alpha.17` · copy to `.game/UI-UX.md` · see [templates/README.md](README.md)
 >
 > Document authority status: `PROPOSED` <!-- becomes LOCKED only by Human Decision; cite the DECISIONS.md entry -->
 > Locked by decision: `UNDECIDED`

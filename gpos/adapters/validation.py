@@ -86,7 +86,7 @@ def validate_bundle(bundle):
                 err("CONTEXT_BUDGET_EXCEEDED", f"skill {skill.name} is {len(text)} characters / {lines} lines "
                     f"(budget {content.SKILL_MAX_CHARS} / {content.SKILL_MAX_LINES})", path, chars=len(text), lines=lines)
             name, description = _front_matter(text)
-            if name != skill.agent_id or not NAME_RE.match(name or "") or len(name) > 64 \
+            if name != skill.agent_id or not NAME_RE.fullmatch(name or "") or len(name) > 64 \
                     or path.split("/")[-2] != name:
                 err("RENDER_INVALID", f"skill name {name!r} is not a valid name matching its directory", path)
             if not description or len(description) > content.DESCRIPTION_MAX_CHARS:

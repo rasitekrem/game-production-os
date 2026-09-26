@@ -4,6 +4,68 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.17] — Phase 2C-6B1: Unity live Scene authoring core
+
+Builds on the frozen Phase-2C-6A tree (`v1.0.0-alpha.16`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The foundation gains new diagnostic codes, and its identity grammars now match the whole string. Projects must pin `gpos_version` `1.0.0-alpha.17`.
+
+The `unity` adapter's live plane gains Scene authoring through the fixed bridge 1.1.0 (protocol `gpos.unity.live/2`): twelve capabilities on the Human-approved session, in Edit Mode only, with optimistic concurrency, one Undo group per command and verified rollback. Excluded:
+
+- prefab asset or Prefab Mode editing, apply, revert and unpack;
+- asset and cross-Scene references, and asset creation;
+- array and managed-reference mutation, curves and gradients;
+- Scene creation and Save As;
+- reflection, C#, `-executeMethod`, menu execution and input;
+- live evidence.
+
+### Added
+
+- **Scene authoring** (`gpos/tools/unity/authoring.py`; bridge `Authoring.cs`, `Scene.cs`, `Properties.cs`, `Catalog.cs` and the Unity-free core `ObjectIds.cs`, `Tokens.cs`, `PropertyRules.cs`):
+  - `unity.live-object-inspect`, `unity.live-component-types` and `unity.live-properties` (`INSPECT`, `READ_ONLY`);
+  - `unity.live-create-gameobject`, `unity.live-delete-gameobject`, `unity.live-set-parent`, `unity.live-set-gameobject`, `unity.live-set-transform`, `unity.live-add-component`, `unity.live-remove-component`, `unity.live-set-property` and `unity.live-save-scene` (`TRANSFORM`, `MUTATING`);
+  - all `STATEFUL`, `EDITOR`, `SESSION_REQUIRED`, and none produces evidence.
+- **Identity:** `GlobalObjectId` strings of Scene objects in saved, loaded Scenes only; unsaved Scenes are `LIVE_SCENE_NOT_SAVED`. A created object's id is allocated before its creation is recorded, so Redo keeps it, and a bounded by-id scan finds components Redo re-created that Unity's lookup misses.
+- **Optimistic concurrency:** `object`, `transform`, `transform_chain`, `component`, `subtree` and `scene_roots` tokens, each required as its capability declares. `transform_chain` covers every Transform from the Scene root down to the object or new parent, for keep-world reparenting. The component token hashes every top-level serialized property, hidden ones included, opaquely; references are hashed by `GlobalObjectId`. Any mismatch is `LIVE_AUTHORING_CONFLICT` before anything changes.
+- **Closed component catalog** and a digest over every entry's id, assembly, name, kind, `DisallowMultipleComponent`, sorted `RequireComponent` requirements and edit-mode execution. A changed catalog is `LIVE_CATALOG_CHANGED`.
+- **Default-deny property writes:**
+  - an exact kind table, with values validated before Unity sees them (no clamping, wrapping, infinity or non-unit quaternions);
+  - read back through a fresh `SerializedObject`, and reverted on any difference;
+  - denied engine paths, hidden properties, arrays, managed references, curves, gradients and characters;
+  - object references only to type-checked objects of the same Scene.
+- **Undo and rollback:** one collapsed `GPOS: …` Undo group per command. On failure the group is reverted with `Undo.RevertAllDownToGroup` and the pre-state tokens are re-verified: restored, or `LIVE_ROLLBACK_INCOMPLETE`. A reverted mutation still reports `mutation_performed`, and the Scene may stay dirty.
+- **Prefab boundary** (`LIVE_PREFAB_BOUNDARY`): an outermost instance root can be renamed, moved, transformed or deleted; instance content is read-only.
+- **Saving:** `unity.live-save-scene` saves an already saved Scene to its own path only.
+- **Bridge upgrade:** `unity.live-install-bridge` upgrades an exact pinned earlier bridge in a closed project through a recorded, crash-recoverable transaction. The record holds identifiers only, and staging and backup paths are derived. Recovery finishes or rolls back only from exact known packages; anything unknown is `LIVE_BRIDGE_UPGRADE_INCOMPLETE` and untouched. There is no downgrade and no force repair. The released 1.0.0 manifest is kept byte for byte as `live_bridge/history/1.0.0.json`, with its digest pinned in code.
+- Diagnostics:
+  - `LIVE_AUTHORING_CONFLICT`, `LIVE_OBJECT_NOT_FOUND`, `LIVE_PREFAB_BOUNDARY`, `LIVE_SCENE_NOT_SAVED`, `LIVE_CATALOG_CHANGED`, `LIVE_AUTHORING_REFUSED` and `LIVE_BRIDGE_UPGRADE_INCOMPLETE` (conflicts);
+  - `LIVE_OBJECT_REFUSED`, `LIVE_PROPERTY_UNSUPPORTED`, `LIVE_VALUE_INVALID`, `LIVE_TYPE_NOT_IN_CATALOG` and `LIVE_AUTHORING_LIMIT` (invalid requests);
+  - `LIVE_ROLLBACK_INCOMPLETE` and `LIVE_AUTHORING_FAILED` (failures);
+  - `LIVE_BRIDGE_UPGRADED`, `LIVE_BRIDGE_UPGRADE_RECOVERED` and `LIVE_SCENE_SAVED` (informational).
+- [tools/unity-live-authoring.md](tools/unity-live-authoring.md).
+- Tests and fixtures:
+  - `tests/test_unity_authoring.py`: fast groups; the upgrade recovery matrix and a frozen-tag history check; real groups for an end-to-end authoring session and a real 1.0.0 → 1.1.0 upgrade;
+  - `tests/unity_live_bridge_core/AuthoringCoreTests.cs`;
+  - `tests/mutate_unity_authoring.py`, with a `--real` mode for the bridge's Editor-side code;
+  - the authoring fixture project in `tests/unity_fixture_builder.py`;
+  - testkit trigger files that stand in for the Human's Inspector edits, Hierarchy drags and Undo.
+
+### Changed
+
+- Bridge `com.gpos.live-bridge` 1.1.0, protocol `gpos.unity.live/2`, request and response schemas `/2`. GPOS talks only to the audited 1.1.0 bridge; an installed 1.0.0 is reported as PREVIOUS by `unity.live-status` and is `LIVE_BRIDGE_INCOMPATIBLE` until upgraded. The bridge's identifier grammars are anchored at the end of the string (`\z`), so a trailing newline no longer passes.
+- The `unity` descriptor has 24 capabilities (3 batch, 9 live session, 12 authoring).
+- Identity grammars match the whole string. A pattern ending in `$` also accepted a value followed by a newline; a value ending in LF or CRLF is now refused. This covers:
+  - the SESSION lease id and `KIND:ID` owner, the request `session_id` and actor id;
+  - tool adapter, capability and artifact ids, and the adapter version;
+  - Git commit object ids and generated agent skill names;
+  - every Scene-authoring and bridge-upgrade grammar.
+
+  Regression tests and mutations cover each.
+- `tests/test_unity_live.py`, `tests/unity_live_fake_bridge.py`, `tests/mutate_unity_live.py` and the testkit follow the new bridge version and protocol.
+
+### Notes
+
+- Rollback verification proves restoration of the state the operation's pre-state tokens cover, not of the whole Scene or project: project Editor code (`OnValidate`, component callbacks, `ExecuteAlways` scripts, save callbacks) can run and is `TOOL_INHERENT`.
+- No windowed Human checklist was needed: the approval UI is unchanged, and Inspector-path edits are simulated through `SerializedObject` exactly as the Inspector applies them.
+
 ## [1.0.0-alpha.16] — Phase 2C-6A: Unity live session foundation
 
 Builds on the frozen Phase-2C-5 tree (`v1.0.0-alpha.15`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The foundation gains SESSION leases, lease modes, `ExecutionRequest.session_id` and the `OUTCOME_UNKNOWN` result status; the existing statuses, exit codes and execution-scoped lease behaviour are unchanged. Projects must pin `gpos_version` `1.0.0-alpha.16`.

@@ -155,7 +155,7 @@ class A_Registration(unittest.TestCase):
         d = default_registry(FW).get("unity").descriptor
         self.assertEqual((d.adapter_id, d.adapter_kind, d.state_model, d.network), ("unity", "CLI", "STATEFUL",
                                                                                       "TOOL_INHERENT"))
-        self.assertEqual(len(d.capabilities), 12)
+        self.assertEqual(len(d.capabilities), 24)   # 3 batch + 9 live session + 12 Scene authoring (alpha.17)
         notes = " ".join(d.compatibility_notes)
         self.assertIn("One adapter, two planes", notes)
         self.assertIn("process-driven", notes)
@@ -191,7 +191,8 @@ class A_Registration(unittest.TestCase):
             self.assertIn("establishes no player-loop, frame, gameplay", caps[cid].description)
 
     def test_no_generic_or_forbidden_surface(self):
-        names = " ".join(c.id for c in UnityAdapter.descriptor.capabilities)
+        from gpos.tools.unity import authoring   # the fixed Scene-authoring set is checked in test_unity_authoring.py
+        names = " ".join(c.id for c in UnityAdapter.descriptor.capabilities if c.id not in authoring.CAPABILITY_IDS)
         for word in ("execute", "method", "menu", "eval", "script", "launch", "start", "quit", "close", "focus",
                      "input", "author", "capture", "scene", "prefab", "asset", "refresh", "mcp"):
             self.assertNotIn(word, names.replace("playmode", "").replace("inspect", ""), word)
@@ -242,7 +243,7 @@ class C_Manifest(unittest.TestCase):
         self.assertEqual(gen.main(["--check"]), 0)
         manifest = bi.verify_source()
         self.assertEqual((manifest["package_id"], manifest["bridge_version"], manifest["protocol"]),
-                         ("com.gpos.live-bridge", "1.0.0", "gpos.unity.live/1"))
+                         ("com.gpos.live-bridge", "1.1.0", "gpos.unity.live/2"))
         paths = {e["path"] for e in manifest["files"]}
         self.assertIn("package.json", paths)
         self.assertTrue(all(p + ".meta" in paths for p in paths if not p.endswith(".meta")))

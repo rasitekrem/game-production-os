@@ -78,6 +78,7 @@ MUTATIONS = [
     ('declared skill names ignored', 'gpos/adapters/layers.py', '        hit = ids & {base.name, _skill_name(root / rel)}', '        hit = ids & {base.name}'),
     ('authority table without section accepted', 'gpos/adapters/sources.py', '            if in_table and section is None:', '            if False:'),
     ('project_root_markers ignored', 'gpos/adapters/layers.py', '        for key in CODEX_ROOT_DISCOVERY_KEYS:', '        for key in ():'),
+    ('a generated skill id may end in a newline (alpha.17)', 'gpos/adapters/compiler.py', 'or not AGENT_SKILL_NAME.fullmatch(name) or', 'or not AGENT_SKILL_NAME.match(name) or'),
 ]
 
 

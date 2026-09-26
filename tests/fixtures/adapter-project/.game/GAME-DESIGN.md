@@ -1,6 +1,6 @@
 # Game Design
 
-> **Project authority** (from GPOS template) · `1.0.0-alpha.16` · copy to `.game/GAME-DESIGN.md`
+> **Project authority** (from GPOS template) · `1.0.0-alpha.17` · copy to `.game/GAME-DESIGN.md`
 >
 > Document authority status: `PROPOSED` <!-- becomes LOCKED only by Human Decision; cite the DECISIONS.md entry -->
 > Locked by decision: `UNDECIDED`

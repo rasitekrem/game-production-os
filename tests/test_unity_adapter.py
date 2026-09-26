@@ -298,10 +298,11 @@ class A_Registration(UnityCase):
         # alpha.16: the adapter manages the live plane's long-lived session; each batch capability stays STATELESS
 
     def test_exactly_three_capabilities(self):
-        from gpos.tools.unity import live
-        caps = {c.id: c for c in ua.DESCRIPTOR.capabilities if c.id not in live.CAPABILITY_IDS}
+        from gpos.tools.unity import authoring, live
+        caps = {c.id: c for c in ua.DESCRIPTOR.capabilities
+                if c.id not in live.CAPABILITY_IDS and c.id not in authoring.CAPABILITY_IDS}
         self.assertEqual(sorted(caps), ["unity.inspect-project", "unity.run-editmode-tests", "unity.run-playmode-tests"])
-        self.assertEqual(len(ua.DESCRIPTOR.capabilities), 12)   # alpha.16: plus the nine live-plane capabilities
+        self.assertEqual(len(ua.DESCRIPTOR.capabilities), 24)   # plus nine live-session (alpha.16) and twelve authoring (alpha.17)
         i = caps[ua.INSPECT]
         self.assertEqual((i.category, i.operation_class, i.state_model, i.execution_context, i.requires_tool,
                           i.single_writer_required, i.dry_run_supported, i.input_kinds, i.artifact_kinds,
@@ -1013,7 +1014,7 @@ class Z_Cli(UnityCase):
         code, out = cli("list")
         self.assertEqual(code, 0)
         self.assertIn("6 tool adapter", out)
-        self.assertIn("unity 1.0.0 · ENGINE · 12 capabilities", out)
+        self.assertIn("unity 1.0.0 · ENGINE · 24 capabilities", out)
         code, out = cli("describe", "unity")
         self.assertEqual(code, 0)
         self.assertIn("network TOOL_INHERENT", out)

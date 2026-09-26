@@ -47,6 +47,11 @@ CODES = {
     "ADAPTER_REGISTRATION_INVALID": (INVALID_REQUEST, "the adapter descriptor or one of its capabilities is invalid"),
     "CAPABILITY_NOT_FOUND": (INVALID_REQUEST, "the adapter declares no capability with this id"),
     "INVALID_TOOL_REQUEST": (INVALID_REQUEST, "the execution request is malformed or contradicts the capability"),
+    "LIVE_OBJECT_REFUSED": (INVALID_REQUEST, "the id does not name an authorable scene object of a saved scene (an asset, another scene, a hidden object or a bad id)"),
+    "LIVE_PROPERTY_UNSUPPORTED": (INVALID_REQUEST, "the serialized property is not on the write allowlist, or it is not of the requested kind"),
+    "LIVE_VALUE_INVALID": (INVALID_REQUEST, "the value is outside the property's type, range or rules, or the editor kept a different value and the write was reverted"),
+    "LIVE_TYPE_NOT_IN_CATALOG": (INVALID_REQUEST, "the component type is not in the closed component catalog"),
+    "LIVE_AUTHORING_LIMIT": (INVALID_REQUEST, "the object, subtree or component exceeds a fixed authoring bound; it is never truncated"),
     "DRY_RUN_UNSUPPORTED": (INVALID_REQUEST, "the capability does not support dry run"),
     "MUTATION_NOT_ALLOWED": (INVALID_REQUEST, "a mutating capability was requested without explicit mutation consent"),
     "TIMEOUT_NOT_PERMITTED": (INVALID_REQUEST, "the requested timeout is outside the capability's policy bounds"),
@@ -108,6 +113,14 @@ CODES = {
     "LIVE_BIND_REFUSED": (CONFLICT, "the editor bridge refused to bind or unbind the session"),
     "LIVE_STATE_REFUSED": (CONFLICT, "the editor is not in the state the operation starts from"),
     "EDITOR_BUSY": (CONFLICT, "the editor is compiling, importing, reloading or in a transition; nothing was queued"),
+    # live scene authoring (Phase 2C-6B1)
+    "LIVE_AUTHORING_CONFLICT": (CONFLICT, "the object, hierarchy or component changed since the tokens the request carries were read; nothing was changed"),
+    "LIVE_OBJECT_NOT_FOUND": (CONFLICT, "the object id no longer resolves, or its scene is not loaded in the editor"),
+    "LIVE_PREFAB_BOUNDARY": (CONFLICT, "the operation would edit prefab-instance content or create a prefab override; it is refused"),
+    "LIVE_SCENE_NOT_SAVED": (CONFLICT, "the scene was never saved, so it has no path and its objects no stable id; no path is ever chosen for it"),
+    "LIVE_CATALOG_CHANGED": (CONFLICT, "the component catalog changed since its digest was read (a recompile or domain reload); nothing was changed"),
+    "LIVE_AUTHORING_REFUSED": (CONFLICT, "the editor state does not allow the operation (a cycle, a required or single-instance component, an engine refusal)"),
+    "LIVE_BRIDGE_UPGRADE_INCOMPLETE": (CONFLICT, "an interrupted bridge upgrade involves content that is not exactly a known released package; nothing was changed"),
     # execution (FAILED / TIMED_OUT / CANCELLED)
     "EXECUTION_FAILED": (FAILED, "the tool executed and reported failure"),
     "ENGINE_TESTS_NOT_EXECUTED": (FAILED, "the test run completed without executing any test; no test evidence exists"),
@@ -120,6 +133,8 @@ CODES = {
     "LIVE_REQUEST_EXPIRED": (CANCELLED, "the request's start deadline passed before the editor could start it; it never executed"),
     "LIVE_REQUEST_WITHDRAWN": (CANCELLED, "the caller stopped waiting and withdrew the request before the editor claimed it; it never executed"),
     "LIVE_TRANSITION_FAILED": (FAILED, "the editor did not complete the requested state transition; it is not retried"),
+    "LIVE_ROLLBACK_INCOMPLETE": (FAILED, "the operation failed and was reverted, but the state its pre-state tokens cover was not restored; inspect before anything else"),
+    "LIVE_AUTHORING_FAILED": (FAILED, "the editor raised an error during the operation; it was reverted and the state its pre-state tokens cover was restored"),
     "LIVE_OUTCOME_UNKNOWN": (OUTCOME_UNKNOWN, "the editor may have started or completed the request, but its final effect is unknown; it is never retried, re-read the live status"),
     # defects (INTERNAL_ERROR)
     "ADAPTER_INTERNAL_ERROR": (INTERNAL_ERROR, "the adapter raised an unexpected exception"),
@@ -139,6 +154,9 @@ CODES = {
     "LIVE_SESSION_ATTACHED": (INFO, "a Human-approved live session is attached and holds the SESSION lease"),
     "LIVE_SESSION_DETACHED": (INFO, "the live session ended and its SESSION lease was released after verification"),
     "LIVE_SESSION_RECOVERED": (INFO, "a stale SESSION lease was broken after Human approval inside the editor; no session is attached"),
+    "LIVE_BRIDGE_UPGRADED": (INFO, "an exact earlier released editor bridge was upgraded to the audited bridge in the closed engine project"),
+    "LIVE_BRIDGE_UPGRADE_RECOVERED": (INFO, "an interrupted bridge upgrade was finished or rolled back from exact known packages"),
+    "LIVE_SCENE_SAVED": (INFO, "the scene was saved to its own existing path"),
 }
 
 

@@ -1,8 +1,10 @@
-"""The Unity live plane (Phase 2C-6A): a fixed Editor bridge and one Human-approved session per GPOS project.
+"""The Unity live plane (Phase 2C-6A, authoring Phase 2C-6B1): a fixed Editor bridge and one Human-approved session
+per GPOS project.
 
-Nine capabilities, and nothing generic:
+Nine session capabilities here, twelve Scene-authoring capabilities in authoring.py, and nothing generic:
 
-    unity.live-install-bridge   write the audited bridge package into a closed project            MUTATING, EXECUTION
+    unity.live-install-bridge   write the audited bridge package into a closed project, or upgrade an exact earlier
+                                released bridge there with a crash-recoverable transaction        MUTATING, EXECUTION
     unity.live-status           bridge and session facts from files and process identity          READ_ONLY, no session
     unity.live-attach           Human approval in the Editor, then the SESSION lease, then bind   SESSION_OPEN
     unity.live-detach           unbind and release, clean-close release, or Human-approved recovery SESSION_CLOSE
@@ -58,7 +60,16 @@ REFUSALS = {
     "LEASE_NOT_HELD": "LIVE_BIND_REFUSED", "SESSION_ALREADY_BOUND": "LIVE_BIND_REFUSED",
     "PROJECT_MISMATCH": "LIVE_PROJECT_IDENTITY_MISMATCH", "NO_STALE_SESSION": "LIVE_BIND_REFUSED",
     "TOO_MANY_PROPOSALS": "EDITOR_BUSY", "DUPLICATE_PROPOSAL": "LIVE_PROTOCOL_ERROR",
+    # Scene authoring (Phase 2C-6B1)
+    "AUTHORING_CONFLICT": "LIVE_AUTHORING_CONFLICT", "OBJECT_NOT_FOUND": "LIVE_OBJECT_NOT_FOUND",
+    "OBJECT_REFUSED": "LIVE_OBJECT_REFUSED", "PREFAB_BOUNDARY": "LIVE_PREFAB_BOUNDARY",
+    "SCENE_NOT_SAVED": "LIVE_SCENE_NOT_SAVED", "CATALOG_CHANGED": "LIVE_CATALOG_CHANGED",
+    "TYPE_NOT_IN_CATALOG": "LIVE_TYPE_NOT_IN_CATALOG", "AUTHORING_REFUSED": "LIVE_AUTHORING_REFUSED",
+    "PROPERTY_UNSUPPORTED": "LIVE_PROPERTY_UNSUPPORTED", "VALUE_INVALID": "LIVE_VALUE_INVALID",
+    "VALUE_NOT_APPLIED": "LIVE_VALUE_INVALID", "AUTHORING_LIMIT": "LIVE_AUTHORING_LIMIT",
 }
+# FAILED codes of an authoring command whose mutation began (the bridge reverted it; see authoring.py).
+AUTHORING_FAILURES = {"ROLLBACK_INCOMPLETE": "LIVE_ROLLBACK_INCOMPLETE", "AUTHORING_FAILED": "LIVE_AUTHORING_FAILED"}
 
 # Every status, code, state and phase the bridge protocol and the live plane report (documentation vocabulary).
 PROTOCOL_VOCABULARY = frozenset(REFUSALS) | frozenset({
@@ -69,8 +80,14 @@ PROTOCOL_VOCABULARY = frozenset(REFUSALS) | frozenset({
     "PENDING", "APPROVED", "REJECTED", "EXPIRED", "CONSUMED", "ABANDONED", "GRANT_EXPIRED", "ATTACH", "RECOVER",
     "EDIT", "PLAYING", "PAUSED", "ENTERING_PLAYMODE", "EXITING_PLAYMODE", "COMPILING", "UPDATING", "RELOADING",
     "QUITTING", "PENDING_OPERATION", "INITIALIZING", "READY", "CLOSED",
-    ls.LIVE, ls.UNRESPONSIVE, ls.STALE, ls.CLOSED, bi.ABSENT, bi.EXACT, bi.UNTRUSTED,
-    ipc.RESPONDED, ipc.WITHDRAWN, ipc.UNKNOWN})
+    ls.LIVE, ls.UNRESPONSIVE, ls.STALE, ls.CLOSED, bi.ABSENT, bi.EXACT, bi.PREVIOUS_STATE, bi.UNTRUSTED,
+    ipc.RESPONDED, ipc.WITHDRAWN, ipc.UNKNOWN}) | frozenset(AUTHORING_FAILURES) | frozenset({
+    # authoring: object kinds, prefab roles, reference and catalog kinds, property write refusals, upgrade
+    # transaction phases and places, recovery outcomes
+    "NONE", "INSTANCE_ROOT", "INSTANCE_CONTENT", "ADDED_OVERRIDE", "MISSING", "GAME_OBJECT", "COMPONENT",
+    "SCENE", "ASSET", "OTHER_SCENE", "NATIVE", "SCRIPT", "TRANSFORM_USES_SET_TRANSFORM", "PREFAB_BOUNDARY",
+    "HIDDEN", "PATH_UNSUPPORTED", "DENIED", "INSIDE_UNSUPPORTED", "NOT_EDITABLE", "TYPE_UNSUPPORTED",
+    bi.PLACE_UNKNOWN, "COMPLETED", "ROLLED_BACK"} | set(bi.PHASES))
 
 
 def _diag(code, message, cap, details=None):
@@ -121,9 +138,9 @@ class Live:
     def installed(self):
         try:
             manifest = bi.verify_source()
+            state, differences = bi.inspect_target(self.project, manifest)
         except bi.BridgeSourceCorrupt as exc:
             raise Refused(_refuse(self.cap, "LIVE_BRIDGE_SOURCE_CORRUPT", str(exc)))
-        state, differences = bi.inspect_target(self.project, manifest)
         return manifest, state, differences
 
     def require_installed(self):
@@ -136,6 +153,11 @@ class Live:
             raise Refused(_refuse(self.cap, "LIVE_BRIDGE_UNTRUSTED", "the installed bridge is not the audited GPOS "
                                                                      "bridge; it is never overwritten or repaired",
                                   {"differences": differences[:20]}))
+        if state == bi.PREVIOUS_STATE:
+            raise Refused(_refuse(self.cap, "LIVE_BRIDGE_INCOMPATIBLE",
+                                  f"an earlier released bridge ({bi.installed_version(self.project)}) is installed; "
+                                  f"close the project in Unity and run {INSTALL} to upgrade it to "
+                                  f"{bi.BRIDGE_VERSION}"))
         return manifest
 
     def bridge(self, manifest, state=None):
@@ -239,30 +261,74 @@ def _bridge_data(r):
     return {k: data[k] for k in ("state", "transitions") if k in data}
 
 
-# ---------------------------------------------------------------- install
+# ---------------------------------------------------------------- install and upgrade
 
 def _install(live):
     cap, project = live.cap, live.project
     lock = project / "Temp" / "UnityLockfile"
     if lock.exists() or lock.is_symlink():
         return _refuse(cap, "ENGINE_PROJECT_LOCKED", "the Unity project is open (Temp/UnityLockfile exists); the bridge "
-                                                     "is installed only into a closed project")
-    manifest, state, differences = live.installed()
+                                                     "is installed or upgraded only in a closed project")
+    try:
+        manifest = bi.verify_source()
+        bi.history()
+    except bi.BridgeSourceCorrupt as exc:
+        return _refuse(cap, "LIVE_BRIDGE_SOURCE_CORRUPT", str(exc))
     data = {"unity_project": live.summary["unity_project"], "package_id": bi.PACKAGE_ID,
-            "bridge_version": bi.BRIDGE_VERSION, "protocol": bi.PROTOCOL, "package_digest": manifest["package_digest"],
-            "installed_state": state}
+            "bridge_version": bi.BRIDGE_VERSION, "protocol": bi.PROTOCOL, "package_digest": manifest["package_digest"]}
+    diagnostics, recovered = [], None
+    try:
+        record = bi.read_record(live.root, live.key)
+    except bi.UpgradeIncomplete as exc:
+        return _incomplete(cap, exc, data)
+    except OSError as exc:
+        return _refuse(cap, "LIVE_BRIDGE_UPGRADE_INCOMPLETE", f"the upgrade transaction record cannot be read safely "
+                                                              f"({exc}); nothing was changed", data=data)
+    if record is not None:
+        if live.context.dry_run:
+            return AdapterOutcome(data=dict(data, pending_upgrade=record["txn_id"]), plan=(
+                f"would recover the interrupted bridge upgrade {record['txn_id']} ({record['from_version']} -> "
+                f"{record['to_version']}) from what is on disk, only if every package involved is exactly a known "
+                f"released package",))
+        try:
+            recovered = bi.recover(live.root, project, live.key, live.rel, manifest)
+        except bi.UpgradeIncomplete as exc:
+            return _incomplete(cap, exc, data, mutation=False)
+        except (OSError, bi.BridgeSourceCorrupt) as exc:
+            return AdapterOutcome(ok=False, mutation_performed=True, data=data, detail=(
+                f"recovering the interrupted bridge upgrade failed ({type(exc).__name__}: {exc}); re-run "
+                f"{INSTALL} to classify what is on disk"))
+        diagnostics.append(_diag("LIVE_BRIDGE_UPGRADE_RECOVERED", f"the interrupted upgrade {record['txn_id']} was "
+                                                                  f"{recovered.lower().replace('_', ' ')} from exact "
+                                                                  f"known packages", cap,
+                                 {"txn_id": record["txn_id"], "outcome": recovered}))
+    state, differences = bi.inspect_target(project, manifest)
+    data["installed_state"] = state
     if state == bi.UNTRUSTED:
-        return _refuse(cap, "LIVE_BRIDGE_UNTRUSTED", f"Packages/{bi.PACKAGE_ID} exists and is not the audited bridge; "
+        return _refuse(cap, "LIVE_BRIDGE_UNTRUSTED", f"Packages/{bi.PACKAGE_ID} exists and is not an audited bridge; "
                                                      f"it is never overwritten or repaired",
-                       {"differences": differences[:20]}, data=data)
+                       {"differences": differences[:20]}, data=data, mutation_performed=recovered is not None)
     if state == bi.EXACT:
+        if recovered:
+            return AdapterOutcome(ok=True, mutation_performed=True, data=data, diagnostics=tuple(diagnostics))
         return AdapterOutcome(ok=True, data=data, diagnostics=(_diag(
             "LIVE_BRIDGE_ALREADY_INSTALLED", "the audited bridge is already installed byte for byte", cap),))
     if live.context.dry_run:
+        if state == bi.PREVIOUS_STATE:
+            old = bi.installed_version(project)
+            return AdapterOutcome(data=dict(data, installed_version=old), plan=(
+                f"would upgrade the exact released bridge {old} in Packages/{bi.PACKAGE_ID} to {bi.BRIDGE_VERSION}: "
+                f"stage and verify the new package in the GPOS runtime area, record the transaction, move the old "
+                f"package to the transaction's backup, move the new one into place, verify it, then remove the "
+                f"verified backup",
+                "a crash at any step leaves a state that the next install-bridge run finishes or rolls back from "
+                "exact known packages; unknown content is never removed"))
         return AdapterOutcome(data=data, plan=(
             f"would write the {len(manifest['files'])} files of {bi.PACKAGE_ID} {bi.BRIDGE_VERSION} into "
             f"Packages/{bi.PACKAGE_ID} of the closed project with one atomic rename",
             "nothing else in the project changes; Packages/manifest.json is not edited"))
+    if state == bi.PREVIOUS_STATE:
+        return _upgrade(live, manifest, data, diagnostics)
     try:
         bi.install(live.root, project, manifest)
     except bi.BridgeSourceCorrupt as exc:
@@ -274,9 +340,38 @@ def _install(live):
         return AdapterOutcome(ok=False, detail=f"the bridge could not be installed ({type(exc).__name__}: {exc}); "
                                                f"nothing was moved into Packages/", data=data)
     return AdapterOutcome(ok=True, mutation_performed=True, data=dict(data, installed_state=bi.EXACT),
-                          diagnostics=(_diag("LIVE_BRIDGE_INSTALLED", f"installed {bi.PACKAGE_ID} "
-                                                                      f"{bi.BRIDGE_VERSION}; open the project in Unity",
-                                             cap),))
+                          diagnostics=tuple(diagnostics) + (_diag(
+                              "LIVE_BRIDGE_INSTALLED", f"installed {bi.PACKAGE_ID} {bi.BRIDGE_VERSION}; open the "
+                                                       f"project in Unity", cap),))
+
+
+def _upgrade(live, manifest, data, diagnostics):
+    cap = live.cap
+    try:
+        old = bi.upgrade(live.root, live.project, live.key, live.rel, manifest)
+    except bi.BridgeSourceCorrupt as exc:
+        return _refuse(cap, "LIVE_BRIDGE_SOURCE_CORRUPT", str(exc), data=data, mutation_performed=bool(diagnostics))
+    except ValueError as exc:
+        return _refuse(cap, "LIVE_BRIDGE_UNTRUSTED", "the installed bridge changed while the upgrade was being "
+                                                     "prepared; nothing was overwritten",
+                       {"differences": list(exc.args[0])[:20]}, data=data, mutation_performed=bool(diagnostics))
+    except bi.UpgradeIncomplete as exc:
+        return _incomplete(cap, exc, data, mutation=True)
+    except OSError as exc:
+        return AdapterOutcome(ok=False, mutation_performed=True, data=data, detail=(
+            f"the bridge upgrade stopped ({type(exc).__name__}: {exc}); run {INSTALL} again to finish or roll it "
+            f"back from exact known packages"))
+    return AdapterOutcome(ok=True, mutation_performed=True, data=dict(data, installed_state=bi.EXACT,
+                                                                      upgraded_from=old),
+                          diagnostics=tuple(diagnostics) + (_diag(
+                              "LIVE_BRIDGE_UPGRADED", f"upgraded {bi.PACKAGE_ID} {old} to {bi.BRIDGE_VERSION}; open "
+                                                      f"the project in Unity", cap, {"from_version": old}),))
+
+
+def _incomplete(cap, exc, data, mutation=False):
+    return _refuse(cap, "LIVE_BRIDGE_UPGRADE_INCOMPLETE", f"{exc}; nothing was changed. Resolve it outside GPOS: "
+                                                          f"GPOS never removes or overwrites content it cannot verify",
+                   {"places": getattr(exc, "places", {})}, data=data, mutation_performed=mutation)
 
 
 # ---------------------------------------------------------------- status
@@ -285,8 +380,17 @@ def _status(live):
     manifest, installed, differences = live.installed()
     state = live.state()
     b, beat = state["bridge"] or {}, state["heartbeat"] or {}
-    bridge = {"installed": installed, "differences": differences[:20], "running_state": None, "boot_id": None,
-              "compatible": None, "heartbeat_age_seconds": None, "problems": state["problems"]}
+    bridge = {"installed": installed, "installed_version": bi.BRIDGE_VERSION if installed == bi.EXACT else (
+                  bi.installed_version(live.project) if installed == bi.PREVIOUS_STATE else None),
+              "differences": differences[:20], "running_state": None, "boot_id": None, "compatible": None,
+              "heartbeat_age_seconds": None, "problems": state["problems"]}
+    try:
+        record = bi.read_record(live.root, live.key)
+        bridge["pending_upgrade"] = None if record is None else {"txn_id": record["txn_id"], "phase": record["phase"],
+                                                                 "from_version": record["from_version"],
+                                                                 "to_version": record["to_version"]}
+    except (bi.UpgradeIncomplete, OSError) as exc:
+        bridge["pending_upgrade"] = {"problem": str(exc)}
     if b:
         bridge.update(running_state=b.get("state"), boot_id=b.get("boot_id"), editor_version=b.get("editor_version"),
                       compatible=(b.get("protocol"), b.get("bridge_version"), b.get("package_digest"))

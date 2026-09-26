@@ -1,4 +1,5 @@
-"""Production engine adapter: Unity, with a batch plane (Phase 2C-5) and a live Editor plane (Phase 2C-6A).
+"""Production engine adapter: Unity, with a batch plane (Phase 2C-5) and a live Editor plane (Phase 2C-6A, Scene
+authoring Phase 2C-6B1).
 
 Batch plane, process-driven, each capability STATELESS:
 
@@ -7,7 +8,8 @@ Batch plane, process-driven, each capability STATELESS:
     unity.run-playmode-tests   Unity Test Framework, PlayMode, in batch mode     results.xml -> TEST_EVIDENCE
 
 Live plane, driven by the fixed GPOS Editor bridge and one Human-approved session per GPOS project (see
-live.py): install-bridge, status, attach, detach, inspect and the four Play Mode transitions. It never launches,
+live.py): install-bridge, status, attach, detach, inspect and the four Play Mode transitions, plus twelve Scene
+authoring capabilities (authoring.py). It never launches,
 quits, focuses or restarts an Editor and produces no evidence. The batch and live planes share one writer
 resource, `EDITOR_PROJECT:<resolved GPOS project root>`: a live SESSION lease makes a batch run a conflict before
 Unity is launched, and a batch run's lease makes an attach a conflict. The adapter's overall state model is
@@ -56,6 +58,7 @@ from ..artifacts import ArtifactSpec
 from ..capabilities import Capability, TimeoutPolicy
 from ..evidence import EvidenceCandidate
 from ..execution import AdapterOutcome
+from . import authoring
 from . import live
 from . import project as up
 from . import results as ur
@@ -112,8 +115,9 @@ _live_note = ("Live plane: acts through the fixed GPOS bridge in an Editor a Hum
 _playmode_note = live.PLAYMODE_LIMITATION
 LIVE_SIDE_EFFECTS = {
     live.INSTALL: ("writes the audited GPOS bridge package into Packages/com.gpos.live-bridge/ of a closed Unity project "
-                   "(staged in the GPOS runtime area, moved into place with one rename); nothing else in the project "
-                   "changes and nothing is overwritten"),
+                   "(staged in the GPOS runtime area, moved into place with one rename), or replaces an exact earlier "
+                   "released bridge there through a recorded, crash-recoverable transaction; nothing else in the project "
+                   "changes and nothing unknown is overwritten or removed"),
     live.ATTACH: ("after a Human approves inside the Unity Editor: takes the SESSION lease on the project and binds the "
                   "Editor's bridge to the session; proposal and grant state live in the Editor session only"),
     live.DETACH: ("unbinds the Editor's bridge and releases the SESSION lease after verification; for a proven clean "
@@ -131,15 +135,16 @@ def _live(cap_id, category, description, operation_class, state_model, lease_mod
         id=cap_id, category=category, description=description, operation_class=operation_class,
         state_model=state_model, execution_context=kw.pop("execution_context", "EDITOR"), requires_tool=False,
         requires_project=True, lease_mode=lease_mode, resource_kind="EDITOR_PROJECT",
-        single_writer_required=operation_class == "MUTATING", input_kinds=("unity_project",),
-        timeout=timeout, side_effect_scope=LIVE_SIDE_EFFECTS.get(cap_id, "NONE"),
+        single_writer_required=operation_class == "MUTATING", input_kinds=kw.pop("input_kinds", ("unity_project",)),
+        timeout=timeout, side_effect_scope=kw.pop("side_effect_scope", LIVE_SIDE_EFFECTS.get(cap_id, "NONE")),
         notes=kw.pop("notes", (_project_note, _live_note)), **kw)
 
 
 LIVE_CAPABILITIES = (
-    _live(live.INSTALL, "DEPLOY", "Install the fixed, audited GPOS live bridge package into a closed Unity project; "
-                                  "an identical package is left alone, anything else there is refused and never "
-                                  "overwritten.", "MUTATING", "STATELESS", "EXECUTION",
+    _live(live.INSTALL, "DEPLOY", "Install the fixed, audited GPOS live bridge package into a closed Unity project, or "
+                                  "upgrade an exact earlier released bridge there; an identical package is left alone, "
+                                  "anything else there is refused and never overwritten.", "MUTATING", "STATELESS",
+          "EXECUTION",
           TimeoutPolicy(default=60.0, maximum=300.0), execution_context="OFFLINE_ANALYSIS", dry_run_supported=True,
           notes=(_project_note, "The project must be closed: an existing Temp/UnityLockfile is a conflict.")),
     _live(live.STATUS, "INSPECT", "Bridge and live-session facts for one Unity project, from the bridge's files and the "
@@ -163,6 +168,57 @@ LIVE_CAPABILITIES = (
           "STATEFUL", "SESSION_REQUIRED", TimeoutPolicy(default=30.0, maximum=120.0)),
     _live(live.EXIT, "RUN", "Exit Play Mode in the attached Editor. " + _playmode_note, "MUTATING", "STATEFUL",
           "SESSION_REQUIRED", TimeoutPolicy(default=120.0, maximum=600.0)),
+)
+
+_authoring_note = ("Scene authoring: objects are GlobalObjectId strings of Scene objects in saved, loaded Scenes; every "
+                   "mutation carries the tokens of an earlier inspection, is refused as a conflict when they changed, runs "
+                   "as one named Undo group and is read back and reverted on any mismatch. Edit Mode only; never "
+                   "queued. Structured inputs are strict JSON text.")
+AUTHORING_SIDE_EFFECT = ("changes the open Scene in the attached Editor as one named Undo group (the Scene becomes dirty; "
+                         "nothing is saved); project Editor callbacks may run")
+AUTHORING_SIDE_EFFECTS = {
+    authoring.SAVE_SCENE: "saves one open, already saved Scene to its own path; project save callbacks may run",
+}
+
+
+def _authoring(cap_id, category, description, operation_class, timeout):
+    side_effect = "NONE" if operation_class == "READ_ONLY" else AUTHORING_SIDE_EFFECTS.get(cap_id, AUTHORING_SIDE_EFFECT)
+    return _live(cap_id, category, description, operation_class, "STATEFUL", "SESSION_REQUIRED", timeout,
+                 input_kinds=authoring.input_kinds(cap_id), notes=(_project_note, _live_note, _authoring_note),
+                 side_effect_scope=side_effect)
+
+
+_short = TimeoutPolicy(default=30.0, maximum=120.0)
+AUTHORING_CAPABILITIES = (
+    _authoring(authoring.INSPECT_OBJECT, "INSPECT", "One GameObject of a saved Scene (name, state, parent, children, "
+                                                    "components, Transform, prefab role) or one Scene's root objects, "
+                                                    "with the optimistic-concurrency tokens authoring needs.",
+               "READ_ONLY", _short),
+    _authoring(authoring.COMPONENT_TYPES, "INSPECT", "The closed component catalog: every component type that can be "
+                                                     "added, with its requirements, and the catalog digest.",
+               "READ_ONLY", _short),
+    _authoring(authoring.PROPERTIES, "INSPECT", "One Component's visible serialized properties with their kinds, "
+                                                "values and whether each can be written, plus its token.",
+               "READ_ONLY", _short),
+    _authoring(authoring.CREATE, "TRANSFORM", "Create one empty GameObject in a saved, loaded Scene, at the root or "
+                                              "under a parent.", "MUTATING", _short),
+    _authoring(authoring.DELETE, "TRANSFORM", "Delete one GameObject and everything below it.", "MUTATING", _short),
+    _authoring(authoring.SET_PARENT, "TRANSFORM", "Move one GameObject under another parent in the same Scene, or to "
+                                                  "its root, keeping its local or its world pose.", "MUTATING",
+               _short),
+    _authoring(authoring.SET_GAMEOBJECT, "TRANSFORM", "Set a GameObject's name, active state, tag, layer or static "
+                                                      "flags.", "MUTATING", _short),
+    _authoring(authoring.SET_TRANSFORM, "TRANSFORM", "Set a GameObject's local position, rotation or scale.",
+               "MUTATING", _short),
+    _authoring(authoring.ADD_COMPONENT, "TRANSFORM", "Add one component of a catalogued type (and the components it "
+                                                     "requires) to a GameObject.", "MUTATING", _short),
+    _authoring(authoring.REMOVE_COMPONENT, "TRANSFORM", "Remove one component that nothing on its GameObject "
+                                                        "requires.", "MUTATING", _short),
+    _authoring(authoring.SET_PROPERTY, "TRANSFORM", "Write one allowlisted serialized property of a Component, "
+                                                    "validated first and read back after.", "MUTATING", _short),
+    _authoring(authoring.SAVE_SCENE, "TRANSFORM", "Save one open Scene that already has a path, to that path; never "
+                                                  "Save As, never a dialog, never a new Scene asset.", "MUTATING",
+               TimeoutPolicy(default=60.0, maximum=300.0)),
 )
 
 CAPABILITIES = (
@@ -195,7 +251,7 @@ CAPABILITIES = (
         potential_evidence=(("TEST_EVIDENCE", "AUTOMATED_TEST"),),
         timeout=TimeoutPolicy(default=1800.0, maximum=3600.0), side_effect_scope=SIDE_EFFECTS,
         notes=(_project_note, "The project must require exactly the probed Editor version.")),
-) + LIVE_CAPABILITIES
+) + LIVE_CAPABILITIES + AUTHORING_CAPABILITIES
 
 DESCRIPTOR = model.AdapterDescriptor(
     adapter_id=ADAPTER_ID, adapter_version=ADAPTER_VERSION, tool_family="ENGINE", target_tool="Unity Editor",
@@ -212,6 +268,9 @@ DESCRIPTOR = model.AdapterDescriptor(
         "the same EDITOR_PROJECT resource). adapter_kind stays CLI for alpha.16.",
         "The live plane never launches, quits, focuses or restarts an Editor, never injects input and runs no caller "
         "code; its Play Mode operations report Editor state only.",
+        "Scene authoring (bridge 1.1.0) changes the open Scene of the attached Editor only through fixed commands: no "
+        "prefab asset or Prefab Mode editing, no asset or cross-Scene reference, no array or managed-reference "
+        "mutation, no Save As; applying serialized changes can run project Editor callbacks and no sandbox is claimed.",
     ))
 
 
@@ -303,6 +362,8 @@ class UnityAdapter(model.ToolAdapter):
         cap = request.capability_id
         if cap in live.CAPABILITY_IDS:
             return live.execute(request, context, **self._live_seams)
+        if cap in authoring.CAPABILITY_IDS:
+            return authoring.execute(request, context, **self._live_seams)
         if cap not in (INSPECT, EDITMODE, PLAYMODE):
             raise AssertionError(f"{cap} is declared but not implemented")
         root = Path(context.project_root)

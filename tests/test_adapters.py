@@ -981,6 +981,14 @@ class O01_SkillIdentity(TmpCase):
             self.assertEqual(ns, skill_namespace(pid))
         self.assertEqual(len(namespaces), len(ids))
 
+    def test_generated_skill_ids_match_the_whole_name(self):
+        from gpos.adapters.compiler import agent_skill_id
+        from gpos.adapters.errors import AdapterError
+        self.assertEqual(agent_skill_id(NS, "game-director"), f"gpos-{NS}-game-director")
+        for end in ("\n", "\r\n"):     # alpha.17: a final newline is not part of a valid Agent Skills name
+            with self.assertRaises(AdapterError):
+                agent_skill_id(NS, "game-director" + end)
+
     def test_second_project_gets_its_own_namespace(self):
         p = self.proj()
         q = project(self.tmp / "second")

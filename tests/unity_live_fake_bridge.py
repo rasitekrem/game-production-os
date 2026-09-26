@@ -12,6 +12,9 @@ cover the bridge itself. Behaviour switches:
     busy = "COMPILING"       refuse Editor-state commands EDITOR_BUSY
     decide = "approve" | "reject" | None   what the simulated Human does with each new proposal
     on_approve(proposal_id)  called right after a simulated approval (e.g. to take a conflicting lease)
+    author_reply(command, args) -> (status, code, data)   the answer to a Scene-authoring command (Phase 2C-6B1);
+                             every authoring call is recorded in `author_calls` as (command, args)
+    protocol / bridge_version  what the bridge publishes (an earlier release's values make it incompatible)
 """
 
 import datetime
@@ -25,8 +28,18 @@ from pathlib import Path
 from gpos.tools import leases as lease_mod
 from gpos.tools.unity import bridge_install as bi
 from gpos.tools.unity import identity as ident
+from gpos.tools.unity import live_ipc as ipc
 
 EDITOR_COMMAND = "/Applications/Unity/Hub/Editor/{v}/Unity.app/Contents/MacOS/Unity -projectPath {p}"
+
+
+AUTHORING = ("object-inspect", "component-types", "properties", "create-gameobject", "delete-gameobject", "set-parent",
+             "set-gameobject", "set-transform", "add-component", "remove-component", "set-property", "save-scene")
+
+
+def default_author_reply(command, args):
+    return "OK", None, {"echo": command, "scene": {"path": args.get("scene") or "Assets/Scenes/Main.unity",
+                                                   "dirty": command != "save-scene"}}
 
 
 def now_utc():
@@ -49,6 +62,8 @@ class FakeBridge:
         self.session = self.owner = self.proposal_bound = ""
         self.phase = "EDIT"
         self.proposals, self.executed, self.claimed_ids = {}, [], []
+        self.author_calls, self.author_reply = [], None
+        self.protocol, self.bridge_version = bi.PROTOCOL, bi.BRIDGE_VERSION
         self.lock = threading.Lock()
 
     # ------------------------------------------------------------ process identity seam
@@ -97,7 +112,7 @@ class FakeBridge:
         self.alive = False
 
     def identity(self):
-        return {"protocol": bi.PROTOCOL, "bridge_version": bi.BRIDGE_VERSION, "package_digest": self.digest,
+        return {"protocol": self.protocol, "bridge_version": self.bridge_version, "package_digest": self.digest,
                 "boot_id": self.boot, "generation": 1, "editor_pid": self.pid,
                 "editor_started_utc": self.started.isoformat().replace("+00:00", "Z"),
                 "editor_version": self.editor_version, "gpos_root": str(self.root), "project_path": str(self.project),
@@ -120,7 +135,7 @@ class FakeBridge:
     # ------------------------------------------------------------ protocol
 
     def respond(self, rid, status, code=None, data=None):
-        body = json.dumps({"schema": "gpos.unity.live.response/1", "request_id": rid, "status": status, "code": code,
+        body = json.dumps({"schema": ipc.RESPONSE_SCHEMA, "request_id": rid, "status": status, "code": code,
                            "message": None, "boot_id": self.boot, "generation": 1, "session_id": self.session,
                            "utc": now_utc().isoformat(), "data": data})
         tmp = self.live / "responses" / f".tmp-{uuid.uuid4().hex}"
@@ -153,7 +168,7 @@ class FakeBridge:
         if req["boot_id"] != self.boot:
             return self.respond(rid, "REFUSED", "BOOT_MISMATCH")
         cmd, args, owner = req["command"], req["args"], req["owner"]
-        if cmd in ("unbind", "inspect", "enter-playmode", "exit-playmode", "pause", "resume"):
+        if cmd in ("unbind", "inspect", "enter-playmode", "exit-playmode", "pause", "resume") + AUTHORING:
             if not self.session:
                 return self.respond(rid, "REFUSED", "SESSION_NOT_BOUND")
             if req["session_id"] != self.session or owner != self.owner:
@@ -163,6 +178,14 @@ class FakeBridge:
                 return self.respond(rid, "INTERRUPTED", "NOT_REPLAYED")
             if self.busy:
                 return self.respond(rid, "REFUSED", "EDITOR_BUSY")
+        if cmd in AUTHORING:
+            if self.mode == "interrupt":
+                return self.respond(rid, "INTERRUPTED", "NOT_REPLAYED")
+            if self.busy or self.phase != "EDIT":
+                return self.respond(rid, "REFUSED", "EDITOR_BUSY")
+            self.author_calls.append((cmd, args))
+            status, code, data = (self.author_reply or default_author_reply)(cmd, args)
+            return self.respond(rid, status, code, data)
         getattr(self, "cmd_" + cmd.replace("-", "_"))(rid, args, owner)
 
     def cmd_status(self, rid, args, owner):

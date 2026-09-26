@@ -1,5 +1,5 @@
 {
-  "bridge_version": "1.0.0",
+  "bridge_version": "1.1.0",
   "files": [
     {
       "path": "Editor.meta",
@@ -17,6 +17,16 @@
       "size": 59
     },
     {
+      "path": "Editor/Authoring.cs",
+      "sha256": "6de25795e9f03991c1cf1cebcdb2ac77f03c202fb50f0e8a7f922d4407debc94",
+      "size": 42495
+    },
+    {
+      "path": "Editor/Authoring.cs.meta",
+      "sha256": "0afc1978a93b4ceddc596aa521ed125901b50534b7d3c43db9c6dc3664536c8e",
+      "size": 59
+    },
+    {
       "path": "Editor/Bridge.cs",
       "sha256": "1373f81ed433dba9eceb1a12204ac4e89de50ab8b7113debeceaf46ba3ea2f53",
       "size": 8750
@@ -27,9 +37,19 @@
       "size": 59
     },
     {
+      "path": "Editor/Catalog.cs",
+      "sha256": "f52b0fe39d3b0c860a36e32583114082bbb5b989934eed849fabbccd50d213d4",
+      "size": 4720
+    },
+    {
+      "path": "Editor/Catalog.cs.meta",
+      "sha256": "56d0a9b899da2c471033e0e83d17d383790c035f7b8bb99cc49cb82ea130bdd4",
+      "size": 59
+    },
+    {
       "path": "Editor/Commands.cs",
-      "sha256": "cdc022523603ef4864e3455892b213da97ce9a5af07ce7440fe6691dbd77d245",
-      "size": 20450
+      "sha256": "7c23cc0e205466710f860e532b476a46dcd4cf0330ec3de602d2310f95a948af",
+      "size": 20934
     },
     {
       "path": "Editor/Commands.cs.meta",
@@ -62,6 +82,26 @@
       "size": 59
     },
     {
+      "path": "Editor/Core/ObjectIds.cs",
+      "sha256": "64ea77cd5c435d7fec12079db74781e6d4fa02aea4147e5ed86d88c5f85fc66d",
+      "size": 3959
+    },
+    {
+      "path": "Editor/Core/ObjectIds.cs.meta",
+      "sha256": "ffa3579b1ace39a3294b297a7814979feceec729989ae68c5ad22366ca6ff687",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/PropertyRules.cs",
+      "sha256": "771e290ff6f5627f21041bb17a559e8a030c170932fc7d001b22b0c72aa16b10",
+      "size": 12237
+    },
+    {
+      "path": "Editor/Core/PropertyRules.cs.meta",
+      "sha256": "e94d82664a278c2adc513d84bdc1f9d7160cd1f13330d673e5902936af70d68a",
+      "size": 59
+    },
+    {
       "path": "Editor/Core/Proposals.cs",
       "sha256": "a7a7a72df10ffc4a436ff22ed098745f78724f16b8fa80a78641d07481268257",
       "size": 7583
@@ -73,8 +113,8 @@
     },
     {
       "path": "Editor/Core/Protocol.cs",
-      "sha256": "0df948fc5ccc8793e31c1d5c0337a1197174af228616807bff1342bb68508c2b",
-      "size": 8901
+      "sha256": "2e324d400304faf51c868f36a733fa3c53a4dfc7b689168a72701c4dec3708c7",
+      "size": 11654
     },
     {
       "path": "Editor/Core/Protocol.cs.meta",
@@ -82,9 +122,19 @@
       "size": 59
     },
     {
+      "path": "Editor/Core/Tokens.cs",
+      "sha256": "a812e4fafb1df2921bedb6e621dd0c8d143e89e4e5a98f0dd711cb8ab3a7b04a",
+      "size": 4635
+    },
+    {
+      "path": "Editor/Core/Tokens.cs.meta",
+      "sha256": "8f35526133187959be8d2973cfb141b512cfdfa2208af7e8992e73db94bbffe9",
+      "size": 59
+    },
+    {
       "path": "Editor/Core/Transitions.cs",
-      "sha256": "6c392c455aa1d8ab83696b6befe9c115335ca5155bb4767b1d8f2f123eaf6fd8",
-      "size": 4321
+      "sha256": "a32ab073f21c601bf66b512c67f89cba28d9f8e829c14994bd8d98673d4174d1",
+      "size": 4750
     },
     {
       "path": "Editor/Core/Transitions.cs.meta",
@@ -113,8 +163,8 @@
     },
     {
       "path": "Editor/Ipc.cs",
-      "sha256": "0e8c481d327297623ad22829af40e3d0b3bc817c5b98fccd8d8bab7bc68e28a2",
-      "size": 9543
+      "sha256": "c908c36c550df77752fb510e83890be944f551b3a69459d05b9033528967c9b8",
+      "size": 9545
     },
     {
       "path": "Editor/Ipc.cs.meta",
@@ -122,9 +172,29 @@
       "size": 59
     },
     {
+      "path": "Editor/Properties.cs",
+      "sha256": "0f36399d1d08e65055daa6995d7c47e6a9f391b38e506806d30fd1bad6723947",
+      "size": 16582
+    },
+    {
+      "path": "Editor/Properties.cs.meta",
+      "sha256": "766bf2541afc68a80bfaa35b0a65f4e664e2ee4a74d0a8b340eaef14259366b1",
+      "size": 59
+    },
+    {
+      "path": "Editor/Scene.cs",
+      "sha256": "fc20cdf82905dab5741b6b8e3c67adaa80206a3fb036f003967c90a6a30589a9",
+      "size": 18170
+    },
+    {
+      "path": "Editor/Scene.cs.meta",
+      "sha256": "6a7131040466e24ccb131949adc6d136cbfed7e885a1ea643655b5f038b4a849",
+      "size": 59
+    },
+    {
       "path": "package.json",
-      "sha256": "71c21d34530a066b8d631cda87df55ff2dca3089e2c6eca1c327d3dd9cefbf5c",
-      "size": 240
+      "sha256": "1309e4cd9293e23c5bc226dc96620b2ebd753f7f0c065045f05719a1b64b234c",
+      "size": 260
     },
     {
       "path": "package.json.meta",
@@ -132,8 +202,8 @@
       "size": 163
     }
   ],
-  "package_digest": "546b3cfbe4d41234d10450efacbb3397812d106a813dee5b3284903624a68c66",
+  "package_digest": "00af2b3afccaea2700b6de3fedb5e1c2cae11b990c9640b68d7133b49f383394",
   "package_id": "com.gpos.live-bridge",
-  "protocol": "gpos.unity.live/1",
+  "protocol": "gpos.unity.live/2",
   "schema": "gpos.unity.live-bridge.manifest/1"
 }

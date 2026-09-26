@@ -172,6 +172,29 @@ They prove GPOS-side behaviour only. The real groups (R1, R2) open disposable sy
 
 The same EditorPrefs and Package Manager guards as the batch suite apply. `test_unity_live_bridge_core.py` compiles the bridge's Unity-free C# core with the tests in `unity_live_bridge_core/`, using the Mono bundled with the installed Editor, and runs it without Unity. Both stop with UNITY_RUNTIME_UNAVAILABLE_FOR_PHASE2C6A unless exactly one Hub Editor is installed. `generate_live_bridge_manifest.py` regenerates the bridge's fixed `.meta` files and release manifest; the suite runs it with `--check`. `mutate_unity_live.py` is the bounded mutation harness: fast-mode mutations of the GPOS side, and C# mutations of the bridge core against the core tests. For bridge mutations it regenerates the manifest in its copy, so only a behavioural test can catch them. Windowed behaviour and the real approval button are checked by a Human-attended release-candidate checklist, not by this suite.
 
+## Unity live Scene authoring tests
+
+```bash
+python3 tests/test_unity_authoring.py
+python3 tests/mutate_unity_authoring.py
+python3 tests/mutate_unity_authoring.py --real
+```
+
+Tests for Phase 2C-6B1: Scene authoring through bridge 1.1.0, and the bridge upgrade. The fast groups need no Unity:
+
+- A: the twelve capability declarations.
+- B: the input grammar.
+- C: the exact arguments GPOS sends and how every bridge answer maps to a result, against the protocol stand-in.
+- D: the crash-recoverable bridge upgrade with an interruption at every step, the recovery matrix and fail-closed cases. It also checks that `gpos/tools/unity/live_bridge/history/1.0.0.json` and its pinned digest are exactly the manifest frozen in tag `v1.0.0-alpha.16`, read with git; GPOS_SOURCE_GIT_DIR names the repository's .git when the suite runs in a copy.
+- E: source boundaries.
+
+The real groups use disposable projects from `unity_fixture_builder.make_authoring_project` in lab-owned batch-mode Editors. The testkit also stands in for the Human's Inspector edits, Hierarchy drags and Cmd-Z through `op-*.json` trigger files.
+
+- R1 is one authoring session end to end: catalog filters and digest, every property kind with read-back, unsafe-property refusals, scene-only references, verified rollback (restored and incomplete), component rules, Human-concurrent-edit conflicts including hidden serialized state and transform chains, the prefab boundary, saving, Play Mode refusal, Domain Reload, a recompile that changes the catalog digest, withdrawal and detach.
+- R2 upgrades a real 1.0.0 bridge, extracted from the frozen tag, in a closed project and attaches to the upgraded bridge.
+
+The same EditorPrefs and Package Manager guards apply. `test_unity_live_bridge_core.py` also runs `unity_live_bridge_core/AuthoringCoreTests.cs`. `mutate_unity_authoring.py` mutates the GPOS side and the bridge core against the fast suite and the core tests. With `--real`, it mutates the bridge's Editor-side authoring code against R1 in real lab Editors.
+
 ## Fixtures
 
 **Schema fixtures** — `fixtures/valid/*.json` and `fixtures/invalid/*.json` are patches applied to a valid example:

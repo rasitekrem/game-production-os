@@ -1,7 +1,7 @@
 // GPOS live bridge — the closed command set. Each command reads or changes only what its name says:
 // status, attach proposals and their Human approval, bind/unbind of one session, stale-session recovery grants,
-// bounded inspection, and the four Play Mode transitions. Nothing here evaluates code, calls a method by name,
-// runs a menu item or reads an arbitrary object property.
+// bounded inspection, the four Play Mode transitions, and (bridge 1.1.0) the Scene-authoring commands in
+// Authoring.cs. Nothing here evaluates code, calls a method by name, runs a menu item or reads an arbitrary object.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -63,7 +63,7 @@ namespace Gpos.LiveBridge
                 return;
             }
             try { Dispatch(r); }
-            catch (Refusal refusal) { Answer(id, "REFUSED", refusal.Code, refusal.Message, null); }
+            catch (Refusal refusal) { Answer(id, refusal.Status, refusal.Code, refusal.Message, refusal.Data); }
             catch (Exception e) { Answer(id, "FAILED", "BRIDGE_INTERNAL_ERROR", e.GetType().Name, null); }
         }
 
@@ -82,6 +82,13 @@ namespace Gpos.LiveBridge
             {
                 string busy = Transitions.Busy(Transitions.Phase(LiveBridge.Flags()), LoadPending() != null);
                 if (busy != null) throw new Refusal("EDITOR_BUSY", busy);
+            }
+            if (Protocol.IsAuthoring(r.Command))
+            {
+                string busy = Transitions.AuthoringBusy(Transitions.Phase(LiveBridge.Flags()), LoadPending() != null);
+                if (busy != null) throw new Refusal("EDITOR_BUSY", busy);
+                Answer(r.Id, "OK", null, null, Authoring.Run(r));   // refused before any change, or reverted (Refusal.Data)
+                return;
             }
             switch (r.Command)
             {

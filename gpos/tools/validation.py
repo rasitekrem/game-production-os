@@ -38,10 +38,10 @@ def validate_descriptor(framework, descriptor, allow_test_only=False):
     reg, pol = framework.registry, framework.registry["tool_adapter_policy"]
     problems = []
     aid = getattr(descriptor, "adapter_id", None)
-    if not isinstance(aid, str) or not ID.match(aid or ""):
+    if not isinstance(aid, str) or not ID.fullmatch(aid or ""):
         _problem(problems, aid, f"adapter_id {aid!r} must be a lower-case identifier, e.g. media-cli")
         return dg.sort(problems)
-    if not isinstance(descriptor.adapter_version, str) or not VERSION.match(descriptor.adapter_version or ""):
+    if not isinstance(descriptor.adapter_version, str) or not VERSION.fullmatch(descriptor.adapter_version or ""):
         _problem(problems, aid, f"adapter_version {descriptor.adapter_version!r} must be a semantic version")
     for field, key in (("tool_family", "tool_families"), ("adapter_kind", "tool_adapter_kinds"),
                        ("state_model", "tool_state_models")):
@@ -99,7 +99,7 @@ def network_problems(pol, descriptor):
 def validate_capability(framework, adapter_id, cap):
     reg, pol = framework.registry, framework.registry["tool_adapter_policy"]
     problems = []
-    if not isinstance(cap.id, str) or not ID.match(cap.id or ""):
+    if not isinstance(cap.id, str) or not ID.fullmatch(cap.id or ""):
         _problem(problems, adapter_id, f"capability id {cap.id!r} must be a lower-case identifier, e.g. media-cli.extract-frame")
         return problems
     if not cap.id.startswith(f"{adapter_id}."):

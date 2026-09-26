@@ -8,6 +8,12 @@ runs whether the adapter cooperates or not:
     -> single-writer lease -> adapter.execute() -> artifact hashing and path checks
     -> provenance -> evidence-candidate validation -> lease release -> fail-closed status
 
+The lease step follows the capability's lease mode (Phase 2C-6A). EXECUTION is the frozen
+single-writer lease above. SESSION_REQUIRED and SESSION_CLOSE verify the long-lived SESSION lease
+named by `session_id` before the adapter runs and never take one. SESSION_OPEN takes nothing up
+front: the adapter opens the session through `ExecutionContext.sessions` only once its own opening
+conditions hold, and a session it opened but never confirmed is released again here.
+
 Fail closed is the rule: the status is the most severe class among the diagnostics, so no path
 returns SUCCESS while something blocking was recorded, and `mutation_performed` is only ever true
 when a MUTATING capability actually ran outside a dry run. Success is never inferred from an exit
@@ -65,6 +71,8 @@ def vocabulary_problems(framework, request, capability):
         out.append(bad(f"target platform {request.target_platform!r} is not in registry platforms {reg['platforms']}"))
     if request.resource_id is not None and not capability.single_writer_required:
         out.append(bad(f"{cap} takes no single-writer lease, so a resource_id has no meaning for it"))
+    problems = _session_request_problems(request, capability)
+    out += [bad(message) for message in problems]
     for field in ("build_revision", "build_id", "device", "routing_ref", "resource_id"):
         value = getattr(request, field)
         if value is not None and (not isinstance(value, str) or not value.strip()):
@@ -82,6 +90,21 @@ def vocabulary_problems(framework, request, capability):
         elif (etype, context) not in capability.evidence_pairs():
             out.append(bad(f"{cap} never produces {etype} captured in {context}; it declares "
                            f"{[list(p) for p in capability.evidence_pairs()]}"))
+    return out
+
+
+def _session_request_problems(request, capability):
+    """`session_id` is a canonical field only for a capability that names an existing session."""
+    out, cap = [], capability.id
+    if request.session_id is not None:
+        if not capability.takes_session_id:
+            out.append(f"{cap} names no existing session, so a session_id has no meaning for it")
+        elif not isinstance(request.session_id, str) or not lease_mod.SESSION_ID.match(request.session_id):
+            out.append("session_id must be 32 lower-case hexadecimal characters")
+    elif capability.takes_session_id:
+        out.append(f"{cap} acts on an existing session and needs session_id")
+    if capability.session_mode and lease_mod.session_owner(request.actor) is None:
+        out.append(f"{cap} binds a session to its owner and needs an actor (KIND:ID)")
     return out
 
 
@@ -121,6 +144,7 @@ class ExecutionRequest:
     device: str = None
     expected_evidence: tuple = ()     # ((evidence type, capture context), ...) the caller hopes for; never a promise
     request_id: str = None
+    session_id: str = None            # the existing session a SESSION_REQUIRED / SESSION_CLOSE capability acts on
 
     def with_id(self, request_id):
         return dataclasses_replace(self, request_id=request_id)
@@ -133,7 +157,7 @@ class ExecutionRequest:
                "allow_mutation": self.allow_mutation, "timeout": self.timeout,
                "expected_evidence": [{"evidence_type": t, "capture_context": c} for t, c in self.expected_evidence]}
         for name in ("output_dir", "resource_id", "routing_ref", "build_revision", "build_id",
-                     "target_platform", "device"):
+                     "target_platform", "device", "session_id"):
             if getattr(self, name) is not None:
                 out[name] = getattr(self, name)
         if self.actor is not None:
@@ -161,6 +185,8 @@ class ExecutionContext:
     timeout: float
     input_artifacts: tuple = ()       # already hashed and path-checked by the foundation
     lease: lease_mod.Lease = None
+    session: dict = None              # SESSION_REQUIRED / SESSION_CLOSE: the verified SESSION lease record
+    sessions: object = None           # a SessionControl for a session-mode capability
 
     def run(self, spec):
         """Execute an authorized process spec under the foundation's boundary rules."""
@@ -233,6 +259,95 @@ class ToolResult:
                 "provenance": self.provenance.to_dict() if self.provenance else None,
                 "diagnostics": [d.to_dict() for d in self.diagnostics],
                 "data": self.data or {}, "plan": list(self.plan)}
+
+
+class SessionControl:
+    """The only way a session-mode capability touches its SESSION lease; the lease files stay foundation state.
+
+    Every method returns `(value, [ToolDiagnostic])` and never raises for a lease problem. `open` exists
+    only for SESSION_OPEN, `close` and `recover` only for SESSION_CLOSE, so a capability cannot reach a
+    lease operation its declaration does not name.
+    """
+
+    def __init__(self, root, adapter_id, capability, resource, owner, request_id, clock):
+        self.root, self.adapter_id, self.capability = root, adapter_id, capability
+        self.resource, self.owner, self.request_id, self.clock = resource, owner, request_id, clock
+        self.opened, self.confirmed, self.closed, self.recovered = None, False, None, None
+
+    def _mode(self, *modes):
+        if self.capability.effective_lease_mode not in modes:
+            raise AssertionError(f"{self.capability.id} ({self.capability.effective_lease_mode}) cannot do this")
+
+    def _diag(self, exc):
+        diags = [dg.make(exc.code, str(exc), self.adapter_id, self.capability.id, exc.path,
+                         {"holder": _holder_summary(exc.holder)} if exc.holder else None)]
+        if exc.code == "LEASE_CONFLICT" and lease_mod.scope_of(exc.holder) == lease_mod.SESSION:
+            diags = [dg.make("LIVE_SESSION_HELD", str(exc), self.adapter_id, self.capability.id, exc.path,
+                             {"holder": _holder_summary(exc.holder)})]
+        return diags
+
+    def holder(self):
+        return lease_mod.holder(self.root, self.adapter_id, self.resource)
+
+    def open(self, session):
+        """Take the SESSION lease for this owner. Call only once the adapter's opening conditions hold."""
+        self._mode("SESSION_OPEN")
+        if self.opened is not None:
+            raise AssertionError("a SESSION_OPEN execution opens at most one session")
+        try:
+            self.opened = lease_mod.acquire(self.root, self.adapter_id, self.resource, self.owner, self.clock.now(),
+                                            self.request_id, scope=lease_mod.SESSION, session=session)
+        except lease_mod.LeaseHeld as exc:
+            return None, self._diag(exc)
+        return self.opened, []
+
+    def confirm(self):
+        """The session this execution opened is established; the foundation keeps its lease."""
+        self._mode("SESSION_OPEN")
+        if self.opened is None:
+            raise AssertionError("no session was opened")
+        self.confirmed = True
+
+    def close(self, session_id):
+        """Release the SESSION lease after verifying the exact session id and this execution's owner."""
+        self._mode("SESSION_CLOSE")
+        try:
+            self.closed = lease_mod.release_session(self.root, self.adapter_id, self.resource, session_id, self.owner)
+        except lease_mod.LeaseHeld as exc:
+            return None, self._diag(exc)
+        return self.closed, []
+
+    def recover(self, expected_token, reason):
+        """Break exactly the inspected SESSION lease, attributed to this owner. The adapter calls this only
+        with an authorization it has verified; the foundation never calls it on its own."""
+        self._mode("SESSION_CLOSE")
+        try:
+            self.recovered = lease_mod.break_lease(self.root, self.adapter_id, self.resource, self.owner, reason,
+                                                   self.clock.now(), expected_token=expected_token)
+        except lease_mod.LeaseHeld as exc:
+            return None, self._diag(exc)
+        return self.recovered, []
+
+    def abandon_unconfirmed(self):
+        """[ToolDiagnostic] — release a session this execution opened but never confirmed (fail closed)."""
+        if self.opened is None or self.confirmed:
+            return []
+        if lease_mod.release(self.root, self.opened):
+            self.opened = None
+            return []
+        return [dg.make("LEASE_RELEASE_FAILED", f"the SESSION lease on {self.resource} this execution opened but never "
+                                                f"confirmed could not be released", self.adapter_id,
+                        self.capability.id, self.opened.path)]
+
+
+def _holder_summary(holder):
+    if not isinstance(holder, dict):
+        return holder
+    keys = ("owner_id", "acquired_at", "request_id", "scope")
+    out = {k: holder.get(k) for k in keys if k in holder}
+    if isinstance(holder.get("session"), dict):
+        out["session_id"] = holder["session"].get("session_id")
+    return out
 
 
 # ---------------------------------------------------------------- preconditions
@@ -385,33 +500,39 @@ def execute(registry, request, clock=None, now=None):
         return finish(dg.INVALID_REQUEST, [dg.make(code, message, request.adapter_id, request.capability_id, aid)
                                            for code, aid, message in problems])
 
-    diagnostics, lease = [], None
-    if capability.single_writer_required and not request.dry_run:
+    diagnostics, lease, session, sessions = [], None, None, None
+    mode = capability.effective_lease_mode
+    if mode == "EXECUTION" and not request.dry_run:
         lease, problems = _acquire(root, adapter, capability, request, started_at)
         if problems:
             return finish(dg.CONFLICT, problems)
         diagnostics.append(dg.make("LEASE_ACQUIRED", f"single-writer lease held on {lease.resource_id}",
                                    request.adapter_id, request.capability_id))
+    elif capability.session_mode:
+        session, sessions, problems = _session(root, capability, request, clock)
+        if problems:
+            return finish(dg.CONFLICT, problems)
 
     timeout, _ = capability.timeout.resolve(request.timeout)
     context = ExecutionContext(request=request, capability=capability, project_root=str(root) if root else None,
                                workspace=str(workspace), scopes=tuple(str(s) for s in scopes), clock=clock,
                                probe=probe, dry_run=bool(request.dry_run), timeout=timeout,
-                               input_artifacts=tuple(inputs), lease=lease)
+                               input_artifacts=tuple(inputs), lease=lease, session=session, sessions=sessions)
     try:
         outcome = adapter.execute(request, context)
         if not isinstance(outcome, AdapterOutcome):
             raise TypeError(f"{request.adapter_id}.execute() must return an AdapterOutcome, not {type(outcome).__name__}")
     except proc.ProcessSpecError as exc:
         code = exc.code if exc.code in dg.CODES else "UNSAFE_PROCESS_SPEC"
-        return _release_and_finish(root, lease, finish, dg.CODES[code][0], diagnostics + [
+        return _release_and_finish(root, lease, finish, dg.CODES[code][0], diagnostics + _abandon(sessions) + [
             dg.make(code, redact(str(exc))[0], request.adapter_id, request.capability_id)],
             request.adapter_id, request.capability_id)
     except Exception as exc:
-        return _release_and_finish(root, lease, finish, dg.INTERNAL_ERROR, diagnostics + [
+        return _release_and_finish(root, lease, finish, dg.INTERNAL_ERROR, diagnostics + _abandon(sessions) + [
             dg.make("ADAPTER_INTERNAL_ERROR",
                     f"{request.adapter_id}.execute() raised {type(exc).__name__}: {redact(str(exc))[0]}",
                     request.adapter_id, request.capability_id)], request.adapter_id, request.capability_id)
+    diagnostics += _abandon(sessions)  # a session opened but never confirmed does not outlive the execution
 
     try:
         result = _assemble(framework, registry, request, adapter, capability, context, outcome,
@@ -428,6 +549,37 @@ def execute(registry, request, clock=None, now=None):
         return dataclasses_replace(result, diagnostics=tuple(diagnostics),
                                    status=dg.result_status(diagnostics, default=result.status))
     return result
+
+
+def _abandon(sessions):
+    return sessions.abandon_unconfirmed() if sessions is not None else []
+
+
+def _session(root, capability, request, clock):
+    """(verified SESSION lease record or None, SessionControl, problems) for a session-mode capability.
+
+    SESSION_REQUIRED verifies the exact session id and canonical owner. SESSION_CLOSE verifies the session
+    id only: whether this owner may close it, or needs an authorized recovery, is decided when it closes.
+    SESSION_OPEN verifies nothing here and takes nothing: the adapter opens the session when it may.
+    """
+    adapter_id, cap = request.adapter_id, request.capability_id
+    if root is None:
+        return None, None, [dg.make("INVALID_TOOL_REQUEST", f"{cap} uses a session, which lives in the project "
+                                                            f"runtime area, so it needs project_root", adapter_id, cap)]
+    resource, problem = _resource(request, capability, root)
+    if problem:
+        return None, None, [dg.make("INVALID_TOOL_REQUEST", problem, adapter_id, cap)]
+    owner = lease_mod.session_owner(request.actor)
+    sessions = SessionControl(root, adapter_id, capability, resource, owner, request.request_id, clock)
+    mode = capability.effective_lease_mode
+    if mode == "SESSION_OPEN":
+        return None, sessions, []
+    try:
+        record = lease_mod.verify_session(root, adapter_id, resource, request.session_id,
+                                          owner if mode == "SESSION_REQUIRED" else None)
+    except lease_mod.LeaseHeld as exc:
+        return None, None, sessions._diag(exc)
+    return record, sessions, []
 
 
 def _resource(request, capability, root):
@@ -465,7 +617,12 @@ def _acquire(root, adapter, capability, request, now):
     except lease_mod.LeaseHeld as exc:
         diags = [dg.make(exc.code, str(exc), request.adapter_id, request.capability_id, exc.path,
                          {"holder": exc.holder} if exc.holder else None)]
-        if exc.holder and lease_mod.looks_stale(exc.holder, lease_mod.pid_alive):
+        if exc.code == "LEASE_CONFLICT" and lease_mod.scope_of(exc.holder) == lease_mod.SESSION:
+            # A live session holds the resource: a batch writer conflicts before anything is launched, and the
+            # attaching command's long-gone process id says nothing about whether the session is stale.
+            diags = [dg.make("LIVE_SESSION_HELD", str(exc), request.adapter_id, request.capability_id, exc.path,
+                             {"holder": _holder_summary(exc.holder)})]
+        elif exc.holder and lease_mod.looks_stale(exc.holder, lease_mod.pid_alive):
             diags.append(dg.make("LEASE_STALE",
                                  f"the holding process (pid {exc.holder.get('pid')}) is gone. GPOS never breaks a lease "
                                  f"automatically; recovery is an explicit operation",

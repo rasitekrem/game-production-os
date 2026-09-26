@@ -1307,7 +1307,9 @@ class L01_Boundaries(TmpCase):
                                    "git/__init__.py", "git/adapter.py", "git/status.py", "leases.py",
                                    "media_common.py", "model.py", "paths.py", "process.py", "provenance.py",
                                    "redaction.py", "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
-                                   "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/project.py",
+                                   "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/bridge_install.py",
+                               "unity/identity.py", "unity/live.py", "unity/live_ipc.py", "unity/live_status.py",
+                               "unity/project.py",
                                    "unity/results.py", "validation.py"])
 
     def test_the_synthetic_adapter_is_test_only_and_git_is_not(self):
@@ -2382,6 +2384,288 @@ class Q01_NetworkSemantics(unittest.TestCase):
         names = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
         names |= {n.module.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
         self.assertEqual(names & {"socket", "ssl", "http", "urllib", "requests", "asyncio"}, set())
+
+
+
+# ---------------------------------------------------------------- R  SESSION leases, lease modes, OUTCOME_UNKNOWN (2C-6A)
+
+SESSION_KIND = "SYNTHETIC_EDITOR"
+
+
+def session_cap(cap_id, mode, operation_class="MUTATING", **kw):
+    base = dict(id=f"synthetic.{cap_id}", category="RUN", description="a session capability",
+                operation_class=operation_class, state_model="STATEFUL", execution_context="EDITOR",
+                requires_tool=False, lease_mode=mode, resource_kind=SESSION_KIND,
+                single_writer_required=operation_class == "MUTATING",
+                side_effect_scope="changes the synthetic editor" if operation_class == "MUTATING" else "NONE")
+    base.update(kw)
+    return Capability(**base)
+
+
+class SessionFake(ToolAdapter):
+    """A TEST_ONLY adapter with one capability per lease mode. `behaviour(request, context)` decides the outcome."""
+
+    descriptor = descriptor(state_model="STATEFUL", capabilities=(
+        session_cap("session-open", "SESSION_OPEN"),
+        session_cap("session-inspect", "SESSION_REQUIRED", operation_class="READ_ONLY"),
+        session_cap("session-act", "SESSION_REQUIRED"),
+        session_cap("session-close", "SESSION_CLOSE"),
+        capability(id="synthetic.batch-write", category="RUN", operation_class="MUTATING", state_model="STATEFUL",
+                   requires_tool=False, single_writer_required=True, resource_kind=SESSION_KIND,
+                   side_effect_scope="writes the synthetic editor project"),
+        capability(requires_tool=False)))
+
+    def __init__(self):
+        self.behaviour, self.calls = (lambda request, context: AdapterOutcome()), []
+
+    def probe(self):
+        return ProbeResult("synthetic", tmodel.AVAILABLE)
+
+    def execute(self, request, context):
+        self.calls.append(request.capability_id)
+        return self.behaviour(request, context)
+
+
+AGENT, HUMAN_SAME_ID = Actor("AGENT", "worker-1"), Actor("HUMAN", "worker-1")
+SID = "0123456789abcdef0123456789abcdef"
+
+
+class R01_SessionLeases(TmpCase):
+    def setUp(self):
+        super().setUp()
+        self.fake = SessionFake()
+        self.reg = ToolRegistry(FW, allow_test_only=True)
+        self.reg.register(self.fake)
+        self.p = self.project()
+        self.resource = f"{SESSION_KIND}:{self.p.resolve()}"
+
+    def run_cap(self, cap, **kwargs):
+        kwargs.setdefault("actor", AGENT)
+        if dict(SessionFake.descriptor.capability(f"synthetic.{cap}").to_dict())["operation_class"] == "MUTATING":
+            kwargs.setdefault("allow_mutation", True)
+        return execute(self.reg, ExecutionRequest(adapter_id="synthetic", capability_id=f"synthetic.{cap}",
+                                                  subject=Subject("TASK", "TASK-1"), project_root=str(self.p),
+                                                  **kwargs))
+
+    def hold_session(self, owner="AGENT:worker-1", sid=SID, pid=999999):
+        lease = lease_mod.acquire(self.p, "synthetic", self.resource, owner, "2026-09-26T00:00:00Z", "attach",
+                                  scope=lease_mod.SESSION, session={"session_id": sid, "boot_id": "b" * 32})
+        path = Path(lease.path)
+        record = json.loads(path.read_text())
+        record["pid"] = pid  # the attaching command has long exited
+        path.write_text(json.dumps(record))
+        return lease
+
+    def holder(self):
+        return lease_mod.holder(self.p, "synthetic", self.resource)
+
+    # --- vocabulary and status
+    def test_registry_vocabulary_and_outcome_unknown(self):
+        self.assertEqual(REG["tool_lease_modes"], ["NONE", "EXECUTION", "SESSION_OPEN", "SESSION_REQUIRED",
+                                                   "SESSION_CLOSE"])
+        self.assertIn("OUTCOME_UNKNOWN", REG["tool_result_statuses"])
+        self.assertEqual(tdg.EXIT_FOR[tdg.OUTCOME_UNKNOWN], 9)
+        self.assertEqual({k: v for k, v in tdg.EXIT_FOR.items() if k != tdg.OUTCOME_UNKNOWN},
+                         {tdg.SUCCESS: 0, tdg.INVALID_REQUEST: 1, tdg.FAILED: 2, tdg.TIMED_OUT: 3, tdg.UNAVAILABLE: 4,
+                          tdg.CONFLICT: 5, tdg.INCOMPATIBLE: 6, tdg.CANCELLED: 7, tdg.INTERNAL_ERROR: 8})
+        order = list(tdg.SEVERITY)
+        self.assertEqual(order.index(tdg.OUTCOME_UNKNOWN), order.index(tdg.CONFLICT) + 1)
+        self.assertEqual(tdg.CODES["LIVE_OUTCOME_UNKNOWN"][0], tdg.OUTCOME_UNKNOWN)
+        self.assertEqual(tdg.CODES["LIVE_REQUEST_EXPIRED"][0], tdg.CANCELLED)
+
+    def test_outcome_unknown_is_its_own_result(self):
+        self.fake.behaviour = lambda r, c: AdapterOutcome(ok=True, mutation_performed=True, diagnostics=(
+            tdg.make("LIVE_OUTCOME_UNKNOWN", "may have happened", "synthetic", r.capability_id),))
+        self.hold_session()
+        result = self.run_cap("session-act", session_id=SID)
+        self.assertEqual(result.status, tdg.OUTCOME_UNKNOWN)
+        self.assertEqual(result.exit_code_for_cli, 9)
+        self.assertTrue(result.mutation_performed)
+
+    # --- declarations
+    def test_lease_mode_declarations(self):
+        def problems(cap):
+            return " ".join(p.message for p in tval.validate_capability(FW, "synthetic", cap))
+        for cap in SessionFake.descriptor.capabilities:
+            self.assertEqual(problems(cap), "", cap.id)
+        self.assertEqual(capability().effective_lease_mode, "NONE")
+        bad = {
+            "not in registry": session_cap("x", "SHARED"),
+            "must be STATEFUL": session_cap("x", "SESSION_REQUIRED", operation_class="READ_ONLY",
+                                            state_model="STATELESS"),
+            "must name a resource_kind": session_cap("x", "SESSION_REQUIRED", operation_class="READ_ONLY",
+                                                     resource_kind=None),
+            "has no dry run": session_cap("x", "SESSION_OPEN", dry_run_supported=True),
+            "must be MUTATING with a single writer": session_cap("x", "SESSION_CLOSE", operation_class="READ_ONLY"),
+            "declares none": session_cap("x", "SESSION_REQUIRED", operation_class="READ_ONLY",
+                                         single_writer_required=True),
+            "cannot be NONE": session_cap("x", "NONE"),
+            "EXECUTION lease but no single writer": session_cap("x", "EXECUTION", single_writer_required=False),
+        }
+        for text, cap in bad.items():
+            with self.subTest(text=text):
+                self.assertIn(text, problems(cap))
+
+    def test_session_owner_binds_the_kind(self):
+        self.assertEqual(lease_mod.session_owner(AGENT), "AGENT:worker-1")
+        self.assertEqual(lease_mod.session_owner(HUMAN_SAME_ID), "HUMAN:worker-1")
+        self.assertIsNone(lease_mod.session_owner(None))
+        self.assertIsNone(lease_mod.session_owner(Actor("AGENT", "has space")))
+
+    # --- the lease file
+    def test_session_lease_shape_and_execution_shape_unchanged(self):
+        with self.assertRaises(lease_mod.LeaseHeld):
+            lease_mod.acquire(self.p, "synthetic", self.resource, "worker-1", "2026-09-26T00:00:00Z",
+                              scope=lease_mod.SESSION, session={"session_id": SID})
+        with self.assertRaises(lease_mod.LeaseHeld):
+            lease_mod.acquire(self.p, "synthetic", self.resource, "AGENT:w", "2026-09-26T00:00:00Z",
+                              scope=lease_mod.SESSION, session={"session_id": "short"})
+        with self.assertRaises(lease_mod.LeaseHeld):
+            lease_mod.acquire(self.p, "synthetic", self.resource, "w", "2026-09-26T00:00:00Z", session={"x": 1})
+        execution = lease_mod.acquire(self.p, "synthetic", "OTHER:x", "worker-1", "2026-09-26T00:00:00Z")
+        self.assertNotIn("scope", json.loads(Path(execution.path).read_text()))
+        self.hold_session()
+        record = self.holder()
+        self.assertEqual((record["scope"], record["session"]["session_id"]), ("SESSION", SID))
+        self.assertFalse(lease_mod.looks_stale(record, lambda pid: False))  # never from the attaching command's pid
+        self.assertTrue(lease_mod.looks_stale({"pid": 999999}, lambda pid: False))
+
+    def test_verify_release_and_break(self):
+        with self.assertRaises(lease_mod.LeaseHeld) as cm:
+            lease_mod.verify_session(self.p, "synthetic", self.resource, SID, "AGENT:worker-1")
+        self.assertEqual(cm.exception.code, "LIVE_SESSION_MISMATCH")
+        token = self.hold_session().token
+        for sid, owner in ((SID, "HUMAN:worker-1"), ("f" * 32, "AGENT:worker-1")):
+            with self.assertRaises(lease_mod.LeaseHeld) as cm:
+                lease_mod.release_session(self.p, "synthetic", self.resource, sid, owner)
+            self.assertEqual(cm.exception.code, "LIVE_SESSION_MISMATCH")
+        self.assertIsNotNone(self.holder())
+        with self.assertRaises(lease_mod.LeaseHeld):
+            lease_mod.break_lease(self.p, "synthetic", self.resource, "HUMAN:x", "reason", "t", expected_token="other")
+        self.assertIsNotNone(self.holder())
+        entry = lease_mod.break_lease(self.p, "synthetic", self.resource, "AGENT:w", "approved recovery", "t",
+                                      expected_token=token)
+        self.assertEqual(entry["previous_holder"]["session"]["session_id"], SID)
+        self.assertIsNone(self.holder())
+        self.hold_session()
+        released = lease_mod.release_session(self.p, "synthetic", self.resource, SID, "AGENT:worker-1")
+        self.assertEqual(released["session"]["session_id"], SID)
+        self.assertIsNone(self.holder())
+        lease_mod.acquire(self.p, "synthetic", self.resource, "worker-1", "t")
+        with self.assertRaises(lease_mod.LeaseHeld) as cm:
+            lease_mod.verify_session(self.p, "synthetic", self.resource, SID)
+        self.assertEqual(cm.exception.code, "LEASE_CONFLICT")
+
+    # --- request validation
+    def test_session_id_is_only_for_session_capabilities(self):
+        self.hold_session()
+        cases = (("session-inspect", {}, "needs session_id"),
+                 ("session-inspect", {"session_id": "XYZ"}, "32 lower-case hexadecimal"),
+                 ("session-open", {"session_id": SID}, "names no existing session"),
+                 ("batch-write", {"session_id": SID}, "names no existing session"),
+                 ("session-inspect", {"session_id": SID, "actor": None}, "needs an actor"))
+        for cap, kw, text in cases:
+            with self.subTest(cap=cap, kw=kw):
+                result = self.run_cap(cap, **kw)
+                self.assertEqual(result.status, tdg.INVALID_REQUEST)
+                self.assertIn(text, " ".join(d.message for d in result.diagnostics))
+        self.assertEqual(self.fake.calls, [])
+
+    # --- execution per mode
+    def test_session_required_verifies_and_takes_nothing(self):
+        self.hold_session()
+        before = Path(lease_mod.lease_path(self.p, "synthetic", self.resource)).read_bytes()
+        seen = []
+        self.fake.behaviour = lambda r, c: seen.append(c.session) or AdapterOutcome()
+        ok = self.run_cap("session-inspect", session_id=SID)
+        self.assertEqual(ok.status, tdg.SUCCESS)
+        self.assertNotIn("LEASE_ACQUIRED", self.codes(ok))
+        self.assertEqual(seen[0]["session"]["session_id"], SID)
+        for actor, sid in ((HUMAN_SAME_ID, SID), (AGENT, "f" * 32)):
+            with self.subTest(actor=actor, sid=sid):
+                refused = self.run_cap("session-act", session_id=sid, actor=actor)
+                self.assertEqual(refused.status, tdg.CONFLICT)
+                self.assertIn("LIVE_SESSION_MISMATCH", self.codes(refused))
+        self.assertEqual(Path(lease_mod.lease_path(self.p, "synthetic", self.resource)).read_bytes(), before)
+        self.assertEqual(self.fake.calls, ["synthetic.session-inspect"])
+
+    def test_session_open_keeps_only_a_confirmed_session(self):
+        def opener(confirm, explode=False):
+            def run(request, context):
+                lease, problems = context.sessions.open({"session_id": SID})
+                self.assertEqual(problems, [])
+                if confirm:
+                    context.sessions.confirm()
+                if explode:
+                    raise RuntimeError("adapter defect after opening")
+                return AdapterOutcome(mutation_performed=confirm)
+            return run
+        self.fake.behaviour = opener(confirm=False)
+        self.assertEqual(self.run_cap("session-open").status, tdg.SUCCESS)
+        self.assertIsNone(self.holder())
+        self.fake.behaviour = opener(confirm=False, explode=True)
+        self.assertEqual(self.run_cap("session-open").status, tdg.INTERNAL_ERROR)
+        self.assertIsNone(self.holder())
+        self.fake.behaviour = opener(confirm=True)
+        self.assertEqual(self.run_cap("session-open").status, tdg.SUCCESS)
+        self.assertEqual((self.holder()["scope"], self.holder()["owner_id"]), ("SESSION", "AGENT:worker-1"))
+
+    def test_session_open_conflicts_are_reported_not_forced(self):
+        codes = []
+        self.fake.behaviour = lambda r, c: codes.append([d.code for d in c.sessions.open({"session_id": SID})[1]]) \
+            or AdapterOutcome()
+        held = lease_mod.acquire(self.p, "synthetic", self.resource, "worker-9", "t")
+        self.run_cap("session-open")
+        lease_mod.release(self.p, held)
+        self.hold_session(owner="AGENT:other", sid="e" * 32)
+        self.run_cap("session-open")
+        self.assertEqual(codes, [["LEASE_CONFLICT"], ["LIVE_SESSION_HELD"]])
+        self.assertEqual(self.holder()["owner_id"], "AGENT:other")
+
+    def test_session_close_by_owner_and_by_authorized_recovery(self):
+        self.hold_session()
+        self.fake.behaviour = lambda r, c: AdapterOutcome(mutation_performed=True, diagnostics=tuple(
+            c.sessions.close(r.session_id)[1]))
+        other = self.run_cap("session-close", session_id=SID, actor=Actor("AGENT", "worker-2"))
+        self.assertIn("LIVE_SESSION_MISMATCH", self.codes(other))
+        self.assertIsNotNone(self.holder())
+        self.assertEqual(self.run_cap("session-close", session_id=SID).status, tdg.SUCCESS)
+        self.assertIsNone(self.holder())
+        token = self.hold_session().token
+        self.fake.behaviour = lambda r, c: AdapterOutcome(mutation_performed=True, diagnostics=tuple(
+            c.sessions.recover(c.session["token"], "a Human approved recovery")[1]))
+        self.assertEqual(self.run_cap("session-close", session_id=SID, actor=Actor("AGENT", "worker-2")).status,
+                         tdg.SUCCESS)
+        self.assertIsNone(self.holder())
+        log = tpaths.runtime_dir(self.p, "leases", "broken.log").read_text()
+        self.assertIn('"broken_by": "AGENT:worker-2"', log)
+        self.assertIn(token, log)
+
+    def test_a_capability_cannot_reach_another_modes_lease_operation(self):
+        self.hold_session()
+        self.fake.behaviour = lambda r, c: c.sessions.open({"session_id": SID}) and AdapterOutcome()
+        self.assertEqual(self.run_cap("session-act", session_id=SID).status, tdg.INTERNAL_ERROR)
+        self.fake.behaviour = lambda r, c: c.sessions.close(SID) and AdapterOutcome()
+        self.assertEqual(self.run_cap("session-act", session_id=SID).status, tdg.INTERNAL_ERROR)
+        self.assertIsNotNone(self.holder())
+
+    def test_a_batch_writer_meets_a_session_before_it_runs(self):
+        self.hold_session(pid=999999)  # the attaching command's pid is gone: that says nothing about the session
+        result = self.run_cap("batch-write", actor=None)
+        self.assertEqual(result.status, tdg.CONFLICT)
+        self.assertEqual(self.codes(result), {"LIVE_SESSION_HELD"})
+        self.assertEqual(self.fake.calls, [])
+        self.assertIsNotNone(self.holder())
+
+    def test_cli_passes_session_id_through_the_same_validation(self):
+        import io
+        from gpos.tools import cli
+        out = io.StringIO()
+        code = cli.main(["--include-test-adapters", "execute", "--adapter", "synthetic", "--capability",
+                         syn.INSPECT, "--subject-ref", "T", "--session-id", SID, "--output-dir", str(self.out()),
+                         "--format", "json"], stdout=out)
+        self.assertEqual(code, tdg.EXIT_FOR[tdg.INVALID_REQUEST])
+        self.assertIn("names no existing session", out.getvalue())
 
 
 if __name__ == "__main__":

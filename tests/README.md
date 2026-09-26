@@ -150,6 +150,28 @@ Real integration tests for the Phase-2C-5 Unity batch adapter (`gpos/tools/unity
 
 `mutate_unity_adapter.py` is its bounded mutation harness; it runs the suite with GPOS_UNITY_TEST_FAST=1, which starts no real Unity process.
 
+## Unity live plane tests
+
+```bash
+python3 tests/test_unity_live.py
+python3 tests/test_unity_live_bridge_core.py
+```
+
+Tests for the Phase-2C-6A Unity live Editor plane. Groups A–N of `test_unity_live.py` drive the GPOS side against `unity_live_fake_bridge.py`, a Python stand-in that speaks the same file protocol:
+- registration, identity and the project key, the bridge manifest and the installer;
+- the IPC client, status classification, attach with Human approval, inspection and Play Mode;
+- deadlines, withdrawal and unknown outcomes;
+- detach, clean close and recovery;
+- batch and live on one resource, boundaries and the CLI.
+
+They prove GPOS-side behaviour only. The real groups (R1, R2) open disposable synthetic projects in lab-owned batch-mode Editors. The test-only testkit package (`unity_live_testkit/`, never installed by GPOS) starts the production bridge and presses its production approval method for test-named owners only. They cover:
+- install, bridge identity, approval, inspection, Play Mode, Domain Reload and compile errors;
+- deadlines, withdrawal and unknown outcomes, and the batch plane blocked by a session;
+- owner detach, clean close, crash, stale session and Human-approved recovery;
+- the frozen batch plane with the bridge installed and dormant.
+
+The same EditorPrefs and Package Manager guards as the batch suite apply. `test_unity_live_bridge_core.py` compiles the bridge's Unity-free C# core with the tests in `unity_live_bridge_core/`, using the Mono bundled with the installed Editor, and runs it without Unity. Both stop with UNITY_RUNTIME_UNAVAILABLE_FOR_PHASE2C6A unless exactly one Hub Editor is installed. `generate_live_bridge_manifest.py` regenerates the bridge's fixed `.meta` files and release manifest; the suite runs it with `--check`. `mutate_unity_live.py` is the bounded mutation harness: fast-mode mutations of the GPOS side, and C# mutations of the bridge core against the core tests. For bridge mutations it regenerates the manifest in its copy, so only a behavioural test can catch them. Windowed behaviour and the real approval button are checked by a Human-attended release-candidate checklist, not by this suite.
+
 ## Fixtures
 
 **Schema fixtures** — `fixtures/valid/*.json` and `fixtures/invalid/*.json` are patches applied to a valid example:

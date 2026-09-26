@@ -15,7 +15,10 @@ The contradictions that matter most:
 * a capability whose declared capture context is not the context its execution observes, unless it
   is one the capability can only reach by derivation;
 * a production adapter declaring the TEST_ONLY kind or family, or a test-only adapter being
-  registered into a production registry.
+  registered into a production registry;
+* a lease mode that contradicts the declaration (Phase 2C-6A): a session mode on a STATELESS
+  capability, a READ_ONLY capability claiming a writer lease to require a session, a session
+  capability with no project resource or with a dry run.
 """
 
 import re
@@ -128,6 +131,7 @@ def validate_capability(framework, adapter_id, cap):
                  cap.id)
     if cap.single_writer_required and cap.operation_class == "READ_ONLY":
         _problem(problems, adapter_id, f"{cap.id} is READ_ONLY and must not take a writer lease", cap.id)
+    problems += lease_mode_problems(reg, adapter_id, cap)
     if cap.mutating and cap.side_effect_scope in (None, "", "NONE"):
         _problem(problems, adapter_id, f"{cap.id} is MUTATING and must state its side_effect_scope", cap.id)
     if not cap.mutating and cap.side_effect_scope not in (None, "", "NONE"):
@@ -160,3 +164,33 @@ def validate_capability(framework, adapter_id, cap):
                      f"(registry evidence_context_compatibility: {reg['evidence_context_compatibility'][etype]})",
                      cap.id)
     return problems
+
+
+def lease_mode_problems(reg, adapter_id, cap):
+    """The lease mode must be registry vocabulary and agree with the rest of the declaration. Session
+    requirement and writer-lease acquisition are separate facts: a READ_ONLY capability may require a
+    session, but it never declares a writer lease to get one."""
+    out, mode = [], cap.effective_lease_mode
+    if mode not in reg["tool_lease_modes"]:
+        _problem(out, adapter_id, f"lease_mode {mode!r} is not in registry tool_lease_modes", cap.id)
+        return out
+    if mode == "NONE" and cap.single_writer_required:
+        _problem(out, adapter_id, f"{cap.id} requires a single writer, so its lease_mode cannot be NONE", cap.id)
+    if mode == "EXECUTION" and not cap.single_writer_required:
+        _problem(out, adapter_id, f"{cap.id} declares an EXECUTION lease but no single writer", cap.id)
+    if mode not in ("SESSION_OPEN", "SESSION_REQUIRED", "SESSION_CLOSE"):
+        return out
+    if cap.state_model != "STATEFUL":
+        _problem(out, adapter_id, f"{cap.id} uses a session, so it must be STATEFUL", cap.id)
+    if not cap.resource_kind or cap.resource_from_request:
+        _problem(out, adapter_id, f"{cap.id} uses a session, so it must name a resource_kind it leases from the "
+                                  f"project (not from the request)", cap.id)
+    if cap.dry_run_supported:
+        _problem(out, adapter_id, f"{cap.id} uses a session and has no dry run", cap.id)
+    if mode in ("SESSION_OPEN", "SESSION_CLOSE") and not (cap.mutating and cap.single_writer_required):
+        _problem(out, adapter_id, f"{cap.id} opens or closes a session, so it must be MUTATING with a single writer",
+                 cap.id)
+    if mode == "SESSION_REQUIRED" and cap.mutating != cap.single_writer_required:
+        _problem(out, adapter_id, f"{cap.id} requires a session: a MUTATING one declares the single writer the "
+                                  f"session lease provides, a READ_ONLY one declares none", cap.id)
+    return out

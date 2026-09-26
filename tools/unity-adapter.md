@@ -1,5 +1,7 @@
 # Unity engine adapter: batch plane (Phase 2C-5)
 
+This page describes the batch plane. The same `unity` adapter also has a live Editor plane (Phase 2C-6A), described in [unity-live-bridge.md](unity-live-bridge.md).
+
 Code: [`gpos/tools/unity/`](../gpos/tools/unity/__init__.py) · adapter id `unity` · status: the first production engine adapter. It is built on the frozen [tool adapter foundation](adapter-foundation.md), extended only by the `TOOL_INHERENT` network semantic (see [Network](#network)).
 
 The adapter answers two questions about one Unity project inside a GPOS project:
@@ -7,7 +9,7 @@ The adapter answers two questions about one Unity project inside a GPOS project:
 1. is it a supported Unity project, and which exact Editor does it require (static inspection);
 2. what do its EditMode or PlayMode tests report when the Unity Test Framework runs them in a fresh batch-mode Editor.
 
-**This is the batch plane only.** There is no live Editor session, bridge, IPC or session status; no capture, build, deployment, profiling, video or audio; no scene, prefab or asset authoring; no `-executeMethod`, arbitrary C# or menu invocation; no package installation or API migration. Each needs its own Human Review. The long-term architecture (one `unity` adapter with a batch plane and a future live Editor plane) is intent, not this release.
+**The batch plane.** It has no live Editor session; that is the [live plane](unity-live-bridge.md). Neither plane has capture, build, deployment, profiling, video or audio; scene, prefab or asset authoring; `-executeMethod`, arbitrary C# or menu invocation; general package installation or API migration. Each needs its own Human Review.
 
 **This is not a Unity automation interface.** The caller never supplies an executable, an Editor version, a method, C#, a test filter or category, a graphics mode, a network destination, a registry, a proxy, a credential or any Unity argument. The only input is `unity_project`.
 
@@ -19,7 +21,7 @@ The adapter answers two questions about one Unity project inside a GPOS project:
 | `target_tool` | Unity Editor |
 | `tool_family` | `ENGINE` |
 | `adapter_kind` | `CLI` |
-| `state_model` | `STATELESS` |
+| `state_model` | `STATEFUL` (the adapter manages the live plane's long-lived session; each batch capability is `STATELESS`) |
 | platforms | `MACOS` only in this release |
 | network | `TOOL_INHERENT`, with a disclosure |
 | TEST_ONLY | no |
@@ -90,7 +92,7 @@ The working directory is the workspace. Never passed: `-quit` (the Unity Test Fr
 
 ## Concurrency
 
-The foundation takes the single-writer lease `EDITOR_PROJECT:<resolved GPOS project root>` **before** Unity is launched and releases it afterwards; symbolic-link spellings of the same project map to the same lease. A held lease is a `CONFLICT` and nothing is launched; a stale lease is reported, never broken.
+The foundation takes the single-writer lease `EDITOR_PROJECT:<resolved GPOS project root>` **before** Unity is launched and releases it afterwards; symbolic-link spellings of the same project map to the same lease. A held lease is a `CONFLICT` and nothing is launched; a stale lease is reported, never broken. The live plane's SESSION lease is the same resource: while a live session holds the project, a batch run is `LIVE_SESSION_HELD` (`CONFLICT`) before Unity is launched.
 
 Unity's own project lock is a second, independent layer. A `Temp/UnityLockfile` that already exists is `ENGINE_PROJECT_LOCKED` (`CONFLICT`) and nothing is launched; the adapter never deletes or bypasses it. A run killed by its timeout can leave that file behind, and a human must remove it. A second instance that Unity itself refuses is also classified `ENGINE_PROJECT_LOCKED`.
 

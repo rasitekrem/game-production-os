@@ -17,7 +17,7 @@ synthetic reference adapter.
 
 Exit codes follow the library status exactly (gpos.tools.diagnostics.EXIT_FOR): 0 SUCCESS,
 1 INVALID_REQUEST, 2 FAILED, 3 TIMED_OUT, 4 UNAVAILABLE, 5 CONFLICT, 6 INCOMPATIBLE, 7 CANCELLED,
-8 INTERNAL_ERROR. Nothing collapses into a single failure code.
+8 INTERNAL_ERROR, 9 OUTCOME_UNKNOWN. Nothing collapses into a single failure code.
 """
 
 import argparse
@@ -82,6 +82,8 @@ def build_parser():
     ex.add_argument("--resource", help="the single-writer target, for a capability that leases one the request names")
     ex.add_argument("--routing", dest="routing_ref")
     ex.add_argument("--actor", help="KIND:ID, e.g. HUMAN:ekrem or AGENT:reviewer-1")
+    ex.add_argument("--session-id", dest="session_id",
+                    help="the existing live session a session capability acts on (32 hex characters)")
     ex.add_argument("--timeout", type=float)
     ex.add_argument("--dry-run", action="store_true")
     ex.add_argument("--allow-mutation", action="store_true",
@@ -153,7 +155,9 @@ def _capabilities_text(descriptor):
     lines = []
     for cap in sorted(descriptor.capabilities, key=lambda c: c.id):
         flags = [cap.operation_class, cap.state_model, f"observes {cap.execution_context}"]
-        if cap.single_writer_required:
+        if cap.session_mode:
+            flags.append(f"{cap.effective_lease_mode} on {cap.resource_kind}")
+        elif cap.single_writer_required:
             flags.append(f"single writer on {cap.resource_kind}")
         if cap.dry_run_supported:
             flags.append("dry run")
@@ -270,7 +274,7 @@ def _execute(args, registry, fmt, stdout):
         actor=actor, routing_ref=args.routing_ref,
         # Passed through unchanged: the foundation validates them, and an omitted value stays unknown.
         build_revision=args.build_revision, build_id=args.build_id,
-        target_platform=args.target_platform, device=args.device)
+        target_platform=args.target_platform, device=args.device, session_id=args.session_id)
     result = execute(registry, request)
     if fmt == "json":
         # The request is echoed through the same redaction as the result: an input artifact's file name is

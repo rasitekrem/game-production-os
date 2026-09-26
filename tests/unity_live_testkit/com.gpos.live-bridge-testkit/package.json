@@ -1,0 +1,7 @@
+{
+  "name": "com.gpos.live-bridge-testkit",
+  "version": "0.0.0",
+  "displayName": "GPOS Live Bridge Testkit (TEST ONLY)",
+  "description": "TEST ONLY. Never installed by GPOS. Activates the production bridge in a lab-owned batch-mode Editor and presses its approval for test-named owners.",
+  "unity": "6000.5"
+}

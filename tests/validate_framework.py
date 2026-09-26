@@ -46,7 +46,7 @@ GATES = REGISTRY["gates"]
 SUBJECTIVE_DISCIPLINE_GATES = sorted(g for g, d in GATES.items() if d["subjective"] and g != "HUMAN_REVIEW")
 TRIGGERS = list(REGISTRY["mandatory_human_review_triggers"])
 CONDITIONS = list(REGISTRY["evidence_conditions"])
-VERSION = "1.0.0-alpha.15"
+VERSION = "1.0.0-alpha.16"
 GATE_OWNERS = [s for s in REGISTRY["skills"] if any(s in d["permitted_owners"] for d in GATES.values())] + ["HUMAN"]
 
 
@@ -2656,6 +2656,9 @@ def validator_vocabulary():
     # Phase 2C-1: the Git adapter's declared environment names and documented limitation ids
     from gpos.tools.git import adapter as git_adapter
     words |= {name for name, _ in git_adapter.ENVIRONMENT} | set(git_adapter.LIMITATIONS)
+    # Phase 2C-6A: the Unity live bridge protocol's statuses, codes, states and phases
+    from gpos.tools.unity import live as unity_live
+    words |= set(unity_live.PROTOCOL_VOCABULARY)
     return words
 
 

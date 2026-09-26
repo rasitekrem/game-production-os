@@ -1,0 +1,139 @@
+{
+  "bridge_version": "1.0.0",
+  "files": [
+    {
+      "path": "Editor.meta",
+      "sha256": "7c6c0442ca25c854c08489e9c255ce02dda7e3b0eb6a11c0054e4f82ad34bd4f",
+      "size": 172
+    },
+    {
+      "path": "Editor/ApprovalWindow.cs",
+      "sha256": "9c3fc2b099e7429fe81fc2faad66bae5aef99112ca0d1453f2a913595ddda88b",
+      "size": 3858
+    },
+    {
+      "path": "Editor/ApprovalWindow.cs.meta",
+      "sha256": "4d105131459308ac87a7736eaf59764bf24c04ecd228df0e4097f2611e53c414",
+      "size": 59
+    },
+    {
+      "path": "Editor/Bridge.cs",
+      "sha256": "1373f81ed433dba9eceb1a12204ac4e89de50ab8b7113debeceaf46ba3ea2f53",
+      "size": 8750
+    },
+    {
+      "path": "Editor/Bridge.cs.meta",
+      "sha256": "7774cbf6fa1151822cfefa3deba42cd466f7c7310f59de52e52769c028eceb42",
+      "size": 59
+    },
+    {
+      "path": "Editor/Commands.cs",
+      "sha256": "cdc022523603ef4864e3455892b213da97ce9a5af07ce7440fe6691dbd77d245",
+      "size": 20450
+    },
+    {
+      "path": "Editor/Commands.cs.meta",
+      "sha256": "9b18d592178d4535abbdc8b15eee49c01e55932c8458608ac599e880d9022c53",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core.meta",
+      "sha256": "f10b1fe98a202f455c21e2a46759a869a3f8de76b2e369be941a4ef10420fad2",
+      "size": 172
+    },
+    {
+      "path": "Editor/Core/Journal.cs",
+      "sha256": "990f304d1430239c71c34a5ac01d15f5303483635de1f298a27a32579b9afafc",
+      "size": 3366
+    },
+    {
+      "path": "Editor/Core/Journal.cs.meta",
+      "sha256": "c1bd5c2d8ff59762ca8a3015f66dc146fed59408ba8a36a38df2e894b07d8435",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/Json.cs",
+      "sha256": "6369ee28a144b370e9bfceb78f33798b38a7bcbc5eff5a482090cc89e269f27d",
+      "size": 8263
+    },
+    {
+      "path": "Editor/Core/Json.cs.meta",
+      "sha256": "b43f64ac262585bd88bce4222e808bd52905988a821d817b05843ca1b8a23f16",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/Proposals.cs",
+      "sha256": "a7a7a72df10ffc4a436ff22ed098745f78724f16b8fa80a78641d07481268257",
+      "size": 7583
+    },
+    {
+      "path": "Editor/Core/Proposals.cs.meta",
+      "sha256": "01f13d23044d2ea8f93b2127b790bf472dcdc20dfb91ff2991f83d66aa925581",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/Protocol.cs",
+      "sha256": "0df948fc5ccc8793e31c1d5c0337a1197174af228616807bff1342bb68508c2b",
+      "size": 8901
+    },
+    {
+      "path": "Editor/Core/Protocol.cs.meta",
+      "sha256": "7fee55b81a27ffc29408568080e28173739340cb0643f60741cb103234aa5fbb",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/Transitions.cs",
+      "sha256": "6c392c455aa1d8ab83696b6befe9c115335ca5155bb4767b1d8f2f123eaf6fd8",
+      "size": 4321
+    },
+    {
+      "path": "Editor/Core/Transitions.cs.meta",
+      "sha256": "5b1d33ccf3f14cf5115a94b2934ef7a2685bc724f8af91da11527d4fb8777998",
+      "size": 59
+    },
+    {
+      "path": "Editor/Gpos.LiveBridge.Editor.asmdef",
+      "sha256": "bc1bf2f0363f5842798c934a27b02823702b5ca696cbd14ae25a4ca0f85539fb",
+      "size": 326
+    },
+    {
+      "path": "Editor/Gpos.LiveBridge.Editor.asmdef.meta",
+      "sha256": "ec40fb133fde0b21f3206892fe1b6e19838d65d9992baf1b806846f753ddf3f6",
+      "size": 166
+    },
+    {
+      "path": "Editor/Identity.cs",
+      "sha256": "d670e86ed26401086d10a437f0bc7919af21de646ad0ab41e30da0d045625864",
+      "size": 4621
+    },
+    {
+      "path": "Editor/Identity.cs.meta",
+      "sha256": "1da652ac6736bd0068e54e4bc0a95cc7289afa41814e21e4dcb910f85a61b2cf",
+      "size": 59
+    },
+    {
+      "path": "Editor/Ipc.cs",
+      "sha256": "0e8c481d327297623ad22829af40e3d0b3bc817c5b98fccd8d8bab7bc68e28a2",
+      "size": 9543
+    },
+    {
+      "path": "Editor/Ipc.cs.meta",
+      "sha256": "d3e569389777a71ad5832b60c5ea2b94be8d94e3ffbe9ef2c85e6a403d16f684",
+      "size": 59
+    },
+    {
+      "path": "package.json",
+      "sha256": "71c21d34530a066b8d631cda87df55ff2dca3089e2c6eca1c327d3dd9cefbf5c",
+      "size": 240
+    },
+    {
+      "path": "package.json.meta",
+      "sha256": "231233723809d1a5a7e6afbfa2f6a641b4be38235299d6b83b00664bd6cd3dd0",
+      "size": 163
+    }
+  ],
+  "package_digest": "546b3cfbe4d41234d10450efacbb3397812d106a813dee5b3284903624a68c66",
+  "package_id": "com.gpos.live-bridge",
+  "protocol": "gpos.unity.live/1",
+  "schema": "gpos.unity.live-bridge.manifest/1"
+}

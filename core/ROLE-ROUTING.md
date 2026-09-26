@@ -1,6 +1,6 @@
 # Role Routing
 
-Status: normative · GPOS `1.0.0-alpha.15` · Elaborates [P6](PRINCIPLES.md#p6--specialist-ownership), [P10](PRINCIPLES.md#p10--single-writer-per-stateful-editor)
+Status: normative · GPOS `1.0.0-alpha.16` · Elaborates [P6](PRINCIPLES.md#p6--specialist-ownership), [P10](PRINCIPLES.md#p10--single-writer-per-stateful-editor)
 
 Record format: [`schemas/task-routing.schema.json`](../schemas/task-routing.schema.json).
 

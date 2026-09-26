@@ -15,6 +15,12 @@ Two fields carry most of the safety weight:
   STATEFUL does (an editor session, a device deployment state). A MUTATING + STATEFUL capability must
   declare `single_writer_required`, which is how the frozen stateful-editor policy is preserved.
 
+`lease_mode` (Phase 2C-6A, registry `tool_lease_modes`) says how the capability relates to its
+resource's lease. Left unset it is derived from `single_writer_required` — EXECUTION or NONE — so
+every earlier capability keeps its frozen behaviour. The SESSION modes use one long-lived SESSION
+lease: SESSION_OPEN may take it, SESSION_REQUIRED only verifies it (and so is usable by a READ_ONLY
+capability without pretending to take a writer lease), SESSION_CLOSE releases or recovers it.
+
 `execution_context` is the capture context this capability's execution actually observes (an offline
 media pass observes OFFLINE_ANALYSIS, a device capture observes TARGET_RUNTIME). `potential_evidence`
 lists the (evidence type, capture context) pairs it may ever produce; each pair is checked against
@@ -26,6 +32,9 @@ from dataclasses import dataclass, field
 
 TIMEOUT_DEFAULT = 60.0
 TIMEOUT_MAX = 3600.0
+NONE, EXECUTION = "NONE", "EXECUTION"
+SESSION_OPEN, SESSION_REQUIRED, SESSION_CLOSE = "SESSION_OPEN", "SESSION_REQUIRED", "SESSION_CLOSE"
+SESSION_MODES = (SESSION_OPEN, SESSION_REQUIRED, SESSION_CLOSE)
 
 
 @dataclass(frozen=True)
@@ -65,6 +74,7 @@ class Capability:
     resource_kind: str = None            # what a single-writer lease is taken on, e.g. EDITOR_PROJECT
     resource_from_request: bool = False  # the lease target is named by the request, not by the project
     notes: tuple = ()
+    lease_mode: str = None               # registry tool_lease_modes; None derives EXECUTION or NONE
 
     @property
     def mutating(self):
@@ -73,6 +83,21 @@ class Capability:
     @property
     def stateful(self):
         return self.state_model == "STATEFUL"
+
+    @property
+    def effective_lease_mode(self):
+        if self.lease_mode is not None:
+            return self.lease_mode
+        return EXECUTION if self.single_writer_required else NONE
+
+    @property
+    def session_mode(self):
+        return self.effective_lease_mode in SESSION_MODES
+
+    @property
+    def takes_session_id(self):
+        """Whether a request names an existing session: SESSION_REQUIRED and SESSION_CLOSE do."""
+        return self.effective_lease_mode in (SESSION_REQUIRED, SESSION_CLOSE)
 
     def evidence_pairs(self):
         return tuple((t, c) for t, c in self.potential_evidence)
@@ -89,4 +114,5 @@ class Capability:
                 "timeout": {"default": self.timeout.default, "maximum": self.timeout.maximum},
                 "side_effect_scope": self.side_effect_scope, "resource_kind": self.resource_kind,
                 "resource_from_request": self.resource_from_request,
+                "lease_mode": self.effective_lease_mode,
                 "notes": list(self.notes)}

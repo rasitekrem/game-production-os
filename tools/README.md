@@ -27,6 +27,8 @@ The **Blender DCC adapter** (Phase 2C-4) is the first DCC adapter. It inspects o
 
 The **Unity engine adapter** (Phase 2C-5) is the first engine adapter, batch plane only. `unity.inspect-project` statically reports a Unity project's exact Editor version and checks its package sources; `unity.run-editmode-tests` and `unity.run-playmode-tests` run the Unity Test Framework in a fresh batch-mode Editor and offer `TEST_EVIDENCE` in `AUTOMATED_TEST` when at least one test executed. The Editor is found only under the Unity Hub root and must match the project's version exactly; remote package sources are refused before launch; Package Manager configuration is isolated per execution; the command is fixed. It declares the `TOOL_INHERENT` network semantic: GPOS originates no network operation, but Unity's own process tree may use the network. See [unity-adapter.md](unity-adapter.md).
 
+The same adapter's **live Editor plane** (Phase 2C-6A) works with a Unity Editor a Human already has open, through a fixed, audited GPOS bridge package. GPOS installs the bridge into a closed project. After the Human approves inside the Editor, GPOS holds one SESSION lease per GPOS project (the batch plane's resource). It exchanges bounded, strict, at-most-once requests with the bridge over local files: status, bounded inspection, and entering, pausing, resuming and exiting Play Mode as Editor state only. A stale session ends only through a separate Human-approved recovery. It never launches, quits, focuses or restarts an Editor, injects no input, runs no caller code and produces no evidence. See [unity-live-bridge.md](unity-live-bridge.md).
+
 ## Planned concepts (not implemented)
 
 | Tool | Purpose | Constraints |

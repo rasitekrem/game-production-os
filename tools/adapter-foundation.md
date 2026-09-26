@@ -114,7 +114,7 @@ The lifecycle is `REGISTERED` → `PROBED` → `READY`, with `UNAVAILABLE` and `
 
 ## Execution request and result
 
-A request names the adapter, the capability and the subject, and may carry a project root, inputs, input artifacts, an output directory, a resource id, a dry-run flag, mutation consent, a timeout, an actor, a routing reference, a build revision or id, a target platform and a device. Low-level tool calls do not require routing or task records; a request links to them when they exist. Nothing missing is synthesized.
+A request names the adapter, the capability and the subject, and may carry a project root, inputs, input artifacts, an output directory, a resource id, a dry-run flag, mutation consent, a timeout, an actor, a routing reference, a build revision or id, a target platform, a device and a session id (see [Sessions](#sessions-phase-2c-6a)). Low-level tool calls do not require routing or task records; a request links to them when they exist. Nothing missing is synthesized.
 
 Canonical request fields are checked against the registry **before any adapter runs**: the subject kind against the scope-kind vocabulary, a non-empty subject reference, a non-empty revision when one is supplied, the actor kind and a usable actor id, the target platform, and any expected evidence as a compatible pair the capability actually declares. An invalid subject can therefore never reach an accepted evidence candidate and surface much later as a schema failure.
 
@@ -133,6 +133,7 @@ A result always carries a status, the request and adapter ids, start and finish 
 | `INCOMPATIBLE` | 6 | the installed tool version or the pinned GPOS version cannot be used |
 | `CANCELLED` | 7 | execution was cancelled |
 | `INTERNAL_ERROR` | 8 | a foundation or adapter defect |
+| `OUTCOME_UNKNOWN` | 9 | an external operation may have started or completed, but GPOS cannot establish its final effect; nothing is retried, and the caller must re-read the state (Phase 2C-6A) |
 
 Nothing collapses into one failure code, and the library status is independent of the CLI exit code, so a future agent adapter can distinguish outcomes without reading messages. Success is never defined as `exit_code == 0`: not every adapter drives a command-line process, and the status is the most severe class among the recorded diagnostics — a blocking diagnostic always wins over an adapter's optimism.
 
@@ -239,6 +240,20 @@ A small local mechanism, not a lock service: no daemon, no distributed consensus
 - an unreadable lease file is `LEASE_INVALID` and fails closed rather than being treated as free.
 
 Crash behaviour is therefore conservative by design: a crashed writer leaves a lease behind, the next writer is told exactly who held it and that the holding process is gone, and a human decides.
+
+## Sessions (Phase 2C-6A)
+
+A capability declares a `lease_mode` from the registry's `tool_lease_modes`. Left unset, it is derived from `single_writer_required` (`EXECUTION` or `NONE`), so every earlier capability behaves exactly as before.
+
+| Mode | The foundation |
+|---|---|
+| `NONE` | takes no lease |
+| `EXECUTION` | the single-writer lease above, held for one execution |
+| `SESSION_OPEN` | takes nothing before the adapter runs; the adapter opens the SESSION lease through the execution context only once its own opening conditions hold, and a session it opened but never confirmed is released again |
+| `SESSION_REQUIRED` | verifies the exact session id and canonical owner before the adapter runs; never takes or releases anything, so a `READ_ONLY` capability can require a session without claiming a writer lease |
+| `SESSION_CLOSE` | verifies the session id; the adapter releases it after verifying the owner, or breaks exactly the inspected lease through the attributable break operation when it holds an authorization it verified itself |
+
+A SESSION lease is the same lease file on the same resource key as an `EXECUTION` lease, so the two always conflict: an `EXECUTION` writer meeting a session gets `LIVE_SESSION_HELD` and its adapter never runs. It binds a session id and the canonical owner `KIND:ID` (built from the request's actor; `AGENT:x` and `HUMAN:x` are different owners). It outlives the command that took it, so it is never judged stale from that command's process id: what "stale" means for a session belongs to the adapter that runs it. It is never broken automatically, and there is no generic command that breaks one. `ExecutionRequest.session_id` (32 hexadecimal characters; `--session-id` on the CLI) is accepted only by `SESSION_REQUIRED` and `SESSION_CLOSE` capabilities and required by them; every session capability needs an actor. Registration refuses a session mode on a `STATELESS` capability, one without a project resource, one with a dry run, a `READ_ONLY` capability declaring a writer lease, and an open or close mode that is not `MUTATING` with a single writer. The Unity live plane is the first user: see [unity-live-bridge.md](unity-live-bridge.md).
 
 ## Failure model
 

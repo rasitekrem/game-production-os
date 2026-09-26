@@ -9,6 +9,8 @@ without reading any message:
     CANCELLED        execution was cancelled before or during the run
     UNAVAILABLE      the required tool is not present, or the adapter is not READY
     CONFLICT         a single-writer lease or another safety conflict refused the operation
+    OUTCOME_UNKNOWN  an external operation may have started or completed, but GPOS cannot establish its
+                     final effect; nothing is retried automatically and the caller must re-read the state
     INVALID_REQUEST  the adapter, capability, request or a declared evidence candidate is invalid
     INCOMPATIBLE     the installed tool or the pinned GPOS version cannot be used
     INTERNAL_ERROR   a foundation or adapter defect
@@ -23,18 +25,19 @@ from dataclasses import dataclass
 SUCCESS, FAILED, TIMED_OUT, CANCELLED = "SUCCESS", "FAILED", "TIMED_OUT", "CANCELLED"
 UNAVAILABLE, CONFLICT, INVALID_REQUEST = "UNAVAILABLE", "CONFLICT", "INVALID_REQUEST"
 INCOMPATIBLE, INTERNAL_ERROR = "INCOMPATIBLE", "INTERNAL_ERROR"
+OUTCOME_UNKNOWN = "OUTCOME_UNKNOWN"
 INFO = "INFO"
 
 STATUSES = (SUCCESS, FAILED, TIMED_OUT, CANCELLED, UNAVAILABLE, CONFLICT, INVALID_REQUEST,
-            INCOMPATIBLE, INTERNAL_ERROR)
+            INCOMPATIBLE, INTERNAL_ERROR, OUTCOME_UNKNOWN)
 
 # Distinct exit codes: no two statuses collapse into one, and no status shares 0 with SUCCESS.
 EXIT_FOR = {SUCCESS: 0, INVALID_REQUEST: 1, FAILED: 2, TIMED_OUT: 3, UNAVAILABLE: 4,
-            CONFLICT: 5, INCOMPATIBLE: 6, CANCELLED: 7, INTERNAL_ERROR: 8}
+            CONFLICT: 5, INCOMPATIBLE: 6, CANCELLED: 7, INTERNAL_ERROR: 8, OUTCOME_UNKNOWN: 9}
 
 # Most severe first: the status of a result is the most severe class among its diagnostics.
-SEVERITY = (INTERNAL_ERROR, INCOMPATIBLE, INVALID_REQUEST, CONFLICT, UNAVAILABLE, TIMED_OUT,
-            CANCELLED, FAILED, INFO)
+SEVERITY = (INTERNAL_ERROR, INCOMPATIBLE, INVALID_REQUEST, CONFLICT, OUTCOME_UNKNOWN, UNAVAILABLE,
+            TIMED_OUT, CANCELLED, FAILED, INFO)
 _RANK = {cls: i for i, cls in enumerate(SEVERITY)}
 
 # code: (result class, meaning)
@@ -73,12 +76,16 @@ CODES = {
     "REPOSITORY_ROOT_MISMATCH": (INVALID_REQUEST, "the repository top level is not the GPOS project root"),
     # tool availability (UNAVAILABLE)
     "TOOL_NOT_FOUND": (UNAVAILABLE, "the tool this adapter drives is not available"),
+    "LIVE_BRIDGE_ABSENT": (UNAVAILABLE, "the audited editor bridge is not installed in the engine project"),
+    "LIVE_BRIDGE_UNAVAILABLE": (UNAVAILABLE, "no running editor bridge is ready for this engine project"),
+    "LIVE_SESSION_UNRESPONSIVE": (UNAVAILABLE, "the editor process is alive or unprovable but its bridge heartbeat is old; it is not stale"),
     "ENGINE_LICENSE_UNAVAILABLE": (UNAVAILABLE, "the engine editor reported that no usable licence was available"),
     # target device (Phase 2C-3): generic to any device adapter, not specific to one tool
     "TARGET_DEVICE_UNAVAILABLE": (UNAVAILABLE, "the named target device is not connected to the device tool"),
     "ADAPTER_NOT_READY": (UNAVAILABLE, "the adapter has not established that its tool is available and compatible"),
     # compatibility (INCOMPATIBLE)
     "TOOL_VERSION_UNSUPPORTED": (INCOMPATIBLE, "the installed tool version is outside the adapter's supported range"),
+    "LIVE_BRIDGE_INCOMPATIBLE": (INCOMPATIBLE, "the running bridge's protocol, version, digest or editor version is not the one this release supports"),
     "ENGINE_EDITOR_VERSION_UNAVAILABLE": (INCOMPATIBLE, "the exact engine editor version the project requires is not the installed, probed editor"),
     "PLATFORM_UNSUPPORTED": (INCOMPATIBLE, "the adapter does not support this platform"),
     "GPOS_VERSION_INCOMPATIBLE": (INCOMPATIBLE, "the project pins a GPOS version this toolchain does not implement"),
@@ -91,6 +98,16 @@ CODES = {
     "TARGET_DEVICE_NOT_READY": (CONFLICT, "the named target device is connected but not ready (offline, unauthorized or still booting)"),
     "TARGET_PROCESS_NOT_RUNNING": (CONFLICT, "the named application process is not running on the target device"),
     "ENGINE_PROJECT_LOCKED": (CONFLICT, "the engine project is already open or locked by another editor instance"),
+    # live sessions (Phase 2C-6A): the SESSION lease is generic foundation state
+    "LIVE_SESSION_HELD": (CONFLICT, "a live SESSION lease holds this resource; no other writer acts until it is detached or recovered"),
+    "LIVE_SESSION_MISMATCH": (CONFLICT, "the session id, canonical owner or binding does not match the SESSION lease"),
+    "LIVE_SESSION_STALE": (CONFLICT, "the live session is proven stale; only a Human-approved recovery ends it"),
+    "LIVE_BRIDGE_UNTRUSTED": (CONFLICT, "the installed editor bridge is not byte-for-byte the audited GPOS bridge; it is never overwritten or repaired"),
+    "LIVE_PROJECT_IDENTITY_MISMATCH": (CONFLICT, "the running bridge serves another GPOS root or engine project than the one requested"),
+    "LIVE_GRANT_INVALID": (CONFLICT, "the Human approval grant is missing, expired, consumed or bound to something else"),
+    "LIVE_BIND_REFUSED": (CONFLICT, "the editor bridge refused to bind or unbind the session"),
+    "LIVE_STATE_REFUSED": (CONFLICT, "the editor is not in the state the operation starts from"),
+    "EDITOR_BUSY": (CONFLICT, "the editor is compiling, importing, reloading or in a transition; nothing was queued"),
     # execution (FAILED / TIMED_OUT / CANCELLED)
     "EXECUTION_FAILED": (FAILED, "the tool executed and reported failure"),
     "ENGINE_TESTS_NOT_EXECUTED": (FAILED, "the test run completed without executing any test; no test evidence exists"),
@@ -98,8 +115,16 @@ CODES = {
     "ARTIFACT_HASH_FAILED": (FAILED, "an artifact could not be hashed"),
     "EXECUTION_TIMEOUT": (TIMED_OUT, "the deadline passed; the process was terminated"),
     "EXECUTION_CANCELLED": (CANCELLED, "execution was cancelled"),
+    "LIVE_APPROVAL_NOT_GRANTED": (CANCELLED, "no Human approved the request inside the editor before it expired; it was abandoned"),
+    "LIVE_APPROVAL_REJECTED": (CANCELLED, "the Human rejected the request inside the editor"),
+    "LIVE_REQUEST_EXPIRED": (CANCELLED, "the request's start deadline passed before the editor could start it; it never executed"),
+    "LIVE_REQUEST_WITHDRAWN": (CANCELLED, "the caller stopped waiting and withdrew the request before the editor claimed it; it never executed"),
+    "LIVE_TRANSITION_FAILED": (FAILED, "the editor did not complete the requested state transition; it is not retried"),
+    "LIVE_OUTCOME_UNKNOWN": (OUTCOME_UNKNOWN, "the editor may have started or completed the request, but its final effect is unknown; it is never retried, re-read the live status"),
     # defects (INTERNAL_ERROR)
     "ADAPTER_INTERNAL_ERROR": (INTERNAL_ERROR, "the adapter raised an unexpected exception"),
+    "LIVE_PROTOCOL_ERROR": (INTERNAL_ERROR, "the editor bridge refused or garbled a request GPOS generated"),
+    "LIVE_BRIDGE_SOURCE_CORRUPT": (INTERNAL_ERROR, "the GPOS-owned bridge package does not match its release manifest"),
     # informational
     "PROCESS_OUTPUT_TRUNCATED": (INFO, "captured output reached the capture bound and was truncated"),
     "ARTIFACT_INCOMPLETE": (INFO, "an artifact was produced by an execution that did not finish; it is not evidence"),
@@ -109,6 +134,11 @@ CODES = {
     "LEASE_ACQUIRED": (INFO, "a single-writer lease was acquired for this execution"),
     "LEASE_STALE": (INFO, "a lease looks abandoned; recovery is explicit and never automatic"),
     "EVIDENCE_NOT_MATERIALIZABLE": (INFO, "the candidate is offered but cannot become a GPOS evidence record yet"),
+    "LIVE_BRIDGE_INSTALLED": (INFO, "the audited editor bridge was installed into the closed engine project"),
+    "LIVE_BRIDGE_ALREADY_INSTALLED": (INFO, "the audited editor bridge is already installed byte for byte; nothing was written"),
+    "LIVE_SESSION_ATTACHED": (INFO, "a Human-approved live session is attached and holds the SESSION lease"),
+    "LIVE_SESSION_DETACHED": (INFO, "the live session ended and its SESSION lease was released after verification"),
+    "LIVE_SESSION_RECOVERED": (INFO, "a stale SESSION lease was broken after Human approval inside the editor; no session is attached"),
 }
 
 

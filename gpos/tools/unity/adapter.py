@@ -1,10 +1,17 @@
-"""Production engine adapter: Unity batch plane (Phase 2C-5).
+"""Production engine adapter: Unity, with a batch plane (Phase 2C-5) and a live Editor plane (Phase 2C-6A).
 
-Three capabilities:
+Batch plane, process-driven, each capability STATELESS:
 
     unity.inspect-project      static project facts and package-source safety   READ_ONLY, no Unity process
     unity.run-editmode-tests   Unity Test Framework, EditMode, in batch mode     results.xml -> TEST_EVIDENCE
     unity.run-playmode-tests   Unity Test Framework, PlayMode, in batch mode     results.xml -> TEST_EVIDENCE
+
+Live plane, driven by the fixed GPOS Editor bridge and one Human-approved session per GPOS project (see
+live.py): install-bridge, status, attach, detach, inspect and the four Play Mode transitions. It never launches,
+quits, focuses or restarts an Editor and produces no evidence. The batch and live planes share one writer
+resource, `EDITOR_PROJECT:<resolved GPOS project root>`: a live SESSION lease makes a batch run a conflict before
+Unity is launched, and a batch run's lease makes an attach a conflict. The adapter's overall state model is
+STATEFUL because it manages that long-lived session.
 
 This is not a Unity automation interface. The caller never supplies an executable, an Editor version, a
 method, C#, a menu item, a test filter, a graphics mode, a network destination or any Unity argument.
@@ -49,6 +56,7 @@ from ..artifacts import ArtifactSpec
 from ..capabilities import Capability, TimeoutPolicy
 from ..evidence import EvidenceCandidate
 from ..execution import AdapterOutcome
+from . import live
 from . import project as up
 from . import results as ur
 
@@ -99,6 +107,64 @@ SIDE_EFFECTS = ("opens the Unity project in batch mode: Unity writes Library/, T
                 "configuration go to the execution workspace, the package cache to the GPOS runtime area")
 
 _project_note = "Input `unity_project`: a directory inside the GPOS project root (default `.`)."
+_live_note = ("Live plane: acts through the fixed GPOS bridge in an Editor a Human opened; never launches, quits, "
+              "focuses or restarts an Editor; produces no evidence.")
+_playmode_note = live.PLAYMODE_LIMITATION
+LIVE_SIDE_EFFECTS = {
+    live.INSTALL: ("writes the audited GPOS bridge package into Packages/com.gpos.live-bridge/ of a closed Unity project "
+                   "(staged in the GPOS runtime area, moved into place with one rename); nothing else in the project "
+                   "changes and nothing is overwritten"),
+    live.ATTACH: ("after a Human approves inside the Unity Editor: takes the SESSION lease on the project and binds the "
+                  "Editor's bridge to the session; proposal and grant state live in the Editor session only"),
+    live.DETACH: ("unbinds the Editor's bridge and releases the SESSION lease after verification; for a proven clean "
+                  "close, releases the lease; for a stale session, breaks it only after a Human approves recovery in "
+                  "the Editor, recorded in the lease log"),
+    live.ENTER: "asks the attached Editor to enter Play Mode (Editor state only)",
+    live.PAUSE: "pauses the attached Editor's Play Mode (Editor state only)",
+    live.RESUME: "resumes the attached Editor's paused Play Mode (Editor state only)",
+    live.EXIT: "asks the attached Editor to exit Play Mode (Editor state only)",
+}
+
+
+def _live(cap_id, category, description, operation_class, state_model, lease_mode, timeout, **kw):
+    return Capability(
+        id=cap_id, category=category, description=description, operation_class=operation_class,
+        state_model=state_model, execution_context=kw.pop("execution_context", "EDITOR"), requires_tool=False,
+        requires_project=True, lease_mode=lease_mode, resource_kind="EDITOR_PROJECT",
+        single_writer_required=operation_class == "MUTATING", input_kinds=("unity_project",),
+        timeout=timeout, side_effect_scope=LIVE_SIDE_EFFECTS.get(cap_id, "NONE"),
+        notes=kw.pop("notes", (_project_note, _live_note)), **kw)
+
+
+LIVE_CAPABILITIES = (
+    _live(live.INSTALL, "DEPLOY", "Install the fixed, audited GPOS live bridge package into a closed Unity project; "
+                                  "an identical package is left alone, anything else there is refused and never "
+                                  "overwritten.", "MUTATING", "STATELESS", "EXECUTION",
+          TimeoutPolicy(default=60.0, maximum=300.0), execution_context="OFFLINE_ANALYSIS", dry_run_supported=True,
+          notes=(_project_note, "The project must be closed: an existing Temp/UnityLockfile is a conflict.")),
+    _live(live.STATUS, "INSPECT", "Bridge and live-session facts for one Unity project, from the bridge's files and the "
+                                  "Editor process identity; sends nothing to the Editor.", "READ_ONLY", "STATEFUL",
+          "NONE", TimeoutPolicy(default=15.0, maximum=60.0)),
+    _live(live.ATTACH, "RUN", "Attach a live session to the Unity Editor a Human has open: the Human approves inside the "
+                              "Editor first, then GPOS takes the SESSION lease and the bridge binds the session.",
+          "MUTATING", "STATEFUL", "SESSION_OPEN", TimeoutPolicy(default=300.0, maximum=900.0)),
+    _live(live.DETACH, "RUN", "End a live session: unbind and release it, release it after a proven clean Editor close, "
+                              "or recover a proven stale session after a Human approves recovery inside the Editor.",
+          "MUTATING", "STATEFUL", "SESSION_CLOSE", TimeoutPolicy(default=300.0, maximum=900.0)),
+    _live(live.INSPECT, "INSPECT", "Bounded structured facts from the attached Editor: bridge and session, focus, "
+                                   "compilation and import state, Play Mode state, open scenes and a bounded "
+                                   "hierarchy summary.", "READ_ONLY", "STATEFUL", "SESSION_REQUIRED",
+          TimeoutPolicy(default=30.0, maximum=120.0)),
+    _live(live.ENTER, "RUN", "Enter Play Mode in the attached Editor. " + _playmode_note, "MUTATING", "STATEFUL",
+          "SESSION_REQUIRED", TimeoutPolicy(default=120.0, maximum=600.0)),
+    _live(live.PAUSE, "RUN", "Pause Play Mode in the attached Editor. " + _playmode_note, "MUTATING", "STATEFUL",
+          "SESSION_REQUIRED", TimeoutPolicy(default=30.0, maximum=120.0)),
+    _live(live.RESUME, "RUN", "Resume paused Play Mode in the attached Editor. " + _playmode_note, "MUTATING",
+          "STATEFUL", "SESSION_REQUIRED", TimeoutPolicy(default=30.0, maximum=120.0)),
+    _live(live.EXIT, "RUN", "Exit Play Mode in the attached Editor. " + _playmode_note, "MUTATING", "STATEFUL",
+          "SESSION_REQUIRED", TimeoutPolicy(default=120.0, maximum=600.0)),
+)
+
 CAPABILITIES = (
     Capability(
         id=INSPECT, category="INSPECT", operation_class="READ_ONLY", state_model="STATELESS",
@@ -129,11 +195,11 @@ CAPABILITIES = (
         potential_evidence=(("TEST_EVIDENCE", "AUTOMATED_TEST"),),
         timeout=TimeoutPolicy(default=1800.0, maximum=3600.0), side_effect_scope=SIDE_EFFECTS,
         notes=(_project_note, "The project must require exactly the probed Editor version.")),
-)
+) + LIVE_CAPABILITIES
 
 DESCRIPTOR = model.AdapterDescriptor(
     adapter_id=ADAPTER_ID, adapter_version=ADAPTER_VERSION, tool_family="ENGINE", target_tool="Unity Editor",
-    adapter_kind="CLI", state_model="STATELESS", supported_platforms=("MACOS",), capabilities=CAPABILITIES,
+    adapter_kind="CLI", state_model="STATEFUL", supported_platforms=("MACOS",), capabilities=CAPABILITIES,
     network="TOOL_INHERENT", network_disclosure=NETWORK_DISCLOSURE,
     availability="exactly one Unity Editor installed under the Unity Hub Editor root "
                   "(/Applications/Unity/Hub/Editor/<version>/Unity.app); PATH is never used",
@@ -141,18 +207,25 @@ DESCRIPTOR = model.AdapterDescriptor(
         "Alpha.15 supports exactly one usable Hub-installed Editor and macOS only.",
         "Fixed batch command: no caller executable, argument, method, C#, filter, graphics mode or network setting.",
         "Remote package sources are refused; Package Manager configuration and cache are isolated per project.",
+        "One adapter, two planes: the batch plane is process-driven (fixed batch-mode Editor invocations, each "
+        "capability STATELESS); the live plane is fixed-bridge and session-driven (a Human-approved SESSION lease on "
+        "the same EDITOR_PROJECT resource). adapter_kind stays CLI for alpha.16.",
+        "The live plane never launches, quits, focuses or restarts an Editor, never injects input and runs no caller "
+        "code; its Play Mode operations report Editor state only.",
     ))
 
 
 class UnityAdapter(model.ToolAdapter):
-    """`hub_roots`, `platform` and `capture_bytes` are code-level seams for tests; a request can change none."""
+    """`hub_roots`, `platform`, `capture_bytes` and `live_seams` are code-level seams for tests; a request can
+    change none."""
 
     descriptor = DESCRIPTOR
 
-    def __init__(self, hub_roots=None, platform=None, capture_bytes=CAPTURE_BYTES):
+    def __init__(self, hub_roots=None, platform=None, capture_bytes=CAPTURE_BYTES, live_seams=None):
         self._platform = platform or sys.platform
         self._hub_roots = tuple(hub_roots) if hub_roots is not None else HUB_ROOTS.get(self._platform, ())
         self._capture_bytes = capture_bytes
+        self._live_seams = dict(live_seams or {})
 
     # ------------------------------------------------------------ discovery and probe
 
@@ -187,7 +260,8 @@ class UnityAdapter(model.ToolAdapter):
 
     def probe(self):
         platform = model.current_platform()
-        unusable = lambda reason: tuple((c.id, c.id == INSPECT, "" if c.id == INSPECT else reason) for c in CAPABILITIES)
+        unusable = lambda reason: tuple((c.id, not c.requires_tool, "" if not c.requires_tool else reason)
+                                        for c in CAPABILITIES)
         if self._platform not in EDITOR_IN_VERSION_DIR:
             return model.ProbeResult(ADAPTER_ID, model.UNAVAILABLE, platform=platform,
                                      detail="the Unity adapter supports macOS only in this release",
@@ -227,6 +301,8 @@ class UnityAdapter(model.ToolAdapter):
 
     def execute(self, request, context):
         cap = request.capability_id
+        if cap in live.CAPABILITY_IDS:
+            return live.execute(request, context, **self._live_seams)
         if cap not in (INSPECT, EDITMODE, PLAYMODE):
             raise AssertionError(f"{cap} is declared but not implemented")
         root = Path(context.project_root)

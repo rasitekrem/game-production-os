@@ -21,7 +21,7 @@
         ],
         "/upgrade": {
           "from_version": "1.0.0-alpha.2",
-          "to_version": "1.0.0-alpha.15"
+          "to_version": "1.0.0-alpha.16"
         }
       },
       "remove": [

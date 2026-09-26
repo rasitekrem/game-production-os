@@ -191,14 +191,14 @@ MUTATIONS = [
         (CLI, '        build_revision=args.build_revision, build_id=args.build_id,',
          '        build_revision=None, build_id=args.build_id,')]),
     ('the CLI accepts --target-platform but drops it', [
-        (CLI, '        target_platform=args.target_platform, device=args.device)',
-         '        target_platform=None, device=args.device)')]),
+        (CLI, '        target_platform=args.target_platform, device=args.device, session_id=args.session_id)',
+         '        target_platform=None, device=args.device, session_id=args.session_id)')]),
     ('the CLI drops --build-id', [
         (CLI, '        build_revision=args.build_revision, build_id=args.build_id,',
          '        build_revision=args.build_revision, build_id=None,')]),
     ('the CLI drops --device', [
-        (CLI, '        target_platform=args.target_platform, device=args.device)',
-         '        target_platform=args.target_platform, device=None)')]),
+        (CLI, '        target_platform=args.target_platform, device=args.device, session_id=args.session_id)',
+         '        target_platform=args.target_platform, device=None, session_id=args.session_id)')]),
     ("dry run returns before the existing-output check again", [
         (FFMPEG, "        if output.exists() or output.is_symlink():\n            return _refuse(cap, f\"the workspace already holds",
          "        if not context.dry_run and (output.exists() or output.is_symlink()):\n            return _refuse(cap, f\"the workspace already holds")]),

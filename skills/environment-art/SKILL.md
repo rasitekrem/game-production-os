@@ -1,7 +1,7 @@
 ---
 name: environment-art
 maturity: DRAFT
-gpos_version: 1.0.0-alpha.15
+gpos_version: 1.0.0-alpha.16
 may_own_gates: [VISUAL_ART]
 ---
 

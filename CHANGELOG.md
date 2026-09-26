@@ -4,6 +4,32 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.16] — Phase 2C-6A: Unity live session foundation
+
+Builds on the frozen Phase-2C-5 tree (`v1.0.0-alpha.15`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The foundation gains SESSION leases, lease modes, `ExecutionRequest.session_id` and the `OUTCOME_UNKNOWN` result status; the existing statuses, exit codes and execution-scoped lease behaviour are unchanged. Projects must pin `gpos_version` `1.0.0-alpha.16`.
+
+The `unity` adapter gains its live Editor plane: one Human-approved session per GPOS project with an Editor a Human already has open, through a fixed, audited Editor bridge over local files. No authoring, capture, Editor launch or quit, focus control, input injection, MCP transport, arbitrary C#, reflection surface, `-executeMethod` or menu execution.
+
+### Added
+
+- **Foundation: sessions.** Registry `tool_lease_modes` (`NONE`, `EXECUTION`, `SESSION_OPEN`, `SESSION_REQUIRED`, `SESSION_CLOSE`) and `Capability.lease_mode` (derived from `single_writer_required` when unset, so earlier capabilities keep their behaviour). A SESSION lease uses the same file and resource key as an `EXECUTION` lease, binds a session id and the canonical owner `KIND:ID` (a new helper; `EXECUTION` owners unchanged), is never judged stale from the attaching command's process id and is never broken automatically. `SESSION_OPEN` lets the adapter open the lease only once its own conditions hold and releases an unconfirmed one; `SESSION_REQUIRED` verifies session and owner without taking anything, so a `READ_ONLY` capability can require a session; `SESSION_CLOSE` releases after verification or breaks exactly the inspected lease (`break_lease` gains `expected_token`). An `EXECUTION` writer meeting a session gets `LIVE_SESSION_HELD` before its adapter runs. `ExecutionRequest.session_id` (CLI `--session-id`) is accepted only where a session is named. Registration rules keep session requirement and writer-lease acquisition separate.
+- **Foundation: `OUTCOME_UNKNOWN`** (exit code 9): an external operation may have started or completed but its final effect cannot be established; nothing is retried and the caller must re-read the state. `LIVE_OUTCOME_UNKNOWN` maps to it. It is never used for slowness.
+- **Unity live plane** (`gpos/tools/unity/live.py`, `live_ipc.py`, `live_status.py`, `identity.py`, `bridge_install.py`): `unity.live-install-bridge` (`DEPLOY`, `MUTATING`, `STATELESS`, `OFFLINE_ANALYSIS`, closed projects only, fixed package, idempotent, never overwrites), `unity.live-status`, `unity.live-attach`, `unity.live-detach`, `unity.live-inspect`, `unity.live-enter-playmode`, `unity.live-pause`, `unity.live-resume`, `unity.live-exit-playmode`. None produces evidence; Play Mode success means only the Editor's state.
+- **The fixed bridge package** `com.gpos.live-bridge` 1.0.0 (protocol `gpos.unity.live/1`) with deterministic `.meta` files and a release manifest; Editor-only; dormant in import workers and in every batch-mode Editor with no switch; closed command set over atomic, bounded, strict local files; a per-boot request journal for at-most-once; start deadlines; withdrawal; Domain Reload recovery that never replays; Human approval of attach and, separately, of stale-session recovery, inside the Editor only.
+- Diagnostics: `LIVE_SESSION_HELD`, `LIVE_SESSION_MISMATCH`, `LIVE_SESSION_STALE`, `LIVE_SESSION_UNRESPONSIVE`, `LIVE_BRIDGE_ABSENT`, `LIVE_BRIDGE_UNAVAILABLE`, `LIVE_BRIDGE_UNTRUSTED`, `LIVE_BRIDGE_INCOMPATIBLE`, `LIVE_BRIDGE_SOURCE_CORRUPT`, `LIVE_PROJECT_IDENTITY_MISMATCH`, `LIVE_GRANT_INVALID`, `LIVE_BIND_REFUSED`, `LIVE_STATE_REFUSED`, `EDITOR_BUSY`, `LIVE_APPROVAL_NOT_GRANTED`, `LIVE_APPROVAL_REJECTED`, `LIVE_REQUEST_EXPIRED`, `LIVE_REQUEST_WITHDRAWN`, `LIVE_TRANSITION_FAILED`, `LIVE_OUTCOME_UNKNOWN`, `LIVE_PROTOCOL_ERROR` and the informational `LIVE_BRIDGE_INSTALLED`, `LIVE_BRIDGE_ALREADY_INSTALLED`, `LIVE_SESSION_ATTACHED`, `LIVE_SESSION_DETACHED`, `LIVE_SESSION_RECOVERED`.
+- [tools/unity-live-bridge.md](tools/unity-live-bridge.md).
+- Tests: `tests/test_unity_live.py` (fast groups against a Python protocol stand-in; real groups with lab-owned batch-mode Editors and the test-only testkit package), `tests/test_unity_live_bridge_core.py` (the bridge's C# core, compiled with the Mono bundled with Unity), `tests/mutate_unity_live.py`, `tests/generate_live_bridge_manifest.py`.
+
+### Changed
+
+- The `unity` descriptor's `state_model` is `STATEFUL` (it manages the live session); each batch capability stays `STATELESS`; `adapter_kind` stays `CLI`, with a compatibility note for the two planes. The batch plane is otherwise unchanged; a live session makes a batch run `LIVE_SESSION_HELD` before Unity is launched.
+- Foundation and Unity suites and harnesses gained the session, lease-mode and outcome tests and mutations; boundary anchors evolved for the five new Unity modules and the twelve Unity capabilities.
+
+### Notes
+
+- Background limitation: a windowed Editor may be throttled while unfocused; the bridge keeps working, Play Mode state can be controlled, but gameplay progress is not guaranteed while unfocused. No Unity preference is changed and nothing is focused to change this.
+- Alpha.16 installs the bridge only into a closed project; a changed bridge in a later release will need its own reviewed upgrade path.
+
 ## [1.0.0-alpha.15] — Phase 2C-5: Unity engine adapter (batch plane)
 
 Builds on the frozen Phase-2C-4 tree (`v1.0.0-alpha.14`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The only foundation change is the network semantic below. Projects must pin `gpos_version` `1.0.0-alpha.15`.

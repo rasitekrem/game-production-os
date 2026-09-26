@@ -46,11 +46,12 @@ def compile_and_run(sources, work):
     exe = Path(work) / "core-tests.exe"
     facades = scripting / "MonoBleedingEdge" / "lib" / "mono" / "4.7.1-api"
     refs = [f"-r:{facades / n}" for n in ("mscorlib.dll", "System.dll", "System.Core.dll")]
+    # Mono writes crash reports (mono_crash.*.json) into its working directory: keep that the temporary one.
     compiled = subprocess.run([str(mono), str(csc), "-noconfig", "-nologo", "-nostdlib", "-t:exe", f"-out:{exe}",
-                               *refs, *map(str, sources)], capture_output=True, text=True, timeout=300)
+                               *refs, *map(str, sources)], capture_output=True, text=True, timeout=300, cwd=str(work))
     if compiled.returncode != 0:
         return None, compiled.stdout + compiled.stderr
-    ran = subprocess.run([str(mono), str(exe)], capture_output=True, text=True, timeout=300)
+    ran = subprocess.run([str(mono), str(exe)], capture_output=True, text=True, timeout=300, cwd=str(work))
     return ran, ran.stdout + ran.stderr
 
 

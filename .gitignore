@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# Mono runtime crash reports (written into the working directory of a crashing mono process)
+mono_crash.*.json

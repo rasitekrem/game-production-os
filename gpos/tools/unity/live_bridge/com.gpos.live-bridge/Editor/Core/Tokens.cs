@@ -20,6 +20,10 @@ namespace Gpos.LiveBridge
         public const string SubtreeDomain = "gpos.subtree/1";
         public const string RootsDomain = "gpos.roots/1";
         public const string CatalogDomain = "gpos.catalog/1";
+        public const string AssetDomain = "gpos.asset/1";
+        public const string KindsDomain = "gpos.asset-kinds/1";
+        public const string ScriptableCatalogDomain = "gpos.so-catalog/1";
+        public const string ShaderCatalogDomain = "gpos.shader-catalog/1";
 
         readonly StringBuilder text = new StringBuilder();
 

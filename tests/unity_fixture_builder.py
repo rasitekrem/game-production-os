@@ -14,6 +14,9 @@ Kinds:
 """
 
 import json
+import math
+import struct
+import zlib
 from pathlib import Path
 
 BUILT_IN = "Contents/Resources/PackageManager/BuiltInPackages"
@@ -180,5 +183,156 @@ def make_authoring_project(path, editor_version, editor_executable):
     manifest_path = path / "Packages/manifest.json"
     data = json.loads(manifest_path.read_text())
     data["dependencies"].update({m: "1.0.0" for m in AUTHORING_MODULES})
+    manifest_path.write_text(json.dumps(data, indent=2))
+    return path
+
+
+# ---------------------------------------------------------------- Phase 2C-6B2A: the asset fixture
+
+def png(width, height, rgba):
+    """A small RGBA PNG, generated (no binary fixture is committed)."""
+    rows = b"".join(b"\x00" + b"".join(bytes(rgba(x, y)) for x in range(width)) for y in range(height))
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+def wav(seconds=0.25, rate=22050):
+    """A short 16-bit mono sine WAV, generated."""
+    n = int(seconds * rate)
+    data = b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * 440 * i / rate))) for i in range(n))
+    return (b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVEfmt "
+            + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16) + b"data" + struct.pack("<I", len(data)) + data)
+
+
+CUBE_OBJ = """o FixtureCube
+v -0.5 -0.5 0.5
+v 0.5 -0.5 0.5
+v -0.5 0.5 0.5
+v 0.5 0.5 0.5
+v -0.5 0.5 -0.5
+v 0.5 0.5 -0.5
+v -0.5 -0.5 -0.5
+v 0.5 -0.5 -0.5
+f 1 2 4 3
+f 3 4 6 5
+f 5 6 8 7
+f 7 8 2 1
+f 2 8 6 4
+f 7 1 3 5
+"""
+
+TEST_SHADER = """Shader "GPOS/Test"
+{
+    Properties
+    {
+        _Color ("Color", Color) = (1, 1, 1, 1)
+        [HideInInspector] _Tint ("Tint", Color) = (1, 1, 1, 1)
+        _Amount ("Amount", Range(0, 1)) = 0.5
+        _Count ("Count", Integer) = 1
+        _Offset ("Offset", Vector) = (0, 0, 0, 0)
+        _Scale ("Scale", Float) = 1
+        _MainTex ("Texture", 2D) = "white" {}
+        _Cube ("Cube", Cube) = "" {}
+        _Vol ("Volume", 3D) = "" {}
+        [PerRendererData] _PerR ("Per renderer", 2D) = "white" {}
+    }
+    SubShader
+    {
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "UnityCG.cginc"
+            fixed4 _Color;
+            float4 vert (float4 v : POSITION) : SV_POSITION { return UnityObjectToClipPos(v); }
+            fixed4 frag () : SV_Target { return _Color; }
+            ENDCG
+        }
+    }
+}
+"""
+
+ASSET_SCRIPTS = {
+    "Assets/AssetScripts/AssetRefs.cs": """using UnityEngine;
+public class AssetRefs : MonoBehaviour
+{
+    public Material mat; public Texture tex; public Texture2D tex2d; public Sprite sprite; public AudioClip clip;
+    public Mesh mesh; public GameObject prefab; public BoxCollider col; public GameConfig config; public Cubemap cube;
+    public Object anything;
+}
+""",
+    "Assets/AssetScripts/GameConfig.cs": """using UnityEngine;
+[CreateAssetMenu(menuName = "GPOS/Game Config", fileName = "Config")]
+public class GameConfig : ScriptableObject
+{
+    public int value; public float speed; public string title = "t"; public Material material; public Texture2D icon;
+    public Sprite badge; public GameConfig next; [HideInInspector] public int hidden; public int[] arr = { 1 };
+    public AnimationCurve curve = AnimationCurve.Linear(0, 0, 1, 1);
+}
+""",
+    "Assets/AssetScripts/PlainData.cs": "using UnityEngine;\npublic class PlainData : ScriptableObject { public int value; }\n",
+    "Assets/AssetScripts/CallbackData.cs": """using UnityEngine;
+// Project code that runs on creation (OnEnable) and on every edit (OnValidate clamps).
+[CreateAssetMenu]
+public class CallbackData : ScriptableObject
+{
+    public int value; public int enables;
+    void OnEnable() { enables++; }
+    void OnValidate() { if (value > 10) value = 10; }
+}
+""",
+    "Assets/AssetScripts/Changeable.cs": "using UnityEngine;\npublic class Changeable : ScriptableObject { public int x; }\n",
+    "Assets/AssetScripts/AbstractData.cs": "using UnityEngine;\npublic abstract class AbstractData : ScriptableObject { }\n",
+    "Assets/AssetScripts/GenericData.cs": "using UnityEngine;\npublic class GenericData<T> : ScriptableObject { }\n",
+    "Assets/AssetScripts/Editor/EditorData.cs": "using UnityEngine;\n[CreateAssetMenu] public class EditorData : ScriptableObject { }\n",
+    "Assets/AssetScripts/Editor/GposFixturePostprocessor.cs": """using System.IO;
+using System.Linq;
+using UnityEditor;
+// Project code that runs on every import and move (TOOL_INHERENT for GPOS): it only logs the paths.
+class GposFixturePostprocessor : AssetPostprocessor
+{
+    static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
+    {
+        File.AppendAllText("Temp/gpos-postprocess.log", string.Join("\\n", imported.Concat(moved)) + "\\n");
+    }
+}
+""",
+    "Assets/Shaders/GposTest.shader": TEST_SHADER,
+    "Assets/Models/cube.obj": CUBE_OBJ,
+    "Packages/com.gpos.fixture-assets/package.json": json.dumps({"name": "com.gpos.fixture-assets", "version": "1.0.0",
+                                                                 "displayName": "GPOS fixture assets",
+                                                                 "unity": "6000.5"}, indent=2),
+}
+ASSET_MODULES = ("com.unity.modules.audio", "com.unity.modules.imageconversion")
+
+
+def make_asset_project(path, editor_version, editor_executable):
+    """The Scene-authoring project plus the asset fixture: textures, audio, a model, a test shader with every shader
+    property kind, ScriptableObject types (creatable, editable only, Editor-only, abstract, generic), a logging
+    AssetPostprocessor, and the embedded package com.gpos.fixture-assets (one texture, one in an Editor folder).
+    Materials, prefabs, ScriptableObject assets and Scenes are made in the lab Editor by the testkit."""
+    path = make_authoring_project(path, editor_version, editor_executable)
+    for rel, text in ASSET_SCRIPTS.items():
+        (path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (path / rel).write_text(text)
+    art = path / "Assets/Art"
+    art.mkdir(parents=True, exist_ok=True)
+    (art / "checker.png").write_bytes(png(16, 16, lambda x, y: (255, 255, 255, 255) if (x // 4 + y // 4) % 2
+                                          else (0, 0, 0, 255)))
+    (art / "hero.png").write_bytes(png(16, 16, lambda x, y: (200, 60, 60, 255)))
+    (path / "Assets/Audio").mkdir(parents=True, exist_ok=True)
+    (path / "Assets/Audio/beep.wav").write_bytes(wav())
+    package = path / "Packages/com.gpos.fixture-assets"
+    for rel in ("Textures", "Materials", "Editor"):
+        (package / rel).mkdir(parents=True, exist_ok=True)
+    (package / "Textures/pkg.png").write_bytes(png(8, 8, lambda x, y: (0, 120, 255, 255)))
+    (package / "Editor/editor.png").write_bytes(png(8, 8, lambda x, y: (0, 255, 0, 255)))
+    manifest_path = path / "Packages/manifest.json"
+    data = json.loads(manifest_path.read_text())
+    data["dependencies"].update({m: "1.0.0" for m in ASSET_MODULES})
     manifest_path.write_text(json.dumps(data, indent=2))
     return path

@@ -10,7 +10,11 @@
 //     busy periods and a clean exit on demand;
 //   * obeys "op-<id>.json" files (Phase 2C-6B1) standing in for what a Human does in the Editor — an Inspector edit
 //     through SerializedObject, a Hierarchy drag, Cmd-Z / Cmd-Shift-Z, creating the saved test Scene and a prefab
-//     instance, opening an unsaved Scene — and answers each in <project>/Temp/gpos-testkit-out/<id>.json.
+//     instance, opening an unsaved Scene — and answers each in <project>/Temp/gpos-testkit-out/<id>.json;
+//   * (Phase 2C-6B2A) prepares the asset fixture (sprite import, cubemap, 3D texture, prefab, materials, ScriptableObject
+//     assets, a second saved Scene), saves or imports one asset as a Human would, counts Material instances, and arms
+//     the bridge's test seam AssetAuthoring.AfterStep so that at one named step of an asset command it writes a file
+//     (an external program) or stops this Editor process (a crash) — the seam is unreachable from any request.
 // None of this exists in the production bridge: it has no activation switch, no approval command and no triggers.
 using System;
 using System.Collections.Generic;
@@ -30,7 +34,7 @@ namespace Gpos.LiveBridge.Testkit
     [Serializable]
     class Op
     {
-        public string op, target, path, kind, value, parent, scene, name;
+        public string op, target, path, kind, value, parent, scene, name, step, action, text;
         public bool keepWorld;
     }
 
@@ -39,7 +43,45 @@ namespace Gpos.LiveBridge.Testkit
     {
         static readonly Regex Proposal = new Regex("\"id\":\"([0-9a-f]{32})\"[^}]*?\"owner\":\"(AGENT:testkit-(approve|reject)[^\"]*)\"[^}]*?\"state\":\"PENDING\"");
         static MethodInfo decide;
+        static FieldInfo afterStep;
         static string triggers, outputs;
+        static Op armed;
+
+        static string Project { get { return Path.GetFullPath(Path.Combine(Application.dataPath, "..")); } }
+
+        // The armed action runs once, at the named step of the next asset command that reaches it.
+        static void OnStep(string step, string assetPath)
+        {
+            var a = armed;
+            if (a == null || a.step != step) return;
+            armed = null;
+            string target = Path.Combine(Project, a.path ?? assetPath ?? "");
+            switch (a.action)
+            {
+                case "crash": System.Diagnostics.Process.GetCurrentProcess().Kill(); break;
+                case "write": Directory.CreateDirectory(Path.GetDirectoryName(target)); File.WriteAllText(target, a.text ?? ""); break;
+                case "append": File.AppendAllText(target, a.text ?? ""); break;
+                case "throw": throw new InvalidOperationException("testkit: injected failure at " + step);
+                case "write-scratch":   // an unknown file appears inside the transaction's scratch folder
+                {
+                    var dirs = Directory.GetDirectories(Path.Combine(Project, "Assets"), "GposAssetTxn-*");
+                    if (dirs.Length != 1) throw new InvalidOperationException("testkit: expected one scratch folder, found " + dirs.Length);
+                    File.WriteAllText(Path.Combine(dirs[0], a.path), a.text ?? "");
+                    break;
+                }
+                case "collide-scratch": // the transaction's scratch folder name is taken before GPOS creates it
+                {
+                    string dir = Project;
+                    while (dir != null && !Directory.Exists(Path.Combine(dir, ".game", "gpos"))) dir = Path.GetDirectoryName(dir);
+                    var records = Directory.GetFiles(Path.Combine(dir, ".game", "gpos-runtime", "unity", "asset-create-txn"), "*.json", SearchOption.AllDirectories)
+                                           .OrderBy(f => File.GetLastWriteTimeUtc(f)).ToList();
+                    string txn = Path.GetFileNameWithoutExtension(records.Last());
+                    Directory.CreateDirectory(Path.Combine(Project, "Assets", "GposAssetTxn-" + txn));
+                    File.WriteAllText(Path.Combine(Project, "Assets", "GposAssetTxn-" + txn, "mine.txt"), a.text ?? "");
+                    break;
+                }
+            }
+        }
 
         static Testkit()
         {
@@ -49,6 +91,8 @@ namespace Gpos.LiveBridge.Testkit
             if (bridge == null || approvals == null) { Debug.LogError("[gpos-testkit] the bridge assembly is missing"); return; }
             bridge.GetMethod("Activate", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null);
             decide = approvals.GetMethod("Decide", BindingFlags.Static | BindingFlags.NonPublic);
+            var assets = Type.GetType("Gpos.LiveBridge.AssetAuthoring, Gpos.LiveBridge.Editor");
+            if (assets != null) afterStep = assets.GetField("AfterStep", BindingFlags.Static | BindingFlags.NonPublic);
             triggers = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Temp", "gpos-testkit"));
             outputs = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Temp", "gpos-testkit-out"));
             EditorApplication.update += Tick;
@@ -215,6 +259,46 @@ namespace Gpos.LiveBridge.Testkit
                     var s = EditorSceneManager.OpenScene(o.scene, OpenSceneMode.Single);
                     return Ok("loaded", s.isLoaded ? "true" : "false");
                 }
+                case "arm":              // one-shot: at step `step` of the next asset command, do `action`
+                {
+                    if (afterStep == null) throw new ArgumentException("the bridge has no asset step seam");
+                    armed = o;
+                    afterStep.SetValue(null, (Action<string, string>)OnStep);
+                    return Ok();
+                }
+                case "disarm": armed = null; if (afterStep != null) afterStep.SetValue(null, null); return Ok();
+                case "armed": return Ok("armed", armed == null ? "false" : "true");
+                case "setup-assets": return SetupAssets();
+                case "save-asset":       // Ctrl+S on one asset (the Human's own save)
+                {
+                    var target = Find(o.target);
+                    AssetDatabase.SaveAssetIfDirty(target);
+                    return Ok("dirty", EditorUtility.IsDirty(target) ? "true" : "false");
+                }
+                case "import": AssetDatabase.ImportAsset(o.path, ImportAssetOptions.ForceUpdate); return Ok();
+                case "dirty": return Ok("dirty", EditorUtility.IsDirty(Find(o.target)) ? "true" : "false");
+                case "material-instances":
+                    return Ok("count", Resources.FindObjectsOfTypeAll<Material>().Count(m => !EditorUtility.IsPersistent(m)).ToString(CultureInfo.InvariantCulture));
+                case "shared-materials":
+                {
+                    var r = (Renderer)Find(o.target);
+                    return Ok("ids", "[" + string.Join(",", r.sharedMaterials.Select(m => Q(Id(m) ?? ""))) + "]");
+                }
+                case "asset-guid": return Ok("guid", Q(AssetDatabase.AssetPathToGUID(o.path, AssetPathToGUIDOptions.OnlyExistingAssets)));
+                case "id-of": { var a = AssetDatabase.LoadMainAssetAtPath(o.path); return Ok("id", a == null ? "null" : Q(Id(a))); }
+                case "second-scene":     // File > New Scene (additive), one object, saved; the first Scene stays active
+                {
+                    var active = SceneManager.GetActiveScene();
+                    var s = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+                    var go = new GameObject(o.name ?? "Other");
+                    SceneManager.MoveGameObjectToScene(go, s);
+                    EditorSceneManager.SaveScene(s, o.scene);
+                    SceneManager.SetActiveScene(active);
+                    return Ok("id", Q(Id(go)), "scene", Q(s.path));
+                }
+                case "active-scene": return Ok("path", Q(SceneManager.GetActiveScene().path));
+                case "save-open-scenes": EditorSceneManager.SaveOpenScenes(); return Ok();
+                case "close-scene": EditorSceneManager.CloseScene(SceneManager.GetSceneByPath(o.scene), true); return Ok();
                 case "close-unsaved":
                 {
                     for (int i = SceneManager.sceneCount - 1; i >= 0; i--)
@@ -226,6 +310,94 @@ namespace Gpos.LiveBridge.Testkit
                 }
             }
             throw new ArgumentException("unknown op " + o.op);
+        }
+
+        // The asset fixture a Human would have made in the Editor: a sprite import, a cubemap and a 3D texture, a prefab
+        // with a root and an inner child, two materials, ScriptableObject assets (one with a sub-asset), materials in the
+        // embedded fixture package (one in an Editor folder), and Scene objects that hold asset references and renderers.
+        static string SetupAssets()
+        {
+            foreach (var f in new[] { "Materials", "Data", "Prefabs", "Art" })
+                if (!AssetDatabase.IsValidFolder("Assets/" + f)) AssetDatabase.CreateFolder("Assets", f);
+            var ti = (TextureImporter)AssetImporter.GetAtPath("Assets/Art/hero.png");
+            ti.textureType = TextureImporterType.Sprite;
+            ti.spriteImportMode = SpriteImportMode.Single;
+            ti.SaveAndReimport();
+            var cube = new Cubemap(8, TextureFormat.RGBA32, false);
+            AssetDatabase.CreateAsset(cube, "Assets/Art/Sky.cubemap");
+            var vol = new Texture3D(4, 4, 4, TextureFormat.RGBA32, false);
+            AssetDatabase.CreateAsset(vol, "Assets/Art/Volume.asset");
+            var gpos = Shader.Find("GPOS/Test");
+            var baseMat = new Material(gpos);
+            AssetDatabase.CreateAsset(baseMat, "Assets/Materials/Base.mat");
+            var other = new Material(Shader.Find("Standard"));
+            AssetDatabase.CreateAsset(other, "Assets/Materials/Other.mat");
+            var pkg = new Material(Shader.Find("Standard"));
+            AssetDatabase.CreateAsset(pkg, "Packages/com.gpos.fixture-assets/Materials/PkgMat.mat");
+            var edm = new Material(Shader.Find("Standard"));
+            AssetDatabase.CreateAsset(edm, "Packages/com.gpos.fixture-assets/Editor/EdMat.mat");
+            var config = ScriptableObject.CreateInstance(TypeOf("GameConfig"));
+            AssetDatabase.CreateAsset(config, "Assets/Data/Existing.asset");
+            var plain = ScriptableObject.CreateInstance(TypeOf("PlainData"));
+            AssetDatabase.CreateAsset(plain, "Assets/Data/Plain.asset");
+            var callback = ScriptableObject.CreateInstance(TypeOf("CallbackData"));
+            AssetDatabase.CreateAsset(callback, "Assets/Data/Callback.asset");
+            var multi = ScriptableObject.CreateInstance(TypeOf("GameConfig"));
+            AssetDatabase.CreateAsset(multi, "Assets/Data/Multi.asset");
+            var part = ScriptableObject.CreateInstance(TypeOf("PlainData"));
+            part.name = "Part";
+            AssetDatabase.AddObjectToAsset(part, multi);
+            var box = new GameObject("Box");
+            box.AddComponent<BoxCollider>();
+            box.AddComponent<MeshFilter>().sharedMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
+            box.AddComponent<MeshRenderer>().sharedMaterial = other;
+            var inner = new GameObject("Inner");
+            inner.transform.SetParent(box.transform, false);
+            inner.AddComponent<SphereCollider>();
+            var prefab = PrefabUtility.SaveAsPrefabAsset(box, "Assets/Prefabs/Box.prefab");
+            UnityEngine.Object.DestroyImmediate(box);
+            AssetDatabase.SaveAssets();
+            var scene = SceneManager.GetSceneByPath("Assets/Scenes/Main.unity");
+            var refs = new GameObject("Refs");
+            var refsComponent = refs.AddComponent(TypeOf("AssetRefs"));
+            var audio = refs.AddComponent<AudioSource>();
+            var slots = new GameObject("Slots");
+            slots.AddComponent<MeshFilter>().sharedMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
+            var slotRenderer = slots.AddComponent<MeshRenderer>();
+            slotRenderer.sharedMaterial = other;
+            var none = new GameObject("NoSlots");
+            var noneRenderer = none.AddComponent<MeshRenderer>();
+            noneRenderer.sharedMaterials = new Material[0];
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+            EditorSceneManager.SaveScene(scene);
+            Undo.ClearAll();
+            var sprite = AssetDatabase.LoadAllAssetsAtPath("Assets/Art/hero.png").OfType<Sprite>().First();
+            var model = AssetDatabase.LoadMainAssetAtPath("Assets/Models/cube.obj");
+            var modelMesh = AssetDatabase.LoadAllAssetsAtPath("Assets/Models/cube.obj").OfType<Mesh>().First();
+            var ids = new List<string> {
+                "checker", Q(Id(AssetDatabase.LoadMainAssetAtPath("Assets/Art/checker.png"))),
+                "hero_texture", Q(Id(AssetDatabase.LoadMainAssetAtPath("Assets/Art/hero.png"))), "hero_sprite", Q(Id(sprite)),
+                "sky", Q(Id(cube)), "volume", Q(Id(vol)), "beep", Q(Id(AssetDatabase.LoadMainAssetAtPath("Assets/Audio/beep.wav"))),
+                "model", Q(Id(model)), "model_mesh", Q(Id(modelMesh)), "prefab", Q(Id(prefab)),
+                "prefab_collider", Q(Id(prefab.GetComponent<BoxCollider>())), "prefab_renderer", Q(Id(prefab.GetComponent<MeshRenderer>())),
+                "prefab_inner", Q(Id(prefab.transform.GetChild(0).gameObject)),
+                "prefab_inner_collider", Q(Id(prefab.transform.GetChild(0).GetComponent<SphereCollider>())),
+                "base", Q(Id(baseMat)), "other", Q(Id(other)), "pkg_mat", Q(Id(pkg)), "editor_mat", Q(Id(edm)),
+                "config", Q(Id(config)), "plain", Q(Id(plain)), "callback", Q(Id(callback)), "multi", Q(Id(multi)), "part", Q(Id(part)),
+                "shader", Q(Id(gpos)), "standard", Q(Id(Shader.Find("Standard"))),
+                "scene_asset", Q(Id(AssetDatabase.LoadMainAssetAtPath("Assets/Scenes/Main.unity"))),
+                "script", Q(Id(AssetDatabase.LoadMainAssetAtPath("Assets/AssetScripts/GameConfig.cs"))),
+                "folder", Q(Id(AssetDatabase.LoadMainAssetAtPath("Assets/Data"))),
+                "refs", Q(Id(refsComponent)), "audio", Q(Id(audio)), "slots", Q(Id(slotRenderer)), "no_slots", Q(Id(noneRenderer)),
+                "instance_renderer", Q(Id(instance.GetComponent<MeshRenderer>())) };
+            return Ok(ids.ToArray());
+        }
+
+        static Type TypeOf(string name)
+        {
+            foreach (var t in TypeCache.GetTypesDerivedFrom<UnityEngine.Object>())
+                if (t.FullName == name) return t;
+            throw new ArgumentException("no type " + name);
         }
     }
 }

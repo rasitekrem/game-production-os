@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Bounded mutation harness for Unity live Scene authoring and the bridge upgrade (Phase 2C-6B1).
+"""Bounded mutation harness for Unity live Scene authoring and the bridge upgrade (Phase 2C-6B1; anchors follow
+bridge 1.2.0 — the asset mutations are in tests/mutate_unity_assets.py).
 
     python3 tests/mutate_unity_authoring.py [--jobs N] [--only TEXT] [--anchors]
 
@@ -92,14 +93,14 @@ MUTATIONS = [
     ("an unknown outcome reports no mutation", "authoring", [
         (AU, '{"request_id": r.request_id}, mutation_performed=mutating)', '{"request_id": r.request_id}, mutation_performed=False)')]),
     ("a read reports a mutation", "authoring", [
-        (AU, "        return AdapterOutcome(ok=True, mutation_performed=mutating, data=out, diagnostics=diags)",
-         "        return AdapterOutcome(ok=True, mutation_performed=True, data=out, diagnostics=diags)")]),
+        (AU, "        return AdapterOutcome(ok=True, mutation_performed=mutating, data=out, diagnostics=tuple(diags))",
+         "        return AdapterOutcome(ok=True, mutation_performed=True, data=out, diagnostics=tuple(diags))")]),
     ("a withdrawn request is not reported as never executed", "authoring", [
         (AU, "    if r.outcome == ipc.WITHDRAWN:\n", "    if False:\n")]),
     ("authoring runs on a session that is not LIVE", "authoring", [(AU, "    if cls != ls.LIVE:\n", "    if False:\n")]),
     ("authoring skips the installed-package check", "authoring", [
-        (AU, "    manifest = live.require_installed()\n    b = live.bridge(manifest, state)\n    r = live.call(live.channel(), COMMANDS[cap]",
-         "    manifest = lv.bi.load_manifest()\n    b = live.bridge(manifest, state)\n    r = live.call(live.channel(), COMMANDS[cap]")]),
+        (AU, "    manifest = live.require_installed()\n    b = live.bridge(manifest, state)\n    r = live.call(live.channel(), command",
+         "    manifest = lv.bi.load_manifest()\n    b = live.bridge(manifest, state)\n    r = live.call(live.channel(), command")]),
     ("an authoring conflict maps to another code", "authoring", [
         (LV, '"AUTHORING_CONFLICT": "LIVE_AUTHORING_CONFLICT"', '"AUTHORING_CONFLICT": "LIVE_AUTHORING_REFUSED"')]),
     ("a value Unity did not keep maps to a protocol error", "authoring", [
@@ -215,8 +216,8 @@ REAL_MUTATIONS = [
     ("Editor: hidden serialized state is not in the component token", "real", [
         (ED + "Scene.cs", "            if (it.Next(true))\n            {\n                do\n                {\n                    if (++n > MaxProperties)",
          "            if (it.NextVisible(true))\n            {\n                do\n                {\n                    if (++n > MaxProperties)"),
-        (ED + "Scene.cs", "                } while (it.Next(false));\n            }\n            return b.Int(n).Finish();",
-         "                } while (it.NextVisible(false));\n            }\n            return b.Int(n).Finish();")]),
+        (ED + "Scene.cs", "                } while (it.Next(false));\n            }\n            return n;",
+         "                } while (it.NextVisible(false));\n            }\n            return n;")]),
     ("Editor: references are hashed by session-local instance", "real", [
         (ED + "Scene.cs", "                    b.Field(ReferenceHash(p));", "                    b.UInt(p.contentHash);")]),
     ("Editor: the subtree token omits component state", "real", [
@@ -229,10 +230,10 @@ REAL_MUTATIONS = [
         (ED + "Authoring.cs", "            else PrefabBoundary(go, SceneObjects.None);\n            if (name != null) ObjectIds.CheckName(name);",
          "            if (name != null) ObjectIds.CheckName(name);")]),
     ("Editor: a hidden property is writable", "real", [
-        (ED + "Properties.cs", '            if (!Listed(c, path, visible)) return "HIDDEN";\n', "")]),
+        (ED + "Properties.cs", '            if (!Listed(o, path, visible)) return "HIDDEN";\n', "")]),
     ("Editor: any Scene object satisfies a reference field", "real", [
-        (ED + "Properties.cs", "            if (declared == null) return false;\n            if (target is GameObject)",
-         "            if (declared != null) return true;\n            if (target is GameObject)")]),
+        (ED + "Properties.cs", "            if (declared == null || target == null) return false;\n            if (declared == \"Object\") return true;",
+         "            if (declared != null) return true;\n            if (declared == \"Object\") return true;")]),
     ("Editor: a written value is not read back", "real", [
         (ED + "Authoring.cs", "                if (q == null || !Properties.Holds(q, value, enumIndex, target))", "                if (q == null)")]),
     ("Editor: a created object's id is allocated after it is recorded", "real", [

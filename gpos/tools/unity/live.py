@@ -1,7 +1,8 @@
-"""The Unity live plane (Phase 2C-6A, authoring Phase 2C-6B1): a fixed Editor bridge and one Human-approved session
-per GPOS project.
+"""The Unity live plane (Phase 2C-6A, Scene authoring Phase 2C-6B1, asset authoring Phase 2C-6B2A): a fixed Editor
+bridge and one Human-approved session per GPOS project.
 
-Nine session capabilities here, twelve Scene-authoring capabilities in authoring.py, and nothing generic:
+Nine session capabilities here, thirteen Scene-authoring capabilities in authoring.py, seven asset capabilities in
+assets.py, and nothing generic:
 
     unity.live-install-bridge   write the audited bridge package into a closed project, or upgrade an exact earlier
                                 released bridge there with a crash-recoverable transaction        MUTATING, EXECUTION
@@ -67,8 +68,14 @@ REFUSALS = {
     "TYPE_NOT_IN_CATALOG": "LIVE_TYPE_NOT_IN_CATALOG", "AUTHORING_REFUSED": "LIVE_AUTHORING_REFUSED",
     "PROPERTY_UNSUPPORTED": "LIVE_PROPERTY_UNSUPPORTED", "VALUE_INVALID": "LIVE_VALUE_INVALID",
     "VALUE_NOT_APPLIED": "LIVE_VALUE_INVALID", "AUTHORING_LIMIT": "LIVE_AUTHORING_LIMIT",
+    # asset references and asset authoring (Phase 2C-6B2A)
+    "ASSET_REFUSED": "LIVE_ASSET_REFUSED", "ASSET_PATH_INVALID": "LIVE_ASSET_PATH_INVALID",
+    "ASSET_LIMIT": "LIVE_ASSET_LIMIT", "SHADER_NOT_IN_CATALOG": "LIVE_SHADER_NOT_IN_CATALOG",
+    "ASSET_CONFLICT": "LIVE_ASSET_CONFLICT", "ASSET_DIRTY": "LIVE_ASSET_DIRTY", "ASSET_EXISTS": "LIVE_ASSET_EXISTS",
+    "ASSET_NOT_EDITABLE": "LIVE_ASSET_NOT_EDITABLE", "CREATE_INCOMPLETE": "LIVE_ASSET_CREATE_INCOMPLETE",
 }
-# FAILED codes of an authoring command whose mutation began (the bridge reverted it; see authoring.py).
+# FAILED codes of an authoring command whose mutation began (the bridge reverted it; see authoring.py). An asset
+# command's PERSISTENCE_UNKNOWN (the commit point was reached) is LIVE_OUTCOME_UNKNOWN (authoring.outcome).
 AUTHORING_FAILURES = {"ROLLBACK_INCOMPLETE": "LIVE_ROLLBACK_INCOMPLETE", "AUTHORING_FAILED": "LIVE_AUTHORING_FAILED"}
 
 # Every status, code, state and phase the bridge protocol and the live plane report (documentation vocabulary).
@@ -81,13 +88,20 @@ PROTOCOL_VOCABULARY = frozenset(REFUSALS) | frozenset({
     "EDIT", "PLAYING", "PAUSED", "ENTERING_PLAYMODE", "EXITING_PLAYMODE", "COMPILING", "UPDATING", "RELOADING",
     "QUITTING", "PENDING_OPERATION", "INITIALIZING", "READY", "CLOSED",
     ls.LIVE, ls.UNRESPONSIVE, ls.STALE, ls.CLOSED, bi.ABSENT, bi.EXACT, bi.PREVIOUS_STATE, bi.UNTRUSTED,
-    ipc.RESPONDED, ipc.WITHDRAWN, ipc.UNKNOWN}) | frozenset(AUTHORING_FAILURES) | frozenset({
+    ipc.RESPONDED, ipc.WITHDRAWN, ipc.UNKNOWN}) | frozenset(AUTHORING_FAILURES) | frozenset({"PERSISTENCE_UNKNOWN"}) | frozenset({
     # authoring: object kinds, prefab roles, reference and catalog kinds, property write refusals, upgrade
     # transaction phases and places, recovery outcomes
     "NONE", "INSTANCE_ROOT", "INSTANCE_CONTENT", "ADDED_OVERRIDE", "MISSING", "GAME_OBJECT", "COMPONENT",
     "SCENE", "ASSET", "OTHER_SCENE", "NATIVE", "SCRIPT", "TRANSFORM_USES_SET_TRANSFORM", "PREFAB_BOUNDARY",
     "HIDDEN", "PATH_UNSUPPORTED", "DENIED", "INSIDE_UNSUPPORTED", "NOT_EDITABLE", "TYPE_UNSUPPORTED",
-    bi.PLACE_UNKNOWN, "COMPLETED", "ROLLED_BACK"} | set(bi.PHASES))
+    bi.PLACE_UNKNOWN, "COMPLETED", "ROLLED_BACK"} | set(bi.PHASES)) | frozenset({
+    # assets: kinds, sources, catalogs, the Renderer slot operations, the audio refusal, creation-transaction phases,
+    # the disk states recovery reads and its outcomes
+    "MATERIAL", "TEXTURE", "SPRITE", "AUDIO", "MESH", "PREFAB", "PREFAB_COMPONENT", "MODEL", "SCRIPTABLE_OBJECT",
+    "ASSETS", "PACKAGE", "BUILTIN", "KINDS", "SCRIPTABLE_OBJECTS", "SHADERS", "REPLACE", "CREATE_FIRST",
+    "AUDIO_USES_RESOURCE", "PER_RENDERER_DATA", "PREPARED", "SCRATCH_READY", "TEMP_PROVEN", "FINAL_PROVEN",
+    "ABSENT", "EMPTY", "HOLDS_TEMP", "UNKNOWN", "EXACT", "DIFFERENT", "OURS_DIFFERENT", "OTHER",
+    "NOTHING_CREATED", "TEMP_REMOVED", "FINAL_KEPT", "ABANDONED"})
 
 
 def _diag(code, message, cap, details=None):

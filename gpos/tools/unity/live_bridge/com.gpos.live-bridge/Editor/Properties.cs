@@ -1,8 +1,10 @@
-// GPOS live bridge — serialized properties of one Component: bounded enumeration and the default-deny write.
-// Enumeration lists visible properties only (and a Behaviour's m_Enabled); hidden serialized state is covered by
-// the component token but never listed, valued or written. It never enters arrays, managed references or the
-// children of non-generic values. A write is allowed only for a listed property whose path, ancestry and
-// (property type, type name) the core PropertyRules accept; the value is validated first and read back after.
+// GPOS live bridge — serialized properties of one Component or one ScriptableObject asset (bridge 1.2.0): bounded
+// enumeration and the default-deny write. Enumeration lists visible properties only (and a Behaviour's m_Enabled);
+// hidden serialized state is covered by the component or asset token but never listed, valued or written. It never
+// enters arrays, managed references or the children of non-generic values. A write is allowed only for a listed
+// property whose path, ancestry and (property type, type name) the core PropertyRules accept; the value is
+// validated first and read back after. An object reference names a same-Scene object or a reviewed asset
+// (AssetResolver) whose type the field declares; an AudioSource's clip is its m_Resource, which takes audio only.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,21 +33,24 @@ namespace Gpos.LiveBridge
             return visible;
         }
 
-        static bool Listed(Component c, string path, HashSet<string> visible)
+        static bool Listed(UnityEngine.Object o, string path, HashSet<string> visible)
         {
-            return visible.Contains(path) || (path == "m_Enabled" && c is Behaviour);
+            return visible.Contains(path) || (path == "m_Enabled" && o is Behaviour);
         }
 
         // Why this property may not be written ("TRANSFORM_USES_SET_TRANSFORM", "PREFAB_BOUNDARY", "HIDDEN",
-        // "PATH_UNSUPPORTED", "DENIED", "INSIDE_UNSUPPORTED", "NOT_EDITABLE", "TYPE_UNSUPPORTED"), or null.
-        public static string WriteRefusal(Component c, SerializedObject so, SerializedProperty p, HashSet<string> visible)
+        // "PATH_UNSUPPORTED", "DENIED", "INSIDE_UNSUPPORTED", "NOT_EDITABLE", "TYPE_UNSUPPORTED",
+        // "AUDIO_USES_RESOURCE"), or null.
+        public static string WriteRefusal(UnityEngine.Object o, SerializedObject so, SerializedProperty p, HashSet<string> visible)
         {
+            var c = o as Component;
             if (c is Transform) return "TRANSFORM_USES_SET_TRANSFORM";
-            if (SceneObjects.Role(c) != SceneObjects.None) return "PREFAB_BOUNDARY";
+            if (c != null && SceneObjects.Role(c) != SceneObjects.None) return "PREFAB_BOUNDARY";
             string path = p.propertyPath;
             string problem = PropertyRules.PathProblem(path);
             if (problem != null) return problem;
-            if (!Listed(c, path, visible)) return "HIDDEN";
+            if (c is AudioSource && path == "m_audioClip") return "AUDIO_USES_RESOURCE";
+            if (!Listed(o, path, visible)) return "HIDDEN";
             foreach (var ancestor in PropertyRules.Ancestors(path))
             {
                 var a = so.FindProperty(ancestor);
@@ -57,6 +62,18 @@ namespace Gpos.LiveBridge
         }
 
         public static Dictionary<string, object> List(Component c, string prefix, int page)
+        {
+            var all = Entries(c, prefix);
+            int start = page * PageSize;
+            return new Dictionary<string, object> {
+                { "component", SceneObjects.Ref(c) }, { "component_token", SceneObjects.ComponentToken(c) },
+                { "count", all.Count }, { "page", page }, { "page_size", PageSize },
+                { "next_page", start + PageSize < all.Count ? (object)(page + 1) : null },
+                { "properties", all.Skip(start).Take(PageSize).ToList() } };
+        }
+
+        // Every listed property of `o` (a Component or a ScriptableObject asset) under `prefix`, in order.
+        public static List<object> Entries(UnityEngine.Object c, string prefix)
         {
             var so = new SerializedObject(c);
             var visible = VisiblePaths(so);
@@ -80,15 +97,10 @@ namespace Gpos.LiveBridge
                 if (kind != null) Describe(entry, it, kind, c);
                 all.Add(entry);
             }
-            int start = page * PageSize;
-            return new Dictionary<string, object> {
-                { "component", SceneObjects.Ref(c) }, { "component_token", SceneObjects.ComponentToken(c) },
-                { "count", all.Count }, { "page", page }, { "page_size", PageSize },
-                { "next_page", start + PageSize < all.Count ? (object)(page + 1) : null },
-                { "properties", all.Skip(start).Take(PageSize).ToList() } };
+            return all;
         }
 
-        static void Describe(Dictionary<string, object> entry, SerializedProperty p, string kind, Component owner)
+        static void Describe(Dictionary<string, object> entry, SerializedProperty p, string kind, UnityEngine.Object owner)
         {
             object value = Read(p, kind, owner);
             var s = value as string;
@@ -111,16 +123,19 @@ namespace Gpos.LiveBridge
             }
         }
 
-        static string ReferenceKind(UnityEngine.Object target, Component owner)
+        // NONE, ASSET (a persistent object), SCENE (an object of the owner component's Scene) or OTHER_SCENE (any
+        // other Scene object, and every Scene object an asset holds).
+        static string ReferenceKind(UnityEngine.Object target, UnityEngine.Object owner)
         {
             if (target == null) return "NONE";
+            if (EditorUtility.IsPersistent(target)) return "ASSET";
             var go = SceneObjects.GameObjectOf(target);
-            if (go == null || EditorUtility.IsPersistent(target)) return "ASSET";
-            return go.scene == owner.gameObject.scene ? "SCENE" : "OTHER_SCENE";
+            var c = owner as Component;
+            return go != null && c != null && go.scene == c.gameObject.scene ? "SCENE" : "OTHER_SCENE";
         }
 
         // The canonical value of a supported property.
-        public static object Read(SerializedProperty p, string kind, Component owner)
+        public static object Read(SerializedProperty p, string kind, UnityEngine.Object owner)
         {
             switch (kind)
             {
@@ -162,24 +177,30 @@ namespace Gpos.LiveBridge
                 case "object":
                 {
                     var target = p.objectReferenceValue;
-                    return ReferenceKind(target, owner) == "SCENE" ? SceneObjects.Id(target) : null;
+                    string reference = ReferenceKind(target, owner);
+                    return reference == "SCENE" || reference == "ASSET" ? SceneObjects.Id(target) : null;
                 }
             }
             return null;
         }
 
-        // Does the component accept this Scene object for a field declared PPtr<T>? Checked by simple type name;
-        // what Unity actually stored is verified by reading the field back.
+        // Does a field declared PPtr<T> accept this Scene object or reviewed asset? T must be the target's type or one
+        // of its base types (by simple name; "Object" accepts any). Checked before Unity assigns — Unity silently
+        // stores null for a wrong type and reports success — and what it stored is verified by reading it back.
         public static bool Accepts(string declared, UnityEngine.Object target)
         {
-            if (declared == null) return false;
-            if (target is GameObject) return declared == "GameObject" || declared == "Object";
-            var c = target as Component;
-            if (c == null) return false;
-            if (declared == "Object" || declared == "Component") return true;
-            for (var t = c.GetType(); t != null; t = t.BaseType)
+            if (declared == null || target == null) return false;
+            if (declared == "Object") return true;
+            for (var t = target.GetType(); t != null && t != typeof(object); t = t.BaseType)
                 if (t.Name == declared) return true;
             return false;
+        }
+
+        // The asset kind a special reference property takes, or null for the ordinary type rule: an AudioSource's
+        // clip is m_Resource (audio only); m_audioClip is refused by WriteRefusal.
+        public static string RequiredKind(UnityEngine.Object owner, string path)
+        {
+            return owner is AudioSource && path == "m_Resource" ? AssetKinds.Audio : null;
         }
 
         public static void Assign(SerializedProperty p, PropertyValue v, int enumIndex, UnityEngine.Object target)
@@ -269,7 +290,7 @@ namespace Gpos.LiveBridge
         }
 
         // The write refusal and kind of one property path, exactly as enumeration reports them.
-        public static SerializedProperty Writable(Component c, SerializedObject so, string path, string kind)
+        public static SerializedProperty Writable(UnityEngine.Object c, SerializedObject so, string path, string kind)
         {
             string problem = PropertyRules.PathProblem(path);
             if (problem != null) throw new Refusal("PROPERTY_UNSUPPORTED", "the property cannot be written (" + problem + ")");

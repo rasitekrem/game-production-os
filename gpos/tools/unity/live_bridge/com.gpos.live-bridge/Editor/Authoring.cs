@@ -1,6 +1,8 @@
-// GPOS live bridge — the Scene-authoring commands (bridge 1.1.0). Each reads or changes only what its name says,
-// through fixed Unity Editor APIs; there is no generic call, no method name, no menu, no reflection target and no
-// asset operation. Every mutating command:
+// GPOS live bridge — the Scene-authoring commands (bridge 1.1.0; asset references and set-renderer-material in 1.2.0).
+// Each reads or changes only what its name says, through fixed Unity Editor APIs; there is no generic call, no method
+// name, no menu, no reflection target and no asset write here (the asset commands are in AssetAuthoring.cs). An
+// object reference may name a reviewed asset (AssetResolver) — a Scene change that points at an asset, never a
+// change of that asset. Every mutating command:
 //   1 resolves its objects by GlobalObjectId (Resolver) and refuses prefab-instance content (the prefab boundary);
 //   2 compares every expected token with the current state — any difference is AUTHORING_CONFLICT before anything
 //     changes (the Human's own editing is never blocked; a stale request is);
@@ -30,7 +32,7 @@ namespace Gpos.LiveBridge
 
         // ------------------------------------------------------------ arguments (every key is present; absent is null)
 
-        static string Str(Dictionary<string, object> a, string key, bool required = false)
+        internal static string Str(Dictionary<string, object> a, string key, bool required = false)
         {
             object v = a[key];
             if (v == null)
@@ -51,7 +53,7 @@ namespace Gpos.LiveBridge
             return (bool)v;
         }
 
-        static int? Int(Dictionary<string, object> a, string key, int min, int max)
+        internal static int? Int(Dictionary<string, object> a, string key, int min, int max)
         {
             object v = a[key];
             if (v == null) return null;
@@ -61,7 +63,7 @@ namespace Gpos.LiveBridge
             return (int)d;
         }
 
-        static string Token(Dictionary<string, object> a, string key, bool required)
+        internal static string Token(Dictionary<string, object> a, string key, bool required)
         {
             var s = Str(a, key, required);
             if (s != null) ObjectIds.CheckToken(s, key);
@@ -108,6 +110,8 @@ namespace Gpos.LiveBridge
         public static Dictionary<string, object> Run(Request r)
         {
             var a = r.Args;
+            AssetCatalogs.Reset();
+            if (Protocol.IsAsset(r.Command)) return AssetAuthoring.Run(r);
             switch (r.Command)
             {
                 case "object-inspect": return Inspect(a);
@@ -122,6 +126,7 @@ namespace Gpos.LiveBridge
                 case "remove-component": return RemoveComponent(a);
                 case "set-property": return SetProperty(a);
                 case "save-scene": return SaveScene(a);
+                case "set-renderer-material": return SetRendererMaterial(a);
             }
             throw new Refusal("UNKNOWN_COMMAND", "the command is not in the closed allowlist");
         }
@@ -211,7 +216,7 @@ namespace Gpos.LiveBridge
                    { Status = code == "AUTHORING_FAILED" ? "FAILED" : "REFUSED", Data = data };
         }
 
-        static Dictionary<string, object> Tokens(params object[] pairs)
+        internal static Dictionary<string, object> Tokens(params object[] pairs)
         {
             var d = new Dictionary<string, object>();
             for (int i = 0; i < pairs.Length; i += 2) d[(string)pairs[i]] = pairs[i + 1];
@@ -634,6 +639,7 @@ namespace Gpos.LiveBridge
             var so = new SerializedObject(c);
             var p = Properties.Writable(c, so, path, kind);
             var value = PropertyRules.Parse(kind, a["value"]);
+            string requiredKind = Properties.RequiredKind(c, path);
             int enumIndex = -1;
             UnityEngine.Object target = null;
             if (kind == "enum")
@@ -645,9 +651,20 @@ namespace Gpos.LiveBridge
             }
             if (kind == "object" && value.String != null)
             {
-                target = resolver.Resolve(value.String);
-                if (SceneObjects.GameObjectOf(target).scene != c.gameObject.scene)
-                    throw new Refusal("VALUE_INVALID", "an object reference names an object of the same Scene");
+                if (AssetIds.IsAsset(value.String))
+                {
+                    var asset = AssetResolver.Resolve(value.String);
+                    if (requiredKind != null && asset.Kind != requiredKind)
+                        throw new Refusal("VALUE_INVALID", "this field takes a " + requiredKind + " asset, not a " + asset.Kind);
+                    target = asset.Object;
+                }
+                else
+                {
+                    if (requiredKind != null) throw new Refusal("VALUE_INVALID", "this field takes a " + requiredKind + " asset");
+                    target = resolver.Resolve(value.String);
+                    if (SceneObjects.GameObjectOf(target).scene != c.gameObject.scene)
+                        throw new Refusal("VALUE_INVALID", "an object reference names an object of the same Scene or a reviewed asset");
+                }
                 if (!Properties.Accepts(PropertyRules.PPtrType(p.type), target))
                     throw new Refusal("VALUE_INVALID", "the field does not accept that object's type");
             }
@@ -665,6 +682,52 @@ namespace Gpos.LiveBridge
                     { "component", SceneObjects.Ref(c) }, { "changed", changed },
                     { "property", new Dictionary<string, object> { { "path", path }, { "kind", kind },
                                                                    { "value", Properties.Read(new SerializedObject(c).FindProperty(path), kind, c) } } },
+                    { "tokens", Tokens("component", SceneObjects.ComponentToken(c)) } });
+        }
+
+        // One material slot of a Renderer (bridge 1.2.0): the shared material, written through the serialized
+        // m_Materials array exactly as the Inspector does. Renderer.material (which instantiates a copy) is never
+        // touched. An existing slot is replaced; a renderer with no slots gets its first slot only for slot 0; the
+        // array is never appended to, inserted into, shrunk or resized otherwise (RendererSlots).
+        static Dictionary<string, object> SetRendererMaterial(Dictionary<string, object> a)
+        {
+            var resolver = new Resolver();
+            string id = Str(a, "renderer", true), materialId = Str(a, "material");
+            var c = resolver.Component(id);
+            var renderer = c as Renderer;
+            if (renderer == null) throw new Refusal("OBJECT_REFUSED", "the component is not a Renderer");
+            PrefabBoundary(c, SceneObjects.None);
+            PrefabBoundary(c.gameObject, SceneObjects.None);
+            int slot = Int(a, "slot", 0, RendererSlots.MaxSlot) ?? -1;
+            if (slot < 0) throw new Refusal("BAD_ARGUMENTS", "slot is required");
+            Material material = null;
+            if (materialId != null)
+            {
+                var asset = AssetResolver.Resolve(materialId);
+                if (asset.Kind != AssetKinds.Material) throw new Refusal("VALUE_INVALID", "a renderer slot takes a MATERIAL asset, not a " + asset.Kind);
+                material = (Material)asset.Object;
+            }
+            string token = SceneObjects.ComponentToken(c);
+            Expect(Token(a, "expected_component_token", true), token, "the renderer");
+            var so = new SerializedObject(renderer);
+            var slots = so.FindProperty("m_Materials");
+            if (slots == null || !slots.isArray) throw new Refusal("PROPERTY_UNSUPPORTED", "the renderer has no material slots");
+            int size = slots.arraySize;
+            string operation = RendererSlots.Operation(slot, size);
+            int expectedSize = operation == RendererSlots.CreateFirst ? 1 : size;
+            var pre = new PreState();
+            pre.Add("component", id, token);
+            return Mutate("GPOS: set material " + slot + " of " + c.GetType().Name + " on " + c.gameObject.name, c.gameObject.scene, pre, () =>
+            {
+                if (operation == RendererSlots.CreateFirst) slots.arraySize = 1;
+                slots.GetArrayElementAtIndex(slot).objectReferenceValue = material;
+                so.ApplyModifiedProperties();
+                var shared = renderer.sharedMaterials;
+                if (shared.Length != expectedSize || shared[slot] != material)
+                    throw new Refusal("VALUE_NOT_APPLIED", "Unity or project code kept a different material in the slot");
+            }, () => new Dictionary<string, object> {
+                    { "component", SceneObjects.Ref(c) }, { "slot", slot }, { "operation", operation },
+                    { "material", material == null ? null : SceneObjects.Id(material) }, { "slot_count", renderer.sharedMaterials.Length },
                     { "tokens", Tokens("component", SceneObjects.ComponentToken(c)) } });
         }
 

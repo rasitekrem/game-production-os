@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
-"""Phase 2C-6B1 — Unity live Scene authoring and the bridge upgrade (alpha.17).
+"""Phase 2C-6B1 — Unity live Scene authoring and the bridge upgrade (alpha.17; bridge 1.2.0 since alpha.18).
 
     python3 tests/test_unity_authoring.py
 
 Fast groups need no Unity. A–C drive the GPOS side against `unity_live_fake_bridge.FakeBridge` (a stand-in that
 speaks the file protocol; it proves GPOS behaviour only): declarations, the input grammar, the exact arguments GPOS
 sends and how every bridge answer maps to a result. D is the crash-recoverable bridge upgrade and its recovery
-matrix, including the invariant that the pinned 1.0.0 history manifest is byte for byte the one frozen in tag
-v1.0.0-alpha.16. E checks the bridge and module sources for forbidden mechanisms. The bridge's own authoring
+matrix, including the invariant that the pinned history manifests are byte for byte the ones frozen in tags
+v1.0.0-alpha.16 (1.0.0) and v1.0.0-alpha.17 (1.1.0). E checks the bridge and module sources for forbidden mechanisms. The bridge's own authoring
 logic (grammars, tokens, catalog digest, property rules, busy rule, protocol) is covered by
 tests/test_unity_live_bridge_core.py.
 
 Real groups open disposable synthetic Unity projects in lab-owned batch-mode Editors activated by the test-only
 testkit, which also stands in for the Human (Inspector edits through SerializedObject, Hierarchy drags, Cmd-Z) —
-never the Human's Editor, never a user project. R1 is one authoring session end to end; R2 upgrades a real 1.0.0
-bridge (extracted from the frozen tag) in a closed project and attaches to the upgraded bridge. The real groups
+never the Human's Editor, never a user project. R1 is one authoring session end to end, including a second saved
+Scene; R2 upgrades real 1.0.0 and 1.1.0 bridges (extracted from the frozen tags) in a closed project and attaches to
+the upgraded bridge. The real groups
 stop with UNITY_RUNTIME_UNAVAILABLE_FOR_PHASE2C6A unless exactly one Hub Editor is installed, and guard Unity's
 EditorPrefs (by key and value hash) and the user's Package Manager configuration files.
 
@@ -54,6 +55,8 @@ from test_unity_live import (AGENT, EDITOR, EDITOR_VERSION, EDITORS, FAST, FIXTU
 
 FROZEN_TAG = "v1.0.0-alpha.16"
 FROZEN_DIGEST = "546b3cfbe4d41234d10450efacbb3397812d106a813dee5b3284903624a68c66"
+FROZEN_TAG_11 = "v1.0.0-alpha.17"
+FROZEN_DIGEST_11 = "00af2b3afccaea2700b6de3fedb5e1c2cae11b990c9640b68d7133b49f383394"
 ID = "GlobalObjectId_V1-2-0123456789abcdef0123456789abcdef-{}-0"
 T = "0" * 31 + "1"
 T2 = "0" * 31 + "2"
@@ -72,10 +75,11 @@ def git(*args, binary=False):
     return out.stdout if binary else out.stdout.decode()
 
 
-def frozen_package(dest):
-    """Write the bridge package exactly as tag v1.0.0-alpha.16 froze it to `dest` (created)."""
+def frozen_package(dest, tag=FROZEN_TAG):
+    """Write the bridge package exactly as `tag` (v1.0.0-alpha.16: bridge 1.0.0; v1.0.0-alpha.17: 1.1.0) froze it to
+    `dest` (created)."""
     prefix = "gpos/tools/unity/live_bridge/com.gpos.live-bridge/"
-    data = git("archive", "--format=tar", FROZEN_TAG, prefix, binary=True)
+    data = git("archive", "--format=tar", tag, prefix, binary=True)
     dest = Path(dest)
     with tarfile.open(fileobj=io.BytesIO(data)) as tar:
         for member in tar.getmembers():
@@ -96,11 +100,11 @@ def frozen_package(dest):
 # ---------------------------------------------------------------- A  declarations
 
 class A_Declarations(unittest.TestCase):
-    def test_twelve_fixed_capabilities(self):
+    def test_thirteen_fixed_capabilities(self):
         caps = {c.id: c for c in UnityAdapter.descriptor.capabilities}
-        self.assertEqual(len(caps), 24)
+        self.assertEqual(len(caps), 32)
         self.assertEqual(set(au.CAPABILITY_IDS), {c for c in caps if c in au.COMMANDS})
-        self.assertEqual(len(au.CAPABILITY_IDS), 12)
+        self.assertEqual(len(au.CAPABILITY_IDS), 13)
         for cid in au.CAPABILITY_IDS:
             c = caps[cid]
             read_only = cid in au.READ_ONLY
@@ -116,6 +120,7 @@ class A_Declarations(unittest.TestCase):
                 expected = (60.0, 300.0) if cid == au.SAVE_SCENE else (30.0, 120.0)
                 self.assertEqual((c.timeout.default, c.timeout.maximum), expected)
         self.assertIn("never Save As", caps[au.SAVE_SCENE].description)
+        self.assertIn("never instantiates a Material", caps[au.SET_RENDERER_MATERIAL].description)
         self.assertIn("not evidence", au.LIMITATION)
 
     def test_no_generic_surface(self):
@@ -292,13 +297,20 @@ class B_Inputs(unittest.TestCase):
             with self.subTest(kind):
                 au.parse_inputs(au.SET_PROPERTY, args(kind, value))
         au.parse_inputs(au.SET_PROPERTY, args("object", json.dumps(ID.format(9))))
+        for asset in ("GlobalObjectId_V1-1-" + "a" * 32 + "-21300000-0", "GlobalObjectId_V1-3-" + "b" * 32 + "-2100000-0",
+                      "GlobalObjectId_V1-4-0000000000000000e000000000000000-10202-0",
+                      "GlobalObjectId_V1-4-0000000000000000f000000000000000-10303-0"):
+            with self.subTest(asset):   # since bridge 1.2.0 an object reference may name a reviewed asset
+                self.assertEqual(au.parse_inputs(au.SET_PROPERTY, args("object", json.dumps(asset)))["value"], asset)
         bad = [("int8", "128"), ("uint8", "-1"), ("uint8", "300"), ("int32", "5000000000"), ("int32", "1.5"),
                ("int32", "true"), ("int32", '"5"'), ("uint32", "-1"), ("int64", "5"), ("int64", '"9223372036854775808"'),
                ("int64", '"05"'), ("uint64", '"-5"'), ("uint64", '"18446744073709551616"'), ("float32", "1e39"),
                ("float64", "NaN"), ("float64", "Infinity"), ("string", '"' + "x" * 4097 + '"'), ("string", '"\\ud800"'),
                ("enum", "1"), ("enum", '""'), ("vector3", "[1, 2]"), ("vector2int", "[1, 2147483648]"),
                ("quaternion", "[0, 0, 0, 2]"), ("bounds", "[[0, 0, 0], [1, -1, 1]]"), ("color", "[1, 1, 1]"),
-               ("layermask", "-1"), ("object", "5"), ("object", '"GlobalObjectId_V1-1-' + "a" * 32 + '-1-0"'),
+               ("layermask", "-1"), ("object", "5"), ("object", '"GlobalObjectId_V1-1-' + "a" * 32 + '-1-7"'),
+               ("object", '"GlobalObjectId_V1-5-' + "a" * 32 + '-1-0"'), ("object", '"GlobalObjectId_V1-4-' + "a" * 32 + '-1-0"'),
+               ("object", '"GlobalObjectId_V1-1-0000000000000000e000000000000000-1-0"'),
                ("bool", "1"), ("bool", '{"a": 1, "a": 2}'), ("int32", "[[[[[[1]]]]]]")]
         for kind, value in bad:
             with self.subTest(f"{kind} {value[:30]}"):
@@ -345,6 +357,8 @@ class C_Mapping(LiveCase):
             au.SET_PROPERTY: {"component": ID.format(2), "path": "i64", "kind": "int64", "value": '"-5"',
                               "expected_component_token": T},
             au.SAVE_SCENE: {"scene": SCENE},
+            au.SET_RENDERER_MATERIAL: {"renderer": ID.format(2), "material": "GlobalObjectId_V1-3-" + "b" * 32 + "-2100000-0",
+                                       "slot": "0", "expected_component_token": T},
         }
         for cap, inputs in calls.items():
             with self.subTest(cap):
@@ -357,12 +371,14 @@ class C_Mapping(LiveCase):
                 self.assertEqual(r.mutation_performed, cap not in au.READ_ONLY)
                 self.assertEqual(r.evidence_candidates, ())
                 self.assertEqual("limitation" in r.data, cap not in au.READ_ONLY)
-        self.assertEqual(self.b.author_calls[-1][1], {"scene": SCENE})
-        self.assertIn("LIVE_SCENE_SAVED", self.codes(r))
+        self.assertEqual(self.b.author_calls[-2][1], {"scene": SCENE})
+        self.assertEqual(self.b.author_calls[-1][1]["slot"], 0)
         req = sorted((self.b.live / "claimed").glob("*.json"), key=lambda f: f.stat().st_mtime)[-1]
         body = json.loads(req.read_text())
         self.assertEqual((body["schema"], body["owner"], body["session_id"]),
-                         ("gpos.unity.live.request/2", "AGENT:claude-main", self.sid))
+                         ("gpos.unity.live.request/3", "AGENT:claude-main", self.sid))
+        r = self.author(au.SAVE_SCENE, sid=self.sid, scene=SCENE)
+        self.assertIn("LIVE_SCENE_SAVED", self.codes(r))
 
     def test_bad_inputs_are_refused_before_anything_is_sent(self):
         before = len(self.b.claimed_ids)
@@ -479,11 +495,27 @@ class C_Mapping(LiveCase):
         self.assertEqual(self.b.author_calls, [])
 
     def test_an_earlier_bridge_is_never_used(self):
-        self.b.protocol, self.b.bridge_version = "gpos.unity.live/1", "1.0.0"
-        self.b.publish("READY")
-        r = self.author(au.INSPECT_OBJECT, sid=self.sid, object=ID.format(1))
-        self.assertStatus(r, tdg.INCOMPATIBLE, "LIVE_BRIDGE_INCOMPATIBLE")
-        self.assertEqual(self.b.author_calls, [])
+        for protocol, version in (("gpos.unity.live/1", "1.0.0"), ("gpos.unity.live/2", "1.1.0")):
+            with self.subTest(version):
+                self.b.protocol, self.b.bridge_version = protocol, version
+                self.b.publish("READY")
+                r = self.author(au.INSPECT_OBJECT, sid=self.sid, object=ID.format(1))
+                self.assertStatus(r, tdg.INCOMPATIBLE, "LIVE_BRIDGE_INCOMPATIBLE")
+                self.assertEqual(self.b.author_calls, [])
+
+    def test_renderer_material_inputs(self):
+        base = {"renderer": ID.format(2), "material": "", "slot": "0", "expected_component_token": T}
+        self.assertIsNone(au.parse_inputs(au.SET_RENDERER_MATERIAL, base)["material"])      # "" clears the slot
+        for key, value, code in (("slot", "8", "INVALID_TOOL_REQUEST"), ("slot", "-1", "INVALID_TOOL_REQUEST"),
+                                 ("material", ID.format(3), "LIVE_OBJECT_REFUSED"),
+                                 ("material", "GlobalObjectId_V1-3-" + "b" * 32 + "-2100000-0\n", "LIVE_OBJECT_REFUSED"),
+                                 ("renderer", "GlobalObjectId_V1-3-" + "b" * 32 + "-2100000-0", "LIVE_OBJECT_REFUSED")):
+            with self.subTest(f"{key}={value}"):
+                with self.assertRaises(au.InputProblem) as ctx:
+                    au.parse_inputs(au.SET_RENDERER_MATERIAL, dict(base, **{key: value.replace("\\n", "\n")}))
+                self.assertEqual(ctx.exception.code, code)
+        with self.assertRaises(au.InputProblem):
+            au.parse_inputs(au.SET_RENDERER_MATERIAL, {k: v for k, v in base.items() if k != "material"})
 
 
 # ---------------------------------------------------------------- D  the bridge upgrade
@@ -508,19 +540,34 @@ class D_Upgrade(LiveCase):
         return {str(p.relative_to(self.runtime)) for n in ("install-txn", "install-staging", "install-backup")
                 for p in (self.runtime / n).rglob("*")}
 
-    def test_the_history_manifest_is_the_frozen_release(self):
-        frozen = git("show", f"{FROZEN_TAG}:gpos/tools/unity/live_bridge/manifest.json", binary=True)
-        self.assertEqual((bi.HISTORY / "1.0.0.json").read_bytes(), frozen)
-        manifest = json.loads(frozen)
-        self.assertEqual((manifest["bridge_version"], manifest["protocol"], manifest["package_digest"]),
-                         ("1.0.0", "gpos.unity.live/1", FROZEN_DIGEST))
-        self.assertEqual(bi.PREVIOUS, {"1.0.0": ("gpos.unity.live/1", FROZEN_DIGEST)})
-        self.assertEqual(bi.history()["1.0.0"]["package_digest"], FROZEN_DIGEST)
-        self.assertEqual(bi.digest(manifest["files"]), FROZEN_DIGEST)
-        entries, problems = bi.tree(frozen_package(self.tmp / "frozen"))
-        self.assertEqual((problems, bi.digest(entries)), ([], FROZEN_DIGEST))
-        self.assertEqual(sorted(p.name for p in bi.HISTORY.iterdir()), ["1.0.0.json"])
-        self.assertNotEqual(bi.verify_source()["package_digest"], FROZEN_DIGEST)
+    def test_the_history_manifests_are_the_frozen_releases(self):
+        pins = {"1.0.0": (FROZEN_TAG, "gpos.unity.live/1", FROZEN_DIGEST),
+                "1.1.0": (FROZEN_TAG_11, "gpos.unity.live/2", FROZEN_DIGEST_11)}
+        for version, (tag, protocol, pinned) in pins.items():
+            with self.subTest(version):
+                frozen = git("show", f"{tag}:gpos/tools/unity/live_bridge/manifest.json", binary=True)
+                self.assertEqual((bi.HISTORY / f"{version}.json").read_bytes(), frozen)
+                manifest = json.loads(frozen)
+                self.assertEqual((manifest["bridge_version"], manifest["protocol"], manifest["package_digest"]),
+                                 (version, protocol, pinned))
+                self.assertEqual(bi.history()[version]["package_digest"], pinned)
+                self.assertEqual(bi.digest(manifest["files"]), pinned)
+                entries, problems = bi.tree(frozen_package(self.tmp / f"frozen-{version}", tag))
+                self.assertEqual((problems, bi.digest(entries)), ([], pinned))
+                self.assertNotEqual(bi.verify_source()["package_digest"], pinned)
+        self.assertEqual(bi.PREVIOUS, {v: (protocol, pinned) for v, (_, protocol, pinned) in pins.items()})
+        self.assertEqual(sorted(p.name for p in bi.HISTORY.iterdir()), ["1.0.0.json", "1.1.0.json"])
+
+    def test_an_exact_1_1_0_bridge_is_upgraded(self):
+        frozen_package(self.target, FROZEN_TAG_11)
+        self.assertEqual(bi.installed_version(self.game), "1.1.0")
+        self.assertEqual(bi.inspect_target(self.game, bi.verify_source()), (bi.PREVIOUS_STATE, []))
+        self.assertStatus(self.run_cap(live.ATTACH, timeout=5), tdg.INCOMPATIBLE, "LIVE_BRIDGE_INCOMPATIBLE")
+        r = self.run_cap(live.INSTALL)
+        self.assertStatus(r, tdg.SUCCESS, "LIVE_BRIDGE_UPGRADED")
+        self.assertEqual((r.data["upgraded_from"], r.data["installed_state"]), ("1.1.0", bi.EXACT))
+        self.assertEqual(bi.inspect_target(self.game, bi.verify_source()), (bi.EXACT, []))
+        self.assertEqual(self.leftovers(), set())
 
     def test_a_tampered_history_manifest_is_corrupt(self):
         original = bi.HISTORY
@@ -753,7 +800,7 @@ class D_Upgrade(LiveCase):
         old.symlink_to(elsewhere, target_is_directory=True)
         self.assertStatus(self.run_cap(live.INSTALL), tdg.CONFLICT, "LIVE_BRIDGE_UNTRUSTED")
         self.assertTrue(old.is_symlink())
-        self.assertEqual(set(bi.PREVIOUS), {"1.0.0"})            # only earlier releases; never a downgrade target
+        self.assertEqual(set(bi.PREVIOUS), {"1.0.0", "1.1.0"})   # only earlier releases; never a downgrade target
 
 
 def ident_key(case):
@@ -790,11 +837,20 @@ class E_Boundaries(unittest.TestCase):
         for name in self.AUTHORING_SOURCES:
             text = self.text(name)
             for word in forbidden:
+                if (name, word) == ("Authoring.cs", "arraySize"):
+                    continue                                   # counted and confined below
                 with self.subTest(f"{name}: {word}"):
                     self.assertNotIn(word, text)
         authoring = self.text("Authoring.cs")
         self.assertEqual(authoring.count("EditorSceneManager.SaveScene(scene)"), 1)   # never with a path
-        self.assertEqual(authoring.count("return Mutate("), 8)                         # every Scene change
+        self.assertEqual(authoring.count("return Mutate("), 9)                         # every Scene change
+        # the one reviewed array write: a Renderer's material slots, inside set-renderer-material only
+        renderer = authoring[authoring.index("SetRendererMaterial(Dictionary"):authoring.index("SaveScene(Dictionary")]
+        self.assertEqual((authoring.count("arraySize"), renderer.count("arraySize")), (2, 2))
+        self.assertEqual(renderer.count("slots.arraySize = 1"), 1)
+        self.assertIn("RendererSlots.Operation(slot, size)", renderer)
+        for word in (".material ", ".material;", ".material)", ".materials", "sharedMaterial =", "sharedMaterials ="):
+            self.assertNotIn(word, authoring)                  # Renderer.material would instantiate a copy
         self.assertIn("Undo.RevertAllDownToGroup(group)", authoring)
         self.assertIn("Undo.CollapseUndoOperations(group)", authoring)
         create = authoring[authoring.index("Create(Dictionary"):authoring.index("Delete(Dictionary")]
@@ -973,7 +1029,7 @@ class R1_RealAuthoring(unittest.TestCase):
 
     def test_01_install_launch_attach_and_the_saved_scene(self):
         b = self.lab.editor.launch()
-        self.assertEqual((b["bridge_version"], b["protocol"]), ("1.1.0", "gpos.unity.live/2"))
+        self.assertEqual((b["bridge_version"], b["protocol"]), (bi.BRIDGE_VERSION, bi.PROTOCOL))
         r = ok(self, self.lab.run(live.ATTACH, timeout=120), "LIVE_SESSION_ATTACHED")
         self.lab.sid = r["session_id"]
         self.s.update(self.lab.human(op="setup"))
@@ -1432,7 +1488,39 @@ class R1_RealAuthoring(unittest.TestCase):
         time.sleep(4)
         self.assertNotEqual(self.inspect(n)["object"]["name"], "Withdrawn")
 
-    def test_17_detach_and_the_package_is_untouched(self):
+    def test_17_a_second_saved_scene(self):
+        """Carried from alpha.17 (permanent since alpha.18): with two saved Scenes open, references and moves never
+        cross Scenes, and creating in the non-active Scene dirties only that Scene."""
+        second = self.lab.human(op="second-scene", scene="Assets/Scenes/Second.unity", name="Other")
+        other, path = second["id"], second["scene"]
+        self.assertEqual((path, self.lab.human(op="scene-state", scene=path)["loaded"]), ("Assets/Scenes/Second.unity", True))
+        self.assertEqual(self.lab.human(op="active-scene")["path"], SCENE)             # Main stays the active Scene
+        props, a = self.s["props"], self.s["A"]
+        r = self.set_prop(props, "go", "object", other)
+        ok(self, r, "LIVE_VALUE_INVALID", tdg.INVALID_REQUEST)                           # a cross-Scene reference
+        self.assertFalse(r.mutation_performed)
+        d, t2 = self.inspect(a), ok(self, self.run_cap(au.INSPECT_OBJECT, object=other))
+        r = self.run_cap(au.SET_PARENT, object=a, parent=other, keep_world="false",
+                         expected_object_token=d["tokens"]["object"], expected_transform_token=d["tokens"]["transform"],
+                         expected_old_parent_token=d["tokens"]["parent_object"],
+                         expected_new_parent_token=t2["tokens"]["object"])
+        ok(self, r, "LIVE_OBJECT_REFUSED", tdg.INVALID_REQUEST)                          # objects never move between Scenes
+        self.assertEqual(self.inspect(a)["parent"]["id"], d["parent"]["id"])
+        r = self.run_cap(au.CREATE, scene=SCENE, name="X", parent=other, expected_parent_token=t2["tokens"]["object"])
+        ok(self, r, "LIVE_OBJECT_REFUSED", tdg.INVALID_REQUEST)                          # a parent in the other Scene
+        self.lab.human(op="save-open-scenes")
+        self.assertEqual((self.lab.human(op="scene-state", scene=SCENE)["dirty"],
+                          self.lab.human(op="scene-state", scene=path)["dirty"]), (False, False))
+        roots = ok(self, self.run_cap(au.INSPECT_OBJECT, scene=path))["tokens"]["scene_roots"]
+        created = ok(self, self.run_cap(au.CREATE, scene=path, name="InSecond", expected_scene_roots_token=roots))
+        self.assertEqual(created["created"]["scene"], path)
+        self.assertEqual((self.lab.human(op="scene-state", scene=SCENE)["dirty"],
+                          self.lab.human(op="scene-state", scene=path)["dirty"]), (False, True))
+        self.assertEqual(self.lab.human(op="active-scene")["path"], SCENE)
+        ok(self, self.run_cap(au.SAVE_SCENE, scene=path), "LIVE_SCENE_SAVED")
+        self.lab.human(op="close-scene", scene=path)
+
+    def test_18_detach_and_the_package_is_untouched(self):
         ok(self, self.lab.run(live.DETACH), "LIVE_SESSION_DETACHED")
         ok(self, self.run_cap(au.INSPECT_OBJECT, object=self.s["N"]), None, tdg.CONFLICT)
         self.lab.editor.stop()
@@ -1463,6 +1551,27 @@ class R2_RealUpgrade(unittest.TestCase):
         lab.sid = ok(self, lab.run(live.ATTACH, timeout=120), "LIVE_SESSION_ATTACHED")["session_id"]
         lab.human(op="setup")
         ok(self, lab.run(au.INSPECT_OBJECT, scene=SCENE))
+        ok(self, lab.run(live.DETACH), "LIVE_SESSION_DETACHED")
+        lab.editor.stop()
+        self.assertEqual(bi.inspect_target(lab.game, bi.verify_source()), (bi.EXACT, []))
+
+    def test_a_running_1_1_0_bridge_is_upgraded_only_while_the_project_is_closed(self):
+        lab = Lab(authoring_project("upgrade-11", install=False))
+        frozen_package(lab.game / "Packages" / bi.PACKAGE_ID, FROZEN_TAG_11)
+        self.assertEqual(bi.installed_version(lab.game), "1.1.0")
+        b = lab.editor.launch()
+        self.assertEqual((b["bridge_version"], b["protocol"], b["package_digest"]),
+                         ("1.1.0", "gpos.unity.live/2", FROZEN_DIGEST_11))
+        ok(self, lab.run(live.ATTACH, timeout=30), "LIVE_BRIDGE_INCOMPATIBLE", tdg.INCOMPATIBLE)
+        ok(self, lab.run(live.INSTALL), "ENGINE_PROJECT_LOCKED", tdg.CONFLICT)
+        lab.editor.stop()
+        data = ok(self, lab.run(live.INSTALL), "LIVE_BRIDGE_UPGRADED")
+        self.assertEqual(data["upgraded_from"], "1.1.0")
+        b = lab.editor.launch()
+        self.assertEqual((b["bridge_version"], b["protocol"], b["package_digest"]),
+                         (bi.BRIDGE_VERSION, bi.PROTOCOL, bi.verify_source()["package_digest"]))
+        lab.sid = ok(self, lab.run(live.ATTACH, timeout=120), "LIVE_SESSION_ATTACHED")["session_id"]
+        ok(self, lab.run("unity.live-asset-types", catalog="KINDS"))                    # the 1.2.0 commands answer
         ok(self, lab.run(live.DETACH), "LIVE_SESSION_DETACHED")
         lab.editor.stop()
         self.assertEqual(bi.inspect_target(lab.game, bi.verify_source()), (bi.EXACT, []))

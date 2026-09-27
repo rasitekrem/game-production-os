@@ -1,5 +1,5 @@
 """The fixed GPOS live bridge package: release manifest, verification, the closed-project installer and the
-crash-recoverable upgrade from an earlier released bridge (Phase 2C-6A, upgrade Phase 2C-6B1).
+crash-recoverable upgrade from an earlier released bridge (Phase 2C-6A, upgrade Phase 2C-6B1; 1.2.0 in 2C-6B2A).
 
 The bridge is GPOS release content: `live_bridge/com.gpos.live-bridge/` holds every file of the Unity package,
 including fixed `.meta` files, and `live_bridge/manifest.json` records each file's size and SHA-256 plus the
@@ -47,8 +47,8 @@ from pathlib import Path
 from .. import paths as tp
 
 PACKAGE_ID = "com.gpos.live-bridge"
-BRIDGE_VERSION = "1.1.0"
-PROTOCOL = "gpos.unity.live/2"
+BRIDGE_VERSION = "1.2.0"
+PROTOCOL = "gpos.unity.live/3"
 MANIFEST_SCHEMA = "gpos.unity.live-bridge.manifest/1"
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE / "live_bridge" / PACKAGE_ID
@@ -58,6 +58,7 @@ HISTORY = HERE / "live_bridge" / "history"
 # each is kept byte for byte under live_bridge/history/; both must agree with the frozen release that shipped it.
 PREVIOUS = {
     "1.0.0": ("gpos.unity.live/1", "546b3cfbe4d41234d10450efacbb3397812d106a813dee5b3284903624a68c66"),
+    "1.1.0": ("gpos.unity.live/2", "00af2b3afccaea2700b6de3fedb5e1c2cae11b990c9640b68d7133b49f383394"),
 }
 MAX_FILE_BYTES = 1024 * 1024
 ABSENT, EXACT, PREVIOUS_STATE, UNTRUSTED = "ABSENT", "EXACT", "PREVIOUS", "UNTRUSTED"

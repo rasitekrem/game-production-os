@@ -1,7 +1,7 @@
 ---
 name: game-feel-vfx
 maturity: DRAFT
-gpos_version: 1.0.0-alpha.17
+gpos_version: 1.0.0-alpha.18
 may_own_gates: [GAME_FEEL_VFX]
 ---
 

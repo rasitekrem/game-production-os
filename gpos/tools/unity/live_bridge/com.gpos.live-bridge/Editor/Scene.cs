@@ -238,7 +238,15 @@ namespace Gpos.LiveBridge
             var b = new TokenBuilder(TokenBuilder.ComponentDomain).Field(Id(c)).Field(Catalog.TypeKey(c.GetType()));
             var behaviour = c as Behaviour;
             if (behaviour != null) b.Bool(behaviour.enabled);
-            var so = new SerializedObject(c);
+            return b.Int(Serialized(b, c, "AUTHORING_LIMIT", "the component")).Finish();
+        }
+
+        // Appends every top-level serialized property of `o` — visible or hidden — as path, property type, type name
+        // and an opaque hash of its whole value; returns how many. Beyond the bounds it refuses with `limitCode`.
+        // Component tokens and asset tokens share it.
+        public static int Serialized(TokenBuilder b, UnityEngine.Object o, string limitCode, string what)
+        {
+            var so = new SerializedObject(o);
             var it = so.GetIterator();
             int n = 0, nodes = 0;
             if (it.Next(true))
@@ -246,11 +254,11 @@ namespace Gpos.LiveBridge
                 do
                 {
                     if (++n > MaxProperties)
-                        throw new Refusal("AUTHORING_LIMIT", "the component has more than " + MaxProperties + " top-level serialized properties");
-                    b.Field(it.propertyPath).Field(it.propertyType.ToString()).Field(it.type).Field(ValueHash(it, ref nodes));
+                        throw new Refusal(limitCode, what + " has more than " + MaxProperties + " top-level serialized properties");
+                    b.Field(it.propertyPath).Field(it.propertyType.ToString()).Field(it.type).Field(ValueHash(it, ref nodes, limitCode, what));
                 } while (it.Next(false));
             }
-            return b.Int(n).Finish();
+            return n;
         }
 
         static readonly HashSet<string> PlainElements = new HashSet<string>(StringComparer.Ordinal) {
@@ -259,7 +267,7 @@ namespace Gpos.LiveBridge
             "Vector2Int", "Vector3Int", "Quaternion", "Color", "Color32", "Rect", "RectInt", "Bounds", "BoundsInt", "Hash128" };
 
         // An opaque hash of one property's whole value, independent of session-local instance ids.
-        static string ValueHash(SerializedProperty property, ref int nodes)
+        static string ValueHash(SerializedProperty property, ref int nodes, string limitCode, string what)
         {
             var b = new TokenBuilder("v");
             var p = property.Copy();
@@ -269,7 +277,7 @@ namespace Gpos.LiveBridge
             while (first || (p.Next(enter) && !SerializedProperty.EqualContents(p, end)))
             {
                 first = false;
-                if (++nodes > MaxNodes) throw new Refusal("AUTHORING_LIMIT", "the component holds more than " + MaxNodes + " serialized values");
+                if (++nodes > MaxNodes) throw new Refusal(limitCode, what + " holds more than " + MaxNodes + " serialized values");
                 var type = p.propertyType;
                 b.Field(p.propertyPath).Field(type.ToString());
                 if (type == SerializedPropertyType.ObjectReference)

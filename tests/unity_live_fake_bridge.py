@@ -12,7 +12,7 @@ cover the bridge itself. Behaviour switches:
     busy = "COMPILING"       refuse Editor-state commands EDITOR_BUSY
     decide = "approve" | "reject" | None   what the simulated Human does with each new proposal
     on_approve(proposal_id)  called right after a simulated approval (e.g. to take a conflicting lease)
-    author_reply(command, args) -> (status, code, data)   the answer to a Scene-authoring command (Phase 2C-6B1);
+    author_reply(command, args) -> (status, code, data)   the answer to a Scene- or asset-authoring command;
                              every authoring call is recorded in `author_calls` as (command, args)
     protocol / bridge_version  what the bridge publishes (an earlier release's values make it incompatible)
 """
@@ -34,7 +34,11 @@ EDITOR_COMMAND = "/Applications/Unity/Hub/Editor/{v}/Unity.app/Contents/MacOS/Un
 
 
 AUTHORING = ("object-inspect", "component-types", "properties", "create-gameobject", "delete-gameobject", "set-parent",
-             "set-gameobject", "set-transform", "add-component", "remove-component", "set-property", "save-scene")
+             "set-gameobject", "set-transform", "add-component", "remove-component", "set-property", "save-scene",
+             "set-renderer-material",
+             # asset references and asset authoring (Phase 2C-6B2A)
+             "asset-types", "asset-find", "asset-inspect", "create-material", "set-material-property",
+             "create-scriptable-object", "set-asset-property")
 
 
 def default_author_reply(command, args):

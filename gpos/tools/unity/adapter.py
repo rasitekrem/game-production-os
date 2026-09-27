@@ -1,5 +1,5 @@
 """Production engine adapter: Unity, with a batch plane (Phase 2C-5) and a live Editor plane (Phase 2C-6A, Scene
-authoring Phase 2C-6B1).
+authoring Phase 2C-6B1, asset references and asset authoring Phase 2C-6B2A).
 
 Batch plane, process-driven, each capability STATELESS:
 
@@ -8,8 +8,8 @@ Batch plane, process-driven, each capability STATELESS:
     unity.run-playmode-tests   Unity Test Framework, PlayMode, in batch mode     results.xml -> TEST_EVIDENCE
 
 Live plane, driven by the fixed GPOS Editor bridge and one Human-approved session per GPOS project (see
-live.py): install-bridge, status, attach, detach, inspect and the four Play Mode transitions, plus twelve Scene
-authoring capabilities (authoring.py). It never launches,
+live.py): install-bridge, status, attach, detach, inspect and the four Play Mode transitions, plus thirteen Scene
+authoring capabilities (authoring.py) and seven asset capabilities (assets.py). It never launches,
 quits, focuses or restarts an Editor and produces no evidence. The batch and live planes share one writer
 resource, `EDITOR_PROJECT:<resolved GPOS project root>`: a live SESSION lease makes a batch run a conflict before
 Unity is launched, and a batch run's lease makes an attach a conflict. The adapter's overall state model is
@@ -58,6 +58,7 @@ from ..artifacts import ArtifactSpec
 from ..capabilities import Capability, TimeoutPolicy
 from ..evidence import EvidenceCandidate
 from ..execution import AdapterOutcome
+from . import assets
 from . import authoring
 from . import live
 from . import project as up
@@ -179,6 +180,19 @@ AUTHORING_SIDE_EFFECT = ("changes the open Scene in the attached Editor as one n
 AUTHORING_SIDE_EFFECTS = {
     authoring.SAVE_SCENE: "saves one open, already saved Scene to its own path; project save callbacks may run",
 }
+_asset_note = ("Assets: named only by GlobalObjectId (identifier type 1, 3 or 4); package and built-in assets are "
+               "references only; new assets only at an exact new path below Assets/ in an existing folder; every edit "
+               "carries the asset token of an earlier inspection and is saved to that one file only after a dirty, "
+               "version-control, import, token and on-disk re-check. Edit Mode only; never queued.")
+ASSET_SIDE_EFFECTS = {
+    assets.CREATE_MATERIAL: "creates one .mat file (and its .meta) below Assets/ through a GPOS-owned scratch folder; "
+                            "not undoable; AssetPostprocessors may run",
+    assets.CREATE_SCRIPTABLE_OBJECT: "creates one .asset file (and its .meta) below Assets/ through a GPOS-owned "
+                                     "scratch folder; not undoable; the type's OnEnable and AssetPostprocessors may run",
+    assets.SET_MATERIAL_PROPERTY: "imports, edits (one Undo group) and saves one .mat file; AssetPostprocessors may run",
+    assets.SET_ASSET_PROPERTY: "imports, edits (one Undo group) and saves one .asset file; the type's OnValidate and "
+                               "AssetPostprocessors may run",
+}
 
 
 def _authoring(cap_id, category, description, operation_class, timeout):
@@ -219,6 +233,44 @@ AUTHORING_CAPABILITIES = (
     _authoring(authoring.SAVE_SCENE, "TRANSFORM", "Save one open Scene that already has a path, to that path; never "
                                                   "Save As, never a dialog, never a new Scene asset.", "MUTATING",
                TimeoutPolicy(default=60.0, maximum=300.0)),
+    _authoring(authoring.SET_RENDERER_MATERIAL, "TRANSFORM", "Set one shared-material slot of a Renderer to a Material "
+                                                             "asset (or none): replace an existing slot, or give a "
+                                                             "renderer without slots its first; never instantiates a "
+                                                             "Material, never appends, inserts or removes slots.",
+               "MUTATING", _short),
+)
+
+
+def _asset(cap_id, category, description, operation_class, timeout):
+    side_effect = "NONE" if operation_class == "READ_ONLY" else ASSET_SIDE_EFFECTS[cap_id]
+    return _live(cap_id, category, description, operation_class, "STATEFUL", "SESSION_REQUIRED", timeout,
+                 input_kinds=assets.input_kinds(cap_id), notes=(_project_note, _live_note, _asset_note),
+                 side_effect_scope=side_effect)
+
+
+_asset_write = TimeoutPolicy(default=60.0, maximum=300.0)
+ASSET_CAPABILITIES = (
+    _asset(assets.ASSET_TYPES, "INSPECT", "The closed asset catalogs: the reviewed asset kinds and sources, the "
+                                          "ScriptableObject catalog (editable and creatable types) or the shader "
+                                          "catalog (declared properties), each with its digest.", "READ_ONLY", _short),
+    _asset(assets.ASSET_FIND, "INSPECT", "Typed, bounded, paged lookup of one asset kind in Assets/, registered "
+                                         "packages or the fixed built-in table, optionally by a name substring.",
+           "READ_ONLY", _short),
+    _asset(assets.ASSET_INSPECT, "INSPECT", "One asset by its id: kind, source, path, values (shader properties, "
+                                            "ScriptableObject properties, prefab root components), whether GPOS may "
+                                            "write it, and its composite token. Never imports.", "READ_ONLY", _short),
+    _asset(assets.CREATE_MATERIAL, "TRANSFORM", "Create one Material of a catalogued shader at an exact new .mat path "
+                                                "below Assets/; never overwrites, renames or creates folders.",
+           "MUTATING", _asset_write),
+    _asset(assets.SET_MATERIAL_PROPERTY, "TRANSFORM", "Write one property the Material's catalogued shader declares "
+                                                      "(color, vector, float, range, int or a Texture asset) and save "
+                                                      "that Material.", "MUTATING", _asset_write),
+    _asset(assets.CREATE_SCRIPTABLE_OBJECT, "TRANSFORM", "Create one ScriptableObject of a creatable catalogued type "
+                                                         "([CreateAssetMenu]) at an exact new .asset path below Assets/.",
+           "MUTATING", _asset_write),
+    _asset(assets.SET_ASSET_PROPERTY, "TRANSFORM", "Write one allowlisted serialized property of a ScriptableObject "
+                                                   "asset (asset references only) and save that asset.", "MUTATING",
+           _asset_write),
 )
 
 CAPABILITIES = (
@@ -251,7 +303,7 @@ CAPABILITIES = (
         potential_evidence=(("TEST_EVIDENCE", "AUTOMATED_TEST"),),
         timeout=TimeoutPolicy(default=1800.0, maximum=3600.0), side_effect_scope=SIDE_EFFECTS,
         notes=(_project_note, "The project must require exactly the probed Editor version.")),
-) + LIVE_CAPABILITIES + AUTHORING_CAPABILITIES
+) + LIVE_CAPABILITIES + AUTHORING_CAPABILITIES + ASSET_CAPABILITIES
 
 DESCRIPTOR = model.AdapterDescriptor(
     adapter_id=ADAPTER_ID, adapter_version=ADAPTER_VERSION, tool_family="ENGINE", target_tool="Unity Editor",
@@ -268,9 +320,14 @@ DESCRIPTOR = model.AdapterDescriptor(
         "the same EDITOR_PROJECT resource). adapter_kind stays CLI for alpha.16.",
         "The live plane never launches, quits, focuses or restarts an Editor, never injects input and runs no caller "
         "code; its Play Mode operations report Editor state only.",
-        "Scene authoring (bridge 1.1.0) changes the open Scene of the attached Editor only through fixed commands: no "
-        "prefab asset or Prefab Mode editing, no asset or cross-Scene reference, no array or managed-reference "
-        "mutation, no Save As; applying serialized changes can run project Editor callbacks and no sandbox is claimed.",
+        "Scene authoring (bridge 1.2.0) changes the open Scene of the attached Editor only through fixed commands: no "
+        "prefab asset or Prefab Mode editing, no cross-Scene reference, no array or managed-reference mutation (one "
+        "reviewed Renderer material slot only), no Save As; applying serialized changes can run project Editor "
+        "callbacks and no sandbox is claimed.",
+        "Asset authoring (bridge 1.2.0) creates Materials and ScriptableObjects at exact new paths below Assets/ and "
+        "edits reviewed properties of existing ones, saving only that asset; no prefab asset, import-setting, move, "
+        "rename, delete, package or built-in asset mutation, no arbitrary AssetDatabase call, no SaveAssets and no "
+        "global Refresh; version-control providers other than none are untested.",
     ))
 
 
@@ -364,6 +421,8 @@ class UnityAdapter(model.ToolAdapter):
             return live.execute(request, context, **self._live_seams)
         if cap in authoring.CAPABILITY_IDS:
             return authoring.execute(request, context, **self._live_seams)
+        if cap in assets.CAPABILITY_IDS:
+            return assets.execute(request, context, **self._live_seams)
         if cap not in (INSPECT, EDITMODE, PLAYMODE):
             raise AssertionError(f"{cap} is declared but not implemented")
         root = Path(context.project_root)

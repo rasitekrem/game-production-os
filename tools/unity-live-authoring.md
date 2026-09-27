@@ -1,8 +1,8 @@
-# Unity live Scene authoring (Phase 2C-6B1)
+# Unity live Scene authoring (Phase 2C-6B1, extended in 2C-6B2A)
 
-Code: [`gpos/tools/unity/authoring.py`](../gpos/tools/unity/authoring.py) and the bridge's authoring code in [`Editor/Authoring.cs`](../gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Authoring.cs), [`Scene.cs`](../gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Scene.cs), [`Properties.cs`](../gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Properties.cs), [`Catalog.cs`](../gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Catalog.cs) and the Unity-free core in [`Editor/Core/`](../gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/PropertyRules.cs) · adapter id `unity` · bridge `com.gpos.live-bridge` 1.1.0, protocol `gpos.unity.live/2`. Built on the [live Editor plane](unity-live-bridge.md): every capability here needs its Human-approved session.
+Code: [`gpos/tools/unity/authoring.py`](../gpos/tools/unity/authoring.py) and the bridge's authoring code in [`Editor/Authoring.cs`](../gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Authoring.cs), [`Scene.cs`](../gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Scene.cs), [`Properties.cs`](../gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Properties.cs), [`Catalog.cs`](../gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Catalog.cs) and the Unity-free core in [`Editor/Core/`](../gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/PropertyRules.cs) · adapter id `unity` · bridge `com.gpos.live-bridge` 1.2.0, protocol `gpos.unity.live/3`. Built on the [live Editor plane](unity-live-bridge.md): every capability here needs its Human-approved session. Assets themselves are read, created and edited by the [asset capabilities](unity-live-assets.md); since alpha.18 a Scene property may *reference* a reviewed asset, and one Renderer material slot can be set.
 
-Twelve fixed capabilities change or read the open Scene of the attached Editor. Each one maps to one bridge command, and each command reads or changes only what its name says.
+Thirteen fixed capabilities change or read the open Scene of the attached Editor. Each one maps to one bridge command, and each command reads or changes only what its name says.
 
 | Capability | Class | What it does |
 |---|---|---|
@@ -18,20 +18,21 @@ Twelve fixed capabilities change or read the open Scene of the attached Editor. 
 | `unity.live-remove-component` | `TRANSFORM`, `MUTATING` | one component nothing on its GameObject requires |
 | `unity.live-set-property` | `TRANSFORM`, `MUTATING` | one allowlisted serialized property, validated first and read back after |
 | `unity.live-save-scene` | `TRANSFORM`, `MUTATING` | one open Scene that already has a path, saved to that path |
+| `unity.live-set-renderer-material` | `TRANSFORM`, `MUTATING` | one shared-material slot of a Renderer (alpha.18; [below](#renderer-material-slots)) |
 
-All twelve are `STATEFUL`, `EDITOR`, lease mode `SESSION_REQUIRED` (session id and canonical owner verified; nothing taken or released), need no tool probe, declare no evidence and support no dry run. Timeouts: 30 s (at most 120 s), and 60 s (at most 300 s) for saving. The mutating ones need explicit mutation consent. Inputs are strings, as the command line gives them: identifiers have their own grammars, each matched against the whole string (a value that ends in a newline or carriage return is refused), and vectors, rotations and property values are strict JSON text (no duplicate keys, no `NaN`, depth at most 4). GPOS validates every input before the Editor sees it, and the bridge validates it again.
+All thirteen are `STATEFUL`, `EDITOR`, lease mode `SESSION_REQUIRED` (session id and canonical owner verified; nothing taken or released), need no tool probe, declare no evidence and support no dry run. Timeouts: 30 s (at most 120 s), and 60 s (at most 300 s) for saving. The mutating ones need explicit mutation consent. Inputs are strings, as the command line gives them: identifiers have their own grammars, each matched against the whole string (a value that ends in a newline or carriage return is refused), and vectors, rotations and property values are strict JSON text (no duplicate keys, no `NaN`, depth at most 4). GPOS validates every input before the Editor sees it, and the bridge validates it again.
 
-**Never:** prefab asset editing, Prefab Mode, applying, reverting or unpacking a prefab instance, ScriptableObject or other asset creation, material, texture, audio or model authoring, asset references, cross-Scene references, creating, renaming, deleting or Save-As of Scenes, array or list changes, managed-reference changes, curve or gradient editing, source generation, package operations other than the reviewed bridge upgrade, reflection, C#, `-executeMethod`, menu execution, input, live evidence.
+**Never:** prefab asset editing, Prefab Mode, applying, reverting or unpacking a prefab instance, texture, audio or model authoring, cross-Scene references, creating, renaming, deleting or Save-As of Scenes, array or list changes (other than the one reviewed Renderer material slot), managed-reference changes, curve or gradient editing, source generation, package operations other than the reviewed bridge upgrade, reflection, C#, `-executeMethod`, menu execution, input, live evidence. Material and ScriptableObject creation and editing are the [asset capabilities](unity-live-assets.md), with their own rules.
 
 ## Preconditions
 
-- The session is LIVE and owned by the caller, and the running bridge is exactly the audited 1.1.0 bridge. An earlier released bridge is `LIVE_BRIDGE_INCOMPATIBLE` until it is [upgraded](unity-live-bridge.md#upgrading-the-bridge).
+- The session is LIVE and owned by the caller, and the running bridge is exactly the audited 1.2.0 bridge. An earlier released bridge (1.0.0 or 1.1.0) is `LIVE_BRIDGE_INCOMPATIBLE` until it is [upgraded](unity-live-bridge.md#upgrading-the-bridge).
 - The Editor is in Edit Mode with nothing pending: not playing or paused, not entering or leaving Play Mode, not compiling, updating, reloading or quitting. Otherwise `EDITOR_BUSY`, for the read-only capabilities too. Nothing is queued.
 - The alpha.16 at-most-once rules apply unchanged: start deadlines, withdrawal (`LIVE_REQUEST_WITHDRAWN`, never executed), and `LIVE_OUTCOME_UNKNOWN` for a request the Editor claimed but did not answer. That outcome has status `OUTCOME_UNKNOWN`, `mutation_performed` true for a mutating capability, and is never retried; inspect the Scene again. A request interrupted by a Domain Reload or restart is answered NOT_REPLAYED and never runs again. An authoring command runs within one Editor update, so a Domain Reload cannot split it.
 
 ## Identity
 
-An object is named only by its `GlobalObjectId` string, `GlobalObjectId_V1-2-<scene guid>-<file id>-<prefab id>`. Identifier type 2 is a Scene object; asset ids and every other type are `LIVE_OBJECT_REFUSED`. There is no InstanceID, EntityId, hierarchy path or temporary id. The bridge accepts an id only when:
+An object is named only by its `GlobalObjectId` string, `GlobalObjectId_V1-2-<scene guid>-<file id>-<prefab id>`. Identifier type 2 is a Scene object; an asset id as the object to author, and every other type, is `LIVE_OBJECT_REFUSED` (an asset id may only be the *value* of an object reference, below). There is no InstanceID, EntityId, hierarchy path or temporary id. The bridge accepts an id only when:
 
 - the GUID is that of a loaded, saved Scene under `Assets/`; a Scene that is not loaded is `LIVE_OBJECT_NOT_FOUND`;
 - it names a GameObject or Component of exactly that Scene, not an asset;
@@ -71,6 +72,7 @@ Required tokens per capability:
 | `unity.live-add-component` | `object` and the catalog digest |
 | `unity.live-remove-component` | the component's `component` token and its GameObject's `object` |
 | `unity.live-set-property` | `component` |
+| `unity.live-set-renderer-material` | `component` (the Renderer's) |
 
 Keeping the world pose depends on every Transform from the Scene root down to the object and down to the new parent. A Human changing the object, any ancestor of it, the new parent or any ancestor of the new parent between inspection and a stale `keep_world=true` request is therefore a conflict. A `keep_world=false` move depends on none of them and takes no chain token; GPOS refuses one if it is given. `unity.live-object-inspect` returns the object's tokens together with its parent's `object` and `transform_chain` and the Scene's `scene_roots`. A mutation returns the new tokens of what it changed.
 
@@ -91,7 +93,7 @@ Adding a single-instance type that is already present is `LIVE_AUTHORING_REFUSED
 
 ## Properties
 
-**Enumeration.** `unity.live-properties` lists visible properties only, plus a Behaviour's `m_Enabled`. It enters only plain serializable structs and classes: never arrays or lists, managed references, or the parts of a vector, colour or rect. Hidden serialized state is covered by the component token but never listed or valued. Each entry has its path, display name, property type, type name, depth, kind, `writable` and `refusal`. For a supported kind it also has the value: strings are cut to 256 characters with `value_truncated`, an enum gives its names, and an object reference gives SCENE (with the id), ASSET, OTHER_SCENE or NONE, never an asset path.
+**Enumeration.** `unity.live-properties` lists visible properties only, plus a Behaviour's `m_Enabled`. It enters only plain serializable structs and classes: never arrays or lists, managed references, or the parts of a vector, colour or rect. Hidden serialized state is covered by the component token but never listed or valued. Each entry has its path, display name, property type, type name, depth, kind, `writable` and `refusal`. For a supported kind it also has the value: strings are cut to 256 characters with `value_truncated`, an enum gives its names, and an object reference gives SCENE or ASSET (with the id), OTHER_SCENE or NONE, never an asset path. An AudioSource's `m_audioClip` is refused (AUDIO_USES_RESOURCE): Unity 6 takes the clip through `m_Resource`.
 
 **Default-deny write.** A property is writable only when every one of these holds; otherwise the refusal says which failed:
 
@@ -120,7 +122,7 @@ Adding a single-instance type that is already present is `LIVE_AUTHORING_REFUSED
 | `bounds` | Bounds | `[[center], [extents]]` | binary32, extents not negative | binary32 |
 | `boundsint` | BoundsInt | `[[position], [size]]` | 32-bit | exact |
 | `layermask` | LayerMask | integer | 0 to 2^32−1 | exact |
-| `object` | ObjectReference `PPtr<T>` | `null` or an object id | see below | the same object |
+| `object` | ObjectReference `PPtr<T>` | `null`, a Scene object id or an asset id | see below | the same object |
 
 Refused kinds include characters, arrays and lists and their sizes, managed references, `ExposedReference`, `AnimationCurve`, `Gradient`, `Hash128` and fixed buffers.
 
@@ -142,7 +144,17 @@ A `[Flags]` enum is not detected. Only one declared name can be written, which s
 
 A value Unity or project code did not keep (for example an `OnValidate` that clamps it) is reverted and is `LIVE_VALUE_INVALID` with `mutation_performed` true. Values are never clamped or coerced by GPOS.
 
-**Object references** accept only `null` or a validated GameObject or Component of the same Scene; there are no asset or cross-Scene references. The field's declared type `T` (from `PPtr<T>`) must accept the object: `GameObject` takes a GameObject, and otherwise a Component whose type or a base type is named `T`. An asset-typed field such as a Material can therefore only be cleared. The read-back must be exactly the object written, so two same-named types from different assemblies cannot slip through.
+**Object references** accept `null`, a validated GameObject or Component of the same Scene, or (since alpha.18) a reviewed asset the [asset resolver](unity-live-assets.md#identity-and-the-reference-boundary) accepts: a Material, Texture, Sprite, AudioClip or AudioResource, Mesh, prefab or model root, prefab-root Component or catalogued ScriptableObject, from `Assets/`, a registered package or the fixed built-in table. There are no cross-Scene references. The field's declared type `T` (from `PPtr<T>`) must accept the object: `T` is the object's type or one of its base types (`Object` accepts any). This is checked **before** Unity assigns anything, because Unity silently stores `null` for a wrong type and reports success: a Sprite is not a Texture, a Texture is not a Sprite, a prefab's MeshRenderer is not a BoxCollider. An AudioSource's `m_Resource` takes AUDIO assets only. The read-back must be exactly the object written, so two same-named types from different assemblies cannot slip through. Referencing an asset changes the Scene only; the asset is not touched.
+
+## Renderer material slots
+
+`unity.live-set-renderer-material` sets one slot of a Renderer's **shared** materials: inputs `renderer` (the Renderer component's id), `material` (a MATERIAL asset id, or the empty string to clear the slot), `slot` (0 to 7) and `expected_component_token`. It writes the serialized `m_Materials` array exactly as the Inspector does, through the same apply, Undo and read-back pipeline and the same component token as `unity.live-set-property`. It never calls `Renderer.material` or `Renderer.materials`, whose getters instantiate a copy of the material (the lab counted one new instance per call); the real tests count non-persistent Materials before and after and find none created.
+
+- A slot below the Renderer's current slot count is replaced (REPLACE).
+- A Renderer with no slots gets its first slot only for slot 0 (CREATE_FIRST).
+- Everything else is `LIVE_PROPERTY_UNSUPPORTED`: slots are never appended, inserted, removed or resized, and `unity.live-set-property` still refuses every array path.
+
+It runs as one `GPOS: set material <slot> of <type> on <object>` Undo group, reads back `sharedMaterials[slot]` and the slot count, and reverts on any difference. The prefab boundary applies (role NONE only), and a stale component token is `LIVE_AUTHORING_CONFLICT`.
 
 ## Undo, rollback and dirty state
 
@@ -210,7 +222,7 @@ No prefab override is ever created, applied or reverted, and no prefab asset is 
 
 - SUCCESS means only that the Editor completed the operation on the open Scene: no gameplay, rendering, build or target-runtime claim, and no evidence.
 - Applying serialized changes, adding components, activating objects and saving can run project Editor code. This is `TOOL_INHERENT`, and no sandbox is claimed.
-- A GameObject is created in the active Scene and then moved to the requested Scene. With several Scenes open, the active Scene may be marked dirty.
+- A GameObject is created in the active Scene and then moved to the requested Scene. **Corrected in alpha.18:** alpha.17 stated that with several Scenes open the active Scene may be marked dirty. The 2C-6B2A research and the permanent real test (a second saved Scene open, the first one active) show that creating in the non-active Scene dirties only that Scene; the active Scene stays clean. A reference or move across the two Scenes is refused (`LIVE_VALUE_INVALID`, `LIVE_OBJECT_REFUSED`).
 - The bridge admits at most 64 requests in 10 s; beyond that a request is refused `EDITOR_BUSY`, never queued.
 
 ## Tests
@@ -222,4 +234,4 @@ python3 tests/mutate_unity_authoring.py
 python3 tests/mutate_unity_authoring.py --real
 ```
 
-[`tests/test_unity_authoring.py`](../tests/test_unity_authoring.py) has fast groups against the protocol stand-in, the bridge-upgrade recovery matrix and a frozen-tag check of the release history. Its real groups use disposable synthetic projects ([`unity_fixture_builder.make_authoring_project`](../tests/unity_fixture_builder.py)) in lab-owned batch-mode Editors. There, the test-only [testkit](../tests/unity_live_testkit/com.gpos.live-bridge-testkit/Editor/Testkit.cs) also stands in for the Human's Inspector edits, Hierarchy drags and Cmd-Z. The C# core tests cover the grammars, tokens, catalog digest, property rules, busy rule and protocol. The mutation harness breaks each guarantee once: the fast set against the GPOS side and the core, `--real` against the Editor-side code in real lab Editors.
+[`tests/test_unity_authoring.py`](../tests/test_unity_authoring.py) has fast groups against the protocol stand-in, the bridge-upgrade recovery matrix and a frozen-tag check of the release history (1.0.0 from `v1.0.0-alpha.16`, 1.1.0 from `v1.0.0-alpha.17`). Its real groups, including a second saved Scene and real upgrades from both earlier releases, use disposable synthetic projects ([`unity_fixture_builder.make_authoring_project`](../tests/unity_fixture_builder.py)) in lab-owned batch-mode Editors. There, the test-only [testkit](../tests/unity_live_testkit/com.gpos.live-bridge-testkit/Editor/Testkit.cs) also stands in for the Human's Inspector edits, Hierarchy drags and Cmd-Z. The C# core tests cover the grammars, tokens, catalog digest, property rules, busy rule and protocol. The mutation harness breaks each guarantee once: the fast set against the GPOS side and the core, `--real` against the Editor-side code in real lab Editors.

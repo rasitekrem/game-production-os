@@ -1,4 +1,4 @@
-"""The GPOS side of the Unity live bridge's local file IPC (Phase 2C-6A; schema /2 with bridge 1.1.0).
+"""The GPOS side of the Unity live bridge's local file IPC (Phase 2C-6A; schema /3 with bridge 1.2.0).
 
 One request is one immutable file, published atomically: written to a dot-temp name, fsynced, then linked to
 `requests/<request id>.json` (a link never replaces an existing name). The bridge claims it by renaming it into
@@ -24,8 +24,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-REQUEST_SCHEMA = "gpos.unity.live.request/2"
-RESPONSE_SCHEMA = "gpos.unity.live.response/2"
+REQUEST_SCHEMA = "gpos.unity.live.request/3"
+RESPONSE_SCHEMA = "gpos.unity.live.response/3"
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_RESPONSE_BYTES = 256 * 1024
 MAX_STATE_BYTES = 64 * 1024

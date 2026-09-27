@@ -208,7 +208,9 @@ namespace Gpos.LiveBridge
             Equal(6, P("boundsint", L(L(1.0, 2.0, 3.0), L(4.0, 5.0, 6.0))).Ints.Length, "boundsint");
             Equal(4294967295L, P("layermask", 4294967295.0).Long, "layermask bits");
             Equal(null, P("object", null).String, "null reference");
-            Equal("OBJECT_REFUSED", Refused(() => P("object", "GlobalObjectId_V1-1-" + G + "-1-0")), "asset reference");
+            Equal("GlobalObjectId_V1-1-" + G + "-1-0", P("object", "GlobalObjectId_V1-1-" + G + "-1-0").String, "an asset reference (bridge 1.2.0)");
+            Equal("OBJECT_REFUSED", Refused(() => P("object", "GlobalObjectId_V1-1-" + G + "-1-3")), "an asset id has prefab id 0");
+            Equal("OBJECT_REFUSED", Refused(() => P("object", "GlobalObjectId_V1-5-" + G + "-1-0")), "another identifier type");
             Equal("SCENE_NOT_SAVED", Refused(() => P("object", "GlobalObjectId_V1-2-" + ObjectIds.ZeroGuid + "-1-0")), "unsaved-scene reference");
             Equal("VALUE_INVALID", Refused(() => P("object", 5.0)), "reference is not a number");
             Equal("VALUE_INVALID", Refused(() => P("enum", 1.0)), "enum by index refused: by exact name only");
@@ -244,7 +246,8 @@ namespace Gpos.LiveBridge
                 { "add-component", new[] { "object", "type_id", "expected_object_token", "expected_catalog_digest" } },
                 { "remove-component", new[] { "component", "expected_component_token", "expected_object_token" } },
                 { "set-property", new[] { "component", "path", "kind", "value", "expected_component_token" } },
-                { "save-scene", new[] { "scene" } } };
+                { "save-scene", new[] { "scene" } },
+                { "set-renderer-material", new[] { "renderer", "material", "slot", "expected_component_token" } } };
             int n = 1000;
             foreach (var kv in specs)
             {
@@ -261,8 +264,8 @@ namespace Gpos.LiveBridge
                 Equal("MALFORMED_REQUEST", Code(() => Parse(Id(++n), Req(Id(n), kv.Key, args))), kv.Key + " needs the session");
             }
             Check(!Protocol.IsAuthoring("inspect") && !Protocol.IsAuthoring("pause"), "the alpha.16 commands are not authoring");
-            Equal("gpos.unity.live/2", Protocol.Name, "protocol");
-            Equal("1.1.0", Protocol.BridgeVersion, "version");
+            Equal("gpos.unity.live/3", Protocol.Name, "protocol");
+            Equal("1.2.0", Protocol.BridgeVersion, "version");
             foreach (var generic in new[] { "execute", "eval", "invoke", "menu", "reflect", "save-scene-as", "apply-prefab", "set-asset" })
                 Equal("UNKNOWN_COMMAND", Code(() => Parse(Id(++n), AuthorReq(Id(n), generic, "{}"))), generic);
         }

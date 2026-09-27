@@ -18,7 +18,7 @@ namespace Gpos.LiveBridge
         public ulong ULong;
         public double Double;
         public float Float;
-        public string String;     // string, enum name or object id; null for a null object reference
+        public string String;     // string, enum name, Scene object id or asset id; null for a null object reference
         public float[] Floats;    // vectors, rect, color, quaternion (normalized), bounds (center then extents)
         public int[] Ints;        // integer vectors, rectint, boundsint (position then size)
     }
@@ -230,9 +230,9 @@ namespace Gpos.LiveBridge
                     break;
                 }
                 case "object":
-                    if (v != null && !(v is string)) throw Invalid("an object reference is null or a Scene object id");
+                    if (v != null && !(v is string)) throw Invalid("an object reference is null, a Scene object id or an asset id");
                     p.String = (string)v;
-                    if (p.String != null) ObjectIds.SceneGuid(p.String);
+                    if (p.String != null) AssetIds.CheckReference(p.String);
                     break;
             }
             return p;

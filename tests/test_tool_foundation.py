@@ -1307,7 +1307,7 @@ class L01_Boundaries(TmpCase):
                                    "git/__init__.py", "git/adapter.py", "git/status.py", "leases.py",
                                    "media_common.py", "model.py", "paths.py", "process.py", "provenance.py",
                                    "redaction.py", "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
-                                   "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/authoring.py",
+                                   "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/assets.py", "unity/authoring.py",
                                    "unity/bridge_install.py",
                                "unity/identity.py", "unity/live.py", "unity/live_ipc.py", "unity/live_status.py",
                                "unity/project.py",

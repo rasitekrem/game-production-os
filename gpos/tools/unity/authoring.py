@@ -1,4 +1,5 @@
-"""Unity live Scene authoring (Phase 2C-6B1): twelve fixed capabilities through the audited bridge 1.1.0.
+"""Unity live Scene authoring (Phase 2C-6B1, extended in 2C-6B2A): thirteen fixed capabilities through the audited
+bridge 1.2.0.
 
     unity.live-object-inspect      one GameObject (or a Scene's roots) with every token            READ_ONLY
     unity.live-component-types     the closed component catalog and its digest                     READ_ONLY
@@ -12,11 +13,13 @@
     unity.live-remove-component    remove one component                                            MUTATING
     unity.live-set-property        write one allowlisted serialized property                       MUTATING
     unity.live-save-scene          save one saved Scene to its own path                            MUTATING
+    unity.live-set-renderer-material  one shared-material slot of a Renderer (2C-6B2A)             MUTATING
 
 Every one needs the attached SESSION (SESSION_REQUIRED) and the Editor in Edit Mode with nothing pending; nothing
-is queued. Objects are named only by GlobalObjectId strings of Scene objects in saved Scenes. Every mutation
-carries the tokens it was decided on; the bridge compares them before changing anything (a difference is
-LIVE_AUTHORING_CONFLICT), runs the change as one named Undo group, reads the result back, and on any mismatch
+is queued. Objects are named only by GlobalObjectId strings of Scene objects in saved Scenes; since bridge 1.2.0 an
+object reference may also name a reviewed asset (see assets.py) — the Scene points at it, the asset is not changed.
+Every mutation carries the tokens it was decided on; the bridge compares them before changing anything (a difference
+is LIVE_AUTHORING_CONFLICT), runs the change as one named Undo group, reads the result back, and on any mismatch
 reverts the group and re-verifies the state those tokens cover. Nothing here produces evidence: SUCCESS means
 only that the Editor completed the operation. Inputs are strings (as the command line gives them); structured
 values are strict JSON text. This module validates them before the Editor sees them, and the bridge validates
@@ -45,10 +48,12 @@ ADD_COMPONENT = "unity.live-add-component"
 REMOVE_COMPONENT = "unity.live-remove-component"
 SET_PROPERTY = "unity.live-set-property"
 SAVE_SCENE = "unity.live-save-scene"
+SET_RENDERER_MATERIAL = "unity.live-set-renderer-material"
 COMMANDS = {INSPECT_OBJECT: "object-inspect", COMPONENT_TYPES: "component-types", PROPERTIES: "properties",
             CREATE: "create-gameobject", DELETE: "delete-gameobject", SET_PARENT: "set-parent",
             SET_GAMEOBJECT: "set-gameobject", SET_TRANSFORM: "set-transform", ADD_COMPONENT: "add-component",
-            REMOVE_COMPONENT: "remove-component", SET_PROPERTY: "set-property", SAVE_SCENE: "save-scene"}
+            REMOVE_COMPONENT: "remove-component", SET_PROPERTY: "set-property", SAVE_SCENE: "save-scene",
+            SET_RENDERER_MATERIAL: "set-renderer-material"}
 CAPABILITY_IDS = tuple(COMMANDS)
 READ_ONLY = (INSPECT_OBJECT, COMPONENT_TYPES, PROPERTIES)
 
@@ -57,7 +62,10 @@ LIMITATION = ("Editor Scene state only: SUCCESS means the Unity Editor completed
               "component and save callbacks, ExecuteAlways scripts) may have run as a consequence.")
 
 GLOBAL_ID = re.compile(r"^GlobalObjectId_V1-(\d+)-([0-9a-f]{32})-(\d{1,20})-(\d{1,20})$")
+ASSET_ID = re.compile(r"^GlobalObjectId_V1-([134])-([0-9a-f]{32})-(\d{1,20})-0$")
 ZERO_GUID = "0" * 32
+BUILTIN_GUIDS = ("0000000000000000e000000000000000", "0000000000000000f000000000000000")
+MAX_RENDERER_SLOT = 7
 TOKEN = re.compile(r"^[0-9a-f]{32}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 SCENE_PATH = re.compile(r'^Assets/[^\x00-\x1f\x7f\\:*?"<>|]+\.unity$')
@@ -109,6 +117,31 @@ def object_id(name, value):
     if int(m.group(3)) >= 2 ** 64 or int(m.group(4)) >= 2 ** 64:
         raise InputProblem("LIVE_OBJECT_REFUSED", f"{name}: the id's numbers are out of range")
     return value
+
+
+def asset_id(name, value):
+    """An asset GlobalObjectId: type 1 (imported), 3 (source) or 4 (built-in, of the two built-in GUIDs only), prefab
+    id 0. Checked against the whole string."""
+    value = _text(name, value)
+    m = ASSET_ID.fullmatch(value)
+    if not m:
+        raise InputProblem("LIVE_OBJECT_REFUSED", f"{name} is an asset id GlobalObjectId_V1-<1|3|4>-<guid>-<file id>-0")
+    if int(m.group(3)) >= 2 ** 64 or m.group(2) == ZERO_GUID:
+        raise InputProblem("LIVE_OBJECT_REFUSED", f"{name}: the asset id's GUID or file id is invalid")
+    if (m.group(1) == "4") != (m.group(2) in BUILTIN_GUIDS):
+        raise InputProblem("LIVE_OBJECT_REFUSED", f"{name}: built-in ids (type 4) name exactly the two built-in resource "
+                                                  f"GUIDs, and only they do")
+    return value
+
+
+def reference_id(name, value):
+    """An object reference: a Scene object of a saved Scene or a reviewed asset."""
+    value = _text(name, value)
+    return asset_id(name, value) if ASSET_ID.fullmatch(value) else object_id(name, value)
+
+
+def optional_asset(name, value):
+    return None if _text(name, value) == "" else asset_id(name, value)
 
 
 def scene_path(name, value):
@@ -320,8 +353,8 @@ def property_value(kind_, value):
     elif kind_ == "object":
         if value is not None:
             if not isinstance(value, str):
-                raise InputProblem("LIVE_VALUE_INVALID", "value is null or a Scene object id")
-            object_id(name, value)
+                raise InputProblem("LIVE_VALUE_INVALID", "value is null, a Scene object id or an asset id")
+            reference_id(name, value)
     return value
 
 
@@ -349,6 +382,8 @@ INPUTS = {
     SET_PROPERTY: {"component": object_id, "path": property_path, "kind": kind, "value": strict_json,
                    "expected_component_token": token},
     SAVE_SCENE: {"scene": scene_path},
+    SET_RENDERER_MATERIAL: {"renderer": object_id, "material": optional_asset, "slot": whole(0, MAX_RENDERER_SLOT),
+                            "expected_component_token": token},
 }
 REQUIRED = {
     INSPECT_OBJECT: (), COMPONENT_TYPES: (), PROPERTIES: ("component",),
@@ -359,6 +394,7 @@ REQUIRED = {
     REMOVE_COMPONENT: ("component", "expected_component_token", "expected_object_token"),
     SET_PROPERTY: ("component", "path", "kind", "value", "expected_component_token"),
     SAVE_SCENE: ("scene",),
+    SET_RENDERER_MATERIAL: ("renderer", "material", "slot", "expected_component_token"),
 }
 
 
@@ -434,21 +470,22 @@ def parse_inputs(cap, inputs):
 
 # ---------------------------------------------------------------- execution
 
-def execute(request, context, facts=None, sleep=None, monotonic=None):
+def execute(request, context, facts=None, sleep=None, monotonic=None, parse=None, command=None, finish=None):
+    """One authoring call. `parse`, `command` and `finish` let assets.py run its capabilities through the same path."""
     kw = {k: v for k, v in (("facts", facts), ("sleep", sleep), ("monotonic", monotonic)) if v is not None}
     cap = request.capability_id
     try:
-        args = parse_inputs(cap, request.inputs)
+        args = (parse or parse_inputs)(cap, request.inputs)
     except InputProblem as problem:
         return AdapterOutcome(ok=True, diagnostics=(lv._diag(problem.code, str(problem), cap),))
     try:
         live = lv.Live(request, context, **kw)
-        return _run(live, cap, args)
+        return _run(live, cap, args, command or COMMANDS[cap], finish or outcome)
     except lv.Refused as refused:
         return refused.outcome
 
 
-def _run(live, cap, args):
+def _run(live, cap, args, command, finish):
     record = live.context.session
     sid = (record.get("session") or {}).get("session_id")
     cls, reasons, _, state = live.classify(record)
@@ -457,21 +494,24 @@ def _run(live, cap, args):
         return lv._refuse(cap, code, f"session {sid} is {cls}", {"reasons": reasons})
     manifest = live.require_installed()
     b = live.bridge(manifest, state)
-    r = live.call(live.channel(), COMMANDS[cap], args, b["boot_id"], sid, wait=float(live.context.timeout))
-    return outcome(cap, r)
+    r = live.call(live.channel(), command, args, b["boot_id"], sid, wait=float(live.context.timeout))
+    return finish(cap, r)
 
 
-def outcome(cap, r):
-    """The AdapterOutcome of one authoring call. A mutation that began — even one the bridge reverted — reports
-    mutation_performed; one refused before any change does not."""
-    mutating = cap not in READ_ONLY
-    what = COMMANDS[cap]
+def outcome(cap, r, commands=None, read_only=None, limitation=LIMITATION, success=None):
+    """The AdapterOutcome of one authoring call. A mutation that began — even one the bridge reverted, and (for
+    assets) a targeted import that happened before a refusal — reports mutation_performed; one refused before any
+    change does not. `success(data)` gives the INFO diagnostics of a completed call."""
+    commands = COMMANDS if commands is None else commands
+    read_only = READ_ONLY if read_only is None else read_only
+    mutating = cap not in read_only
+    what = commands[cap]
     if r.outcome == ipc.WITHDRAWN:
         return lv._refuse(cap, "LIVE_REQUEST_WITHDRAWN", f"{what}: the Editor did not claim the request in time; it "
                                                          f"was withdrawn and never executed")
     if r.outcome == ipc.UNKNOWN or r.status == "INTERRUPTED":
         return lv._refuse(cap, "LIVE_OUTCOME_UNKNOWN", f"{what}: the Editor claimed the request but its final effect "
-                                                       f"is unknown; it is not retried — inspect the Scene again",
+                                                       f"is unknown; it is not retried — inspect again",
                           {"request_id": r.request_id}, mutation_performed=mutating)
     resp = r.response
     data = resp.get("data")
@@ -480,15 +520,22 @@ def outcome(cap, r):
         if not isinstance(data, dict):
             return lv._refuse(cap, "LIVE_PROTOCOL_ERROR", f"{what}: the bridge answered without data",
                               details, mutation_performed=mutating)
-        out = dict(data, limitation=LIMITATION) if mutating else data
-        diags = (lv._diag("LIVE_SCENE_SAVED", f"saved {data.get('scene', {}).get('path')!r} to its own path", cap),) \
-            if cap == SAVE_SCENE else ()
-        return AdapterOutcome(ok=True, mutation_performed=mutating, data=out, diagnostics=diags)
+        out = dict(data, limitation=limitation) if mutating else data
+        if success is not None:
+            diags = success(data)
+        else:
+            diags = (lv._diag("LIVE_SCENE_SAVED", f"saved {data.get('scene', {}).get('path')!r} to its own path",
+                              cap),) if cap == SAVE_SCENE else ()
+        return AdapterOutcome(ok=True, mutation_performed=mutating, data=out, diagnostics=tuple(diags))
     started = isinstance(data, dict) and data.get("mutation_started") is True
     if resp["status"] == "REFUSED":
         code = lv.REFUSALS.get(resp["code"], "LIVE_PROTOCOL_ERROR")
         return lv._refuse(cap, code, f"{what}: {resp.get('message') or resp['code']}", details,
                           mutation_performed=mutating and started, data=data if isinstance(data, dict) else None)
+    if resp["code"] == "PERSISTENCE_UNKNOWN":
+        return lv._refuse(cap, "LIVE_OUTCOME_UNKNOWN", f"{what}: {resp.get('message') or resp['code']}; the commit "
+                                                       f"point was reached, so nothing is rolled back or retried",
+                          details, mutation_performed=mutating, data=data if isinstance(data, dict) else None)
     code = lv.AUTHORING_FAILURES.get(resp["code"], "LIVE_PROTOCOL_ERROR")
     unknown_start = not (isinstance(data, dict) and data.get("mutation_started") is False)
     return lv._refuse(cap, code, f"{what}: {resp.get('message') or resp['code']}", details,

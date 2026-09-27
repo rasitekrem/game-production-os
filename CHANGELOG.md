@@ -4,6 +4,63 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.18] — Phase 2C-6B2A: Unity live asset references and asset authoring core
+
+Builds on the frozen Phase-2C-6B1 tree (`v1.0.0-alpha.17`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The foundation gains new diagnostic codes. Projects must pin `gpos_version` `1.0.0-alpha.18`.
+
+The `unity` adapter's live plane gains asset references and asset authoring through the fixed bridge 1.2.0 (protocol `gpos.unity.live/3`): seven asset capabilities and one Scene-authoring capability on the Human-approved session, in Edit Mode only. Excluded (deferred):
+
+- prefab asset authoring, Prefab Mode, apply, revert and unpack;
+- a user-facing asset delete, move or rename; import settings; Scene creation and Save As;
+- array (other than one reviewed Renderer material slot), list and managed-reference writes, curves and gradients;
+- ShaderGUI, keyword, blend-preset, emission and render-state emulation;
+- package and built-in asset mutation; an arbitrary AssetDatabase call, `SaveAssets`, a global `Refresh`, folder creation;
+- reflection, C#, input and live evidence.
+
+### Added
+
+- **Asset capabilities** (`gpos/tools/unity/assets.py`; bridge `AssetAuthoring.cs`, `AssetResolver.cs`, `AssetCatalogs.cs` and the Unity-free core `AssetRules.cs`):
+  - `unity.live-asset-types`, `unity.live-asset-find` and `unity.live-asset-inspect` (`INSPECT`, `READ_ONLY`);
+  - `unity.live-create-material`, `unity.live-set-material-property`, `unity.live-create-scriptable-object` and `unity.live-set-asset-property` (`TRANSFORM`, `MUTATING`);
+  - all `STATEFUL`, `EDITOR`, `SESSION_REQUIRED`, and none produces evidence.
+- **`unity.live-set-renderer-material`** (Scene authoring): one shared-material slot of a Renderer through the serialized `m_Materials`, never `Renderer.material`; an existing slot is replaced, a Renderer without slots gets slot 0 only, nothing is appended, inserted, removed or resized.
+- **Asset identity:** `GlobalObjectId` only, identifier types 1, 3 and 4 with prefab id 0, and the two built-in GUIDs only for type 4. The reviewed kinds are MATERIAL, TEXTURE, SPRITE, AUDIO, MESH, PREFAB, MODEL, PREFAB_COMPONENT and SCRIPTABLE_OBJECT, from `Assets/`, canonical `Packages/<name>/` paths of registered packages, or a fixed built-in table. Scene assets, MonoScripts, folders, internal prefab or model objects, Editor-only paths and types are refused. Package and built-in assets are references only.
+- **Asset references** from Scene properties and ScriptableObjects, type-checked before Unity assigns them (Unity silently stores `null` for a wrong type); an AudioSource's clip is `m_Resource` (audio only), and `m_audioClip` is refused.
+- **Typed, bounded, paged lookup** in `ASSETS`, `PACKAGE` and `BUILTIN` with a fixed type filter per kind; the caller's query is only a name substring.
+- **Catalogs:** the kind table; a ScriptableObject catalog (editable types, and a creatable subset with `[CreateAssetMenu]`); a shader catalog with every declared property's type, flags, range and texture dimension. Each has a digest over every listed field.
+- **Composite asset token:** identity, canonical path, runtime type, the whole in-memory serialized state, the dirty flag, and the SHA-256 of the file and its `.meta`, with fixed size bounds.
+- **Persistence:** refuse a dirty asset, check version control, one targeted import, compare the token, capture the hashes, one Undo-group edit read back, re-check the file and `.meta` immediately before saving, then `SaveAssetIfDirty` of that asset only as the commit point; uncertainty from there on is `OUTCOME_UNKNOWN`, never retried.
+- **Material properties** limited to what the Material's catalogued shader declares (color, vector, float, range, int, texture), with declared ranges and texture dimensions enforced; a Material texture takes a Texture asset's own id only (a Sprite is refused, never converted).
+- **Collision-safe creation:** a GPOS-owned, exclusively created scratch folder `Assets/GposAssetTxn-<txn id>`, `CreateAsset` there under the final file name, proof of GUID, id, type and hashes, a re-check of the exact destination, `ValidateMoveAsset` and `MoveAsset`, proof again, and removal of the proven empty scratch folder. Nothing is ever overwritten, renamed, or created as a folder.
+- **Persistent creation transaction** (`.game/gpos-runtime/unity/asset-create-txn/<project key>/<txn id>.json`): bounded, strict, identifiers and hashes only, never trusted for a path. Before each creation, every earlier interrupted creation is recovered from what is on disk: nothing created, exact temporary asset removed, exact final asset kept — or `LIVE_ASSET_CREATE_INCOMPLETE` with nothing touched. No creation is replayed.
+- `live_bridge/history/1.1.0.json`: the manifest frozen in `v1.0.0-alpha.17`, byte for byte, with its digest pinned in code.
+- Diagnostics:
+  - `LIVE_ASSET_CONFLICT`, `LIVE_ASSET_DIRTY`, `LIVE_ASSET_EXISTS`, `LIVE_ASSET_NOT_EDITABLE` and `LIVE_ASSET_CREATE_INCOMPLETE` (conflicts);
+  - `LIVE_ASSET_REFUSED`, `LIVE_ASSET_PATH_INVALID`, `LIVE_ASSET_LIMIT` and `LIVE_SHADER_NOT_IN_CATALOG` (invalid requests);
+  - `LIVE_ASSET_CREATED`, `LIVE_ASSET_SAVED` and `LIVE_ASSET_CREATE_RECOVERED` (informational).
+- [tools/unity-live-assets.md](tools/unity-live-assets.md).
+- Tests and fixtures:
+  - `tests/test_unity_assets.py`: fast groups; a real end-to-end asset session; real crash recovery that stops the lab Editor at exact creation steps;
+  - `tests/unity_live_bridge_core/AssetCoreTests.cs`;
+  - `tests/mutate_unity_assets.py`, with a `--real` mode for the bridge's Editor-side asset code;
+  - the asset fixture project in `tests/unity_fixture_builder.py` (generated PNG, WAV and OBJ files, a test shader, ScriptableObject types, an AssetPostprocessor, an embedded package);
+  - testkit operations for the asset fixture, a Human's asset save, import and edits, a second saved Scene, and the `AssetAuthoring.AfterStep` test seam.
+
+### Changed
+
+- Bridge `com.gpos.live-bridge` 1.2.0, protocol `gpos.unity.live/3`, request and response schemas `/3`. GPOS talks only to the audited 1.2.0 bridge; installed 1.0.0 and 1.1.0 packages are PREVIOUS and `LIVE_BRIDGE_INCOMPATIBLE` until upgraded, both directly to 1.2.0 with the alpha.17 transaction.
+- The `unity` descriptor has 32 capabilities (3 batch, 9 live session, 13 Scene authoring, 7 asset).
+- Scene authoring: object references may name reviewed assets; `unity.live-properties` reports an asset reference's id.
+- `LIVE_OBJECT_REFUSED`, `LIVE_TYPE_NOT_IN_CATALOG` and `LIVE_CATALOG_CHANGED` meanings cover assets and the new catalogs.
+- **Corrected forward:** alpha.17's documentation said that creating a GameObject with several Scenes open may dirty the active Scene. Creating in the non-active Scene dirties only that Scene; a permanent real test with a second saved Scene now covers it, together with the cross-Scene reference and move refusals.
+- `tests/test_unity_authoring.py` checks both pinned history manifests against their frozen tags, upgrades real 1.0.0 and 1.1.0 bridges, and has the permanent second-Scene test; `tests/mutate_unity_authoring.py` anchors follow bridge 1.2.0.
+
+### Notes
+
+- A targeted import changes Unity's imported state and may run project AssetPostprocessors, so a refusal after it reports `mutation_performed` true (with `import_performed` true and `value_persisted` false). Project code (`AssetPostprocessor`, ScriptableObject `OnEnable` and `OnValidate`) is `TOOL_INHERENT`.
+- An asset edit stays in Unity's Undo history: Cmd-Z restores the value in memory and leaves the asset dirty while its file keeps the saved value; GPOS never saves that state. Creation is not undoable.
+- Version-control providers other than none are untested; creation refuses whenever a provider is active.
+
 ## [1.0.0-alpha.17] — Phase 2C-6B1: Unity live Scene authoring core
 
 Builds on the frozen Phase-2C-6A tree (`v1.0.0-alpha.16`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The foundation gains new diagnostic codes, and its identity grammars now match the whole string. Projects must pin `gpos_version` `1.0.0-alpha.17`.

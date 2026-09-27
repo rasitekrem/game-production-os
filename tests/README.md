@@ -180,20 +180,42 @@ python3 tests/mutate_unity_authoring.py
 python3 tests/mutate_unity_authoring.py --real
 ```
 
-Tests for Phase 2C-6B1: Scene authoring through bridge 1.1.0, and the bridge upgrade. The fast groups need no Unity:
+Tests for Phase 2C-6B1: Scene authoring (bridge 1.2.0 since alpha.18, with `unity.live-set-renderer-material` and asset references), and the bridge upgrade. The fast groups need no Unity:
 
-- A: the twelve capability declarations.
+- A: the thirteen capability declarations.
 - B: the input grammar.
 - C: the exact arguments GPOS sends and how every bridge answer maps to a result, against the protocol stand-in.
-- D: the crash-recoverable bridge upgrade with an interruption at every step, the recovery matrix and fail-closed cases. It also checks that `gpos/tools/unity/live_bridge/history/1.0.0.json` and its pinned digest are exactly the manifest frozen in tag `v1.0.0-alpha.16`, read with git; GPOS_SOURCE_GIT_DIR names the repository's .git when the suite runs in a copy.
+- D: the crash-recoverable bridge upgrade with an interruption at every step, the recovery matrix and fail-closed cases. It also checks that `gpos/tools/unity/live_bridge/history/1.0.0.json` and `1.1.0.json` and their pinned digests are exactly the manifests frozen in tags `v1.0.0-alpha.16` and `v1.0.0-alpha.17`, read with git; GPOS_SOURCE_GIT_DIR names the repository's .git when the suite runs in a copy.
 - E: source boundaries.
 
 The real groups use disposable projects from `unity_fixture_builder.make_authoring_project` in lab-owned batch-mode Editors. The testkit also stands in for the Human's Inspector edits, Hierarchy drags and Cmd-Z through `op-*.json` trigger files.
 
-- R1 is one authoring session end to end: catalog filters and digest, every property kind with read-back, unsafe-property refusals, scene-only references, verified rollback (restored and incomplete), component rules, Human-concurrent-edit conflicts including hidden serialized state and transform chains, the prefab boundary, saving, Play Mode refusal, Domain Reload, a recompile that changes the catalog digest, withdrawal and detach.
-- R2 upgrades a real 1.0.0 bridge, extracted from the frozen tag, in a closed project and attaches to the upgraded bridge.
+- R1 is one authoring session end to end: catalog filters and digest, every property kind with read-back, unsafe-property refusals, scene-only references, verified rollback (restored and incomplete), component rules, Human-concurrent-edit conflicts including hidden serialized state and transform chains, the prefab boundary, saving, Play Mode refusal, Domain Reload, a recompile that changes the catalog digest, withdrawal, a second saved Scene (cross-Scene refusals; creating in the non-active Scene dirties only that Scene) and detach.
+- R2 upgrades real 1.0.0 and 1.1.0 bridges, extracted from the frozen tags, in a closed project and attaches to the upgraded bridge.
 
 The same EditorPrefs and Package Manager guards apply. `test_unity_live_bridge_core.py` also runs `unity_live_bridge_core/AuthoringCoreTests.cs`. `mutate_unity_authoring.py` mutates the GPOS side and the bridge core against the fast suite and the core tests. With `--real`, it mutates the bridge's Editor-side authoring code against R1 in real lab Editors.
+
+## Unity live asset tests
+
+```bash
+python3 tests/test_unity_assets.py
+python3 tests/mutate_unity_assets.py
+python3 tests/mutate_unity_assets.py --real
+```
+
+Tests for Phase 2C-6B2A: asset references and asset authoring through bridge 1.2.0. The fast groups need no Unity:
+
+- A: the seven capability declarations and the closed vocabularies.
+- B: the input grammar: asset ids (types 1, 3 and 4, prefab id 0, the built-in GUIDs), write paths, Material and ScriptableObject values, lookup and catalog inputs, each matched against the whole string.
+- C: the exact arguments GPOS sends and how every bridge answer maps to a result against the protocol stand-in, including `mutation_performed` once a targeted import happened, `OUTCOME_UNKNOWN` from the commit point on, and the creation-recovery diagnostics.
+- E: source boundaries of the bridge's asset code: forbidden mechanisms, where each write primitive appears, and the order of the persistence and creation steps.
+
+The real groups use disposable projects from `unity_fixture_builder.make_asset_project` (generated PNG, WAV and OBJ files, a test shader with every shader property kind, ScriptableObject types, a logging AssetPostprocessor and an embedded fixture package) in lab-owned batch-mode Editors. The testkit also prepares the rest of the fixture as a Human would (a sprite import, a cubemap, a 3D texture, a prefab, materials, ScriptableObject assets), saves, imports, edits and undoes as a Human, and arms the bridge's `AssetAuthoring.AfterStep` test seam to write a file, or stop the Editor process, at one exact step.
+
+- R3 is one asset session end to end: the catalogs, typed lookup in every source, the reference boundary, creation and its collisions, the temporary namespace (an existing temp file, an orphan temp `.meta`, a scratch-name collision, a competing final file before the move, unknown scratch content before cleanup), every Material property kind (a Sprite refused, the same PNG's Texture2D accepted), ScriptableObject properties and callbacks, Scene references to every asset kind and `m_Resource`, Renderer material slots with no Material instance created, Undo and dirty-after-Undo, Human edits, external disk and `.meta` changes, Domain Reload and a recompile that changes the ScriptableObject digest, Play Mode refusal and detach.
+- R4 stops the lab Editor at exact creation steps (before `CreateAsset`, after an unproven and a proven temporary asset, after the move), restarts it, recovers the session and proves recovery: nothing created, exact temporary asset removed, exact final asset kept, modified temporary or final asset and untrusted records never touched.
+
+The same EditorPrefs and Package Manager guards apply. `test_unity_live_bridge_core.py` also runs `unity_live_bridge_core/AssetCoreTests.cs`. `mutate_unity_assets.py` mutates the GPOS side, the bridge's asset core and the asset source boundaries against the fast suites and the core tests; with `--real`, it mutates the bridge's Editor-side asset code against R3 and R4 in real lab Editors.
 
 ## Fixtures
 

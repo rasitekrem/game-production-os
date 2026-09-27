@@ -28,10 +28,10 @@ namespace Gpos.LiveBridge
 
     internal static class Protocol
     {
-        public const string Name = "gpos.unity.live/2";
-        public const string RequestSchema = "gpos.unity.live.request/2";
-        public const string ResponseSchema = "gpos.unity.live.response/2";
-        public const string BridgeVersion = "1.1.0";
+        public const string Name = "gpos.unity.live/3";
+        public const string RequestSchema = "gpos.unity.live.request/3";
+        public const string ResponseSchema = "gpos.unity.live.response/3";
+        public const string BridgeVersion = "1.2.0";
         public const string PackageId = "com.gpos.live-bridge";
         public const int MaxRequestBytes = 64 * 1024;
         public const int MaxResponseBytes = 256 * 1024;
@@ -85,6 +85,15 @@ namespace Gpos.LiveBridge
             { "remove-component", AuthoringSpec(true, "component", "expected_component_token", "expected_object_token") },
             { "set-property", AuthoringSpec(true, "component", "path", "kind", "value", "expected_component_token") },
             { "save-scene", AuthoringSpec(true, "scene") },
+            // Asset references and asset authoring (bridge 1.2.0).
+            { "asset-types", AuthoringSpec(false, "catalog", "query", "page") },
+            { "asset-find", AuthoringSpec(false, "kind", "source", "query", "page") },
+            { "asset-inspect", AuthoringSpec(false, "asset", "path_prefix", "page") },
+            { "create-material", AuthoringSpec(true, "path", "shader", "expected_shader_catalog_digest") },
+            { "set-material-property", AuthoringSpec(true, "material", "property", "kind", "value", "expected_asset_token") },
+            { "create-scriptable-object", AuthoringSpec(true, "path", "type_id", "expected_so_catalog_digest") },
+            { "set-asset-property", AuthoringSpec(true, "asset", "path", "kind", "value", "expected_asset_token") },
+            { "set-renderer-material", AuthoringSpec(true, "renderer", "material", "slot", "expected_component_token") },
         };
 
         static Spec AuthoringSpec(bool mutating, params string[] args)
@@ -98,10 +107,17 @@ namespace Gpos.LiveBridge
 
         public static bool ChangesEditorState(string command) { return Specs[command].Mutating && !Specs[command].Authoring; }
 
-        // A Scene-authoring command: only in Edit Mode, with nothing pending (Transitions.AuthoringBusy).
+        // A Scene- or asset-authoring command: only in Edit Mode, with nothing pending (Transitions.AuthoringBusy).
         public static bool IsAuthoring(string command) { return Specs[command].Authoring; }
 
-        public static bool ChangesScene(string command) { return Specs[command].Authoring && Specs[command].Mutating; }
+        public static bool ChangesScene(string command) { return Specs[command].Authoring && Specs[command].Mutating && !IsAsset(command); }
+
+        public static bool ChangesAssets(string command) { return Specs[command].Mutating && IsAsset(command); }
+
+        // An asset command (bridge 1.2.0): identifiers are asset GlobalObjectIds; mutations persist project files.
+        public static bool IsAsset(string command) { return command.StartsWith("asset-", StringComparison.Ordinal) || Array.IndexOf(AssetMutations, command) >= 0; }
+
+        static readonly string[] AssetMutations = { "create-material", "set-material-property", "create-scriptable-object", "set-asset-property" };
 
         // Parses and validates one request. Throws Refusal with a stable code; never executes anything.
         public static Request Parse(string fileId, string text, long nowTicks, string bootId)

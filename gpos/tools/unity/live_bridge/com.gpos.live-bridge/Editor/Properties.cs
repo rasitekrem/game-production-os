@@ -5,6 +5,9 @@
 // property whose path, ancestry and (property type, type name) the core PropertyRules accept; the value is
 // validated first and read back after. An object reference names a same-Scene object or a reviewed asset
 // (AssetResolver) whose type the field declares; an AudioSource's clip is its m_Resource, which takes audio only.
+// Bridge 1.3.0 splits the rules in two layers: the Scene prefab boundary (a component of a prefab instance is never
+// written) and the property rule itself (CoreRefusal). The prefab commands use the property rule only after they have
+// proven the component is owned by a mutable prefab; the Scene and asset commands keep both layers.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -46,6 +49,14 @@ namespace Gpos.LiveBridge
             var c = o as Component;
             if (c is Transform) return "TRANSFORM_USES_SET_TRANSFORM";
             if (c != null && SceneObjects.Role(c) != SceneObjects.None) return "PREFAB_BOUNDARY";
+            return CoreRefusal(o, so, p, visible);
+        }
+
+        // The property rule alone, without the Scene prefab boundary (the caller has proven prefab ownership).
+        public static string CoreRefusal(UnityEngine.Object o, SerializedObject so, SerializedProperty p, HashSet<string> visible)
+        {
+            var c = o as Component;
+            if (c is Transform) return "TRANSFORM_USES_SET_TRANSFORM";
             string path = p.propertyPath;
             string problem = PropertyRules.PathProblem(path);
             if (problem != null) return problem;
@@ -72,8 +83,9 @@ namespace Gpos.LiveBridge
                 { "properties", all.Skip(start).Take(PageSize).ToList() } };
         }
 
-        // Every listed property of `o` (a Component or a ScriptableObject asset) under `prefix`, in order.
-        public static List<object> Entries(UnityEngine.Object c, string prefix)
+        // Every listed property of `o` (a Component or a ScriptableObject asset) under `prefix`, in order. `core` uses the
+        // property rule alone (a prefab component whose ownership the caller decides).
+        public static List<object> Entries(UnityEngine.Object c, string prefix, bool core = false)
         {
             var so = new SerializedObject(c);
             var visible = VisiblePaths(so);
@@ -89,7 +101,7 @@ namespace Gpos.LiveBridge
                 enter = listed && it.propertyType == SerializedPropertyType.Generic && !it.isArray && it.hasChildren;
                 if (!listed || (prefix != null && !path.StartsWith(prefix, StringComparison.Ordinal))) continue;
                 string kind = PropertyRules.KindOf(it.propertyType.ToString(), it.type);
-                string refusal = WriteRefusal(c, so, it, visible);
+                string refusal = core ? CoreRefusal(c, so, it, visible) : WriteRefusal(c, so, it, visible);
                 var entry = new Dictionary<string, object> {
                     { "path", path }, { "display_name", SceneObjects.Clip(it.displayName, ListedString) },
                     { "property_type", it.propertyType.ToString() }, { "type_name", SceneObjects.Clip(it.type, ListedString) },
@@ -290,14 +302,19 @@ namespace Gpos.LiveBridge
         }
 
         // The write refusal and kind of one property path, exactly as enumeration reports them.
-        public static SerializedProperty Writable(UnityEngine.Object c, SerializedObject so, string path, string kind)
+        public static SerializedProperty Writable(UnityEngine.Object c, SerializedObject so, string path, string kind) { return Writable(c, so, path, kind, false); }
+
+        // The property rule alone (the prefab commands, after proving the component is owned by a mutable prefab).
+        public static SerializedProperty WritableCore(UnityEngine.Object c, SerializedObject so, string path, string kind) { return Writable(c, so, path, kind, true); }
+
+        static SerializedProperty Writable(UnityEngine.Object c, SerializedObject so, string path, string kind, bool core)
         {
             string problem = PropertyRules.PathProblem(path);
             if (problem != null) throw new Refusal("PROPERTY_UNSUPPORTED", "the property cannot be written (" + problem + ")");
             var p = so.FindProperty(path);
             if (p == null) throw new Refusal("PROPERTY_UNSUPPORTED", "the component has no serialized property with this path");
             var visible = VisiblePaths(so);
-            string refusal = WriteRefusal(c, so, p, visible);
+            string refusal = core ? CoreRefusal(c, so, p, visible) : WriteRefusal(c, so, p, visible);
             if (refusal == "PREFAB_BOUNDARY") throw new Refusal("PREFAB_BOUNDARY", "the component is part of a prefab instance; GPOS never creates prefab overrides");
             if (refusal != null) throw new Refusal("PROPERTY_UNSUPPORTED", "the property cannot be written (" + refusal + ")");
             string actual = PropertyRules.KindOf(p.propertyType.ToString(), p.type);

@@ -1,5 +1,5 @@
 """Production engine adapter: Unity, with a batch plane (Phase 2C-5) and a live Editor plane (Phase 2C-6A, Scene
-authoring Phase 2C-6B1, asset references and asset authoring Phase 2C-6B2A).
+authoring Phase 2C-6B1, asset references and asset authoring Phase 2C-6B2A, prefab authoring Phase 2C-6B2B).
 
 Batch plane, process-driven, each capability STATELESS:
 
@@ -9,7 +9,8 @@ Batch plane, process-driven, each capability STATELESS:
 
 Live plane, driven by the fixed GPOS Editor bridge and one Human-approved session per GPOS project (see
 live.py): install-bridge, status, attach, detach, inspect and the four Play Mode transitions, plus thirteen Scene
-authoring capabilities (authoring.py) and seven asset capabilities (assets.py). It never launches,
+authoring capabilities (authoring.py), seven asset capabilities (assets.py) and nine prefab capabilities
+(prefabs.py). It never launches,
 quits, focuses or restarts an Editor and produces no evidence. The batch and live planes share one writer
 resource, `EDITOR_PROJECT:<resolved GPOS project root>`: a live SESSION lease makes a batch run a conflict before
 Unity is launched, and a batch run's lease makes an attach a conflict. The adapter's overall state model is
@@ -61,6 +62,7 @@ from ..execution import AdapterOutcome
 from . import assets
 from . import authoring
 from . import live
+from . import prefabs
 from . import project as up
 from . import results as ur
 
@@ -273,6 +275,58 @@ ASSET_CAPABILITIES = (
            _asset_write),
 )
 
+_prefab_note = ("Prefabs: prefab objects are GlobalObjectId type-1 strings (Scene objects type 2); only a regular prefab "
+                "below Assets/ without nested prefabs is created, instantiated or edited; every mutation is refused while "
+                "Prefab Mode is open, carries a token of an earlier inspection and is refused as a conflict when it "
+                "changed; no apply, revert, unpack, connect, Variant, nested-prefab or child create/delete. Edit Mode only; "
+                "never queued.")
+PREFAB_SIDE_EFFECTS = {
+    prefabs.CREATE_PREFAB: "creates one .prefab file (and its .meta) below Assets/ from a plain Scene subtree through a "
+                           "GPOS-owned scratch folder; the source is not connected; not undoable; project code and "
+                           "AssetPostprocessors may run",
+    prefabs.INSTANTIATE: "imports one prefab and creates one instance of it in the open Scene as one named Undo group (the "
+                         "Scene becomes dirty; nothing is saved); project Editor callbacks may run",
+}
+PREFAB_EDIT_SIDE_EFFECT = ("imports, edits (Unity's isolated copy) and saves one .prefab file; not undoable; loaded Scenes "
+                           "holding its instances are marked dirty and dependent prefabs change effectively; project "
+                           "code and AssetPostprocessors may run")
+
+
+def _prefab(cap_id, category, description, operation_class, timeout):
+    side_effect = "NONE" if operation_class == "READ_ONLY" else PREFAB_SIDE_EFFECTS.get(cap_id, PREFAB_EDIT_SIDE_EFFECT)
+    return _live(cap_id, category, description, operation_class, "STATEFUL", "SESSION_REQUIRED", timeout,
+                 input_kinds=prefabs.input_kinds(cap_id), notes=(_project_note, _live_note, _prefab_note),
+                 side_effect_scope=side_effect)
+
+
+PREFAB_CAPABILITIES = (
+    _prefab(prefabs.PREFAB_INSPECT, "INSPECT", "One prefab by its root id: type, source, hierarchy, owned and nested "
+                                               "objects, components, Transforms, whether GPOS may change it (and why "
+                                               "not) and its whole-prefab token; or one of its components' properties "
+                                               "with the effective write authority. Never imports.", "READ_ONLY", _short),
+    _prefab(prefabs.INSTANCE_INSPECT, "INSPECT", "One prefab instance in a saved Scene: its source prefab, connection "
+                                                 "status, the instance-to-source object mapping and every override "
+                                                 "kind Unity reports. Grants no apply or revert.", "READ_ONLY", _short),
+    _prefab(prefabs.CREATE_PREFAB, "TRANSFORM", "Save one completely plain subtree of a saved Scene as a new regular "
+                                                "prefab at an exact new .prefab path below Assets/; never connects, "
+                                                "overwrites, renames or creates folders.", "MUTATING", _asset_write),
+    _prefab(prefabs.INSTANTIATE, "TRANSFORM", "Create one instance of a clean regular prefab without nested prefabs in "
+                                              "a saved, loaded Scene, at the root or under a parent.", "MUTATING",
+            _asset_write),
+    _prefab(prefabs.SET_GAMEOBJECT, "TRANSFORM", "Set a prefab object's name (never the root's), active state, tag, "
+                                                 "layer or static flags and save the prefab.", "MUTATING", _asset_write),
+    _prefab(prefabs.SET_TRANSFORM, "TRANSFORM", "Set a prefab object's local position, rotation or scale and save the "
+                                                "prefab.", "MUTATING", _asset_write),
+    _prefab(prefabs.ADD_COMPONENT, "TRANSFORM", "Add one component of a catalogued type (and the components it "
+                                                "requires) to a prefab object and save the prefab.", "MUTATING",
+            _asset_write),
+    _prefab(prefabs.REMOVE_COMPONENT, "TRANSFORM", "Remove one component that nothing on its prefab object requires "
+                                                   "and save the prefab.", "MUTATING", _asset_write),
+    _prefab(prefabs.SET_PROPERTY, "TRANSFORM", "Write one allowlisted serialized property of a prefab component (a "
+                                               "reference names an object of the same prefab or a reviewed asset) "
+                                               "and save the prefab.", "MUTATING", _asset_write),
+)
+
 CAPABILITIES = (
     Capability(
         id=INSPECT, category="INSPECT", operation_class="READ_ONLY", state_model="STATELESS",
@@ -303,7 +357,7 @@ CAPABILITIES = (
         potential_evidence=(("TEST_EVIDENCE", "AUTOMATED_TEST"),),
         timeout=TimeoutPolicy(default=1800.0, maximum=3600.0), side_effect_scope=SIDE_EFFECTS,
         notes=(_project_note, "The project must require exactly the probed Editor version.")),
-) + LIVE_CAPABILITIES + AUTHORING_CAPABILITIES + ASSET_CAPABILITIES
+) + LIVE_CAPABILITIES + AUTHORING_CAPABILITIES + ASSET_CAPABILITIES + PREFAB_CAPABILITIES
 
 DESCRIPTOR = model.AdapterDescriptor(
     adapter_id=ADAPTER_ID, adapter_version=ADAPTER_VERSION, tool_family="ENGINE", target_tool="Unity Editor",
@@ -423,6 +477,8 @@ class UnityAdapter(model.ToolAdapter):
             return authoring.execute(request, context, **self._live_seams)
         if cap in assets.CAPABILITY_IDS:
             return assets.execute(request, context, **self._live_seams)
+        if cap in prefabs.CAPABILITY_IDS:
+            return prefabs.execute(request, context, **self._live_seams)
         if cap not in (INSPECT, EDITMODE, PLAYMODE):
             raise AssertionError(f"{cap} is declared but not implemented")
         root = Path(context.project_root)

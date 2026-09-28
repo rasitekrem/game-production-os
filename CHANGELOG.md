@@ -4,6 +4,58 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.19] — Phase 2C-6B2B: Unity live prefab authoring core
+
+Builds on the frozen Phase-2C-6B2A tree (`v1.0.0-alpha.18`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The foundation gains new diagnostic codes. Projects must pin `gpos_version` `1.0.0-alpha.19`.
+
+The `unity` adapter's live plane gains prefab authoring through the fixed bridge 1.3.0 (protocol `gpos.unity.live/4`): nine prefab capabilities on the Human-approved session, in Edit Mode only. Only a regular prefab below `Assets/` without nested prefab instances is created, instantiated or edited; Variants, models, package and nested prefabs are inspected only. Excluded (deferred):
+
+- `SaveAsPrefabAssetAndConnect`; apply, revert and unpack of overrides;
+- Variant creation or editing, nested-prefab authoring, prefab child creation or deletion, model prefab editing;
+- opening, saving, closing or navigating Prefab Mode; a generic `PrefabUtility` call;
+- package prefab mutation, reflection, C#, input and live evidence.
+
+### Added
+
+- **Prefab capabilities** (`gpos/tools/unity/prefabs.py`; bridge `PrefabAuthoring.cs`, `PrefabResolver.cs` and the Unity-free core `PrefabRules.cs`):
+  - `unity.live-prefab-inspect` and `unity.live-prefab-instance-inspect` (`INSPECT`, `READ_ONLY`);
+  - `unity.live-create-prefab`, `unity.live-instantiate-prefab`, `unity.live-set-prefab-gameobject`, `unity.live-set-prefab-transform`, `unity.live-add-prefab-component`, `unity.live-remove-prefab-component` and `unity.live-set-prefab-property` (`TRANSFORM`, `MUTATING`);
+  - all `STATEFUL`, `EDITOR`, `SESSION_REQUIRED`, and none produces evidence.
+- **Prefab identity:** persistent prefab objects are type-1 `GlobalObjectId` strings with prefab id 0; the isolated `LoadPrefabContents` copy is mapped to them one to one by file id and never exposed. Every object has an ownership role (`OWNED`, `NESTED_ROOT`, `NESTED_CONTENT`, `VARIANT_INHERITED`) and every prefab its scope reasons.
+- **Whole-prefab token:** GUID, root id, canonical path, type, source, the file and `.meta` hashes, and every object's id, ownership, dirty flag, hide flags and complete serialized state; given only for regular prefabs without nested instances (`NOT_COVERED` otherwise).
+- **Inspection** that never claims authority the mutation refuses: `property_writable`, `prefab_mutable` and the effective `writable` per property; instance inspection of the source, the object mapping and every override kind (nested overrides with their inner source).
+- **Guards** of every prefab mutation: any open Prefab Mode stage, a dirty prefab, version control, an OS-unwritable file, `.meta` or folder, and a dirty loaded Scene holding a dependent instance (bounded scan, `LIVE_PREFAB_LIMIT` beyond it) — all before any import.
+- **Creation** from a completely plain Scene subtree after a full reference scan, through the alpha.18 creation transaction (records of schema `/2`, kind `PREFAB`), with identity and content proofs (every reference saved as it is, nothing nulled, the source unchanged and never connected).
+- **Instantiation** of a clean regular prefab: a targeted import and a fresh-token check first, then one Scene Undo group with every id requested before the creation is recorded.
+- **Edits** on Unity's isolated copy: one reviewed edit read back, the file and `.meta` re-checked immediately before `SaveAsPrefabAsset` as the commit point, the contents always unloaded, the persistent result verified (exact final ids of added components); uncertainty from the commit point on is `OUTCOME_UNKNOWN`, never retried.
+- `live_bridge/history/1.2.0.json`: the manifest frozen in `v1.0.0-alpha.18`, byte for byte, with its digest pinned in code.
+- Diagnostics:
+  - `LIVE_PREFAB_STAGE_OPEN`, `LIVE_PREFAB_DIRTY`, `LIVE_PREFAB_CONFLICT`, `LIVE_PREFAB_NOT_EDITABLE` and `LIVE_PREFAB_CREATE_INCOMPLETE` (conflicts);
+  - `LIVE_PREFAB_REFUSED` and `LIVE_PREFAB_LIMIT` (invalid requests);
+  - `LIVE_PREFAB_CREATED`, `LIVE_PREFAB_SAVED`, `LIVE_PREFAB_INSTANTIATED`, `LIVE_PREFAB_CREATE_RECOVERED` and `LIVE_PREFAB_SIDE_EFFECTS` (informational).
+- [tools/unity-live-prefabs.md](tools/unity-live-prefabs.md).
+- Tests and fixtures:
+  - `tests/test_unity_prefabs.py`: fast groups; a real end-to-end prefab session; every guard in a real Editor; real crash recovery; a real upgrade from 1.2.0;
+  - `tests/unity_live_bridge_core/PrefabCoreTests.cs`;
+  - `tests/mutate_unity_prefabs.py`, with a `--real` mode for the bridge's Editor-side prefab code;
+  - the prefab fixture project in `tests/unity_fixture_builder.py`;
+  - testkit operations for the prefab fixture, Prefab Mode as a Human drives it, a dirty Scene, many objects, an asset move and the version-control test seam.
+
+### Changed
+
+- Bridge `com.gpos.live-bridge` 1.3.0, protocol `gpos.unity.live/4`, request and response schemas `/4`. GPOS talks only to the audited 1.3.0 bridge; installed 1.0.0, 1.1.0 and 1.2.0 packages are PREVIOUS and `LIVE_BRIDGE_INCOMPATIBLE` until upgraded, all directly to 1.3.0 with the alpha.17 transaction.
+- The `unity` descriptor has 41 capabilities (3 batch, 9 live session, 13 Scene authoring, 7 asset, 9 prefab).
+- The asset-creation record store also holds `PREFAB` records (schema `/2`); Material and ScriptableObject records stay schema `/1`, each schema is read only with its own kinds, every creating command recovers every kind, and an undecidable `PREFAB` record is `LIVE_PREFAB_CREATE_INCOMPLETE`.
+- The alpha.18 asset surface explicitly authors only Materials and ScriptableObjects; a prefab stays a reference (`authorable` false).
+- The property rule is split into the Scene prefab boundary and the property rule itself; Scene and asset commands keep both, unchanged.
+- The Scene and asset tests pin 41 capabilities, protocol `/4` and the 1.2.0 history.
+
+### Notes
+
+- Measured with Unity 6000.5.8f1 and correcting the research record: saving a prefab updated its instances in loaded Scenes, but Unity did not mark those Scenes dirty (a value change, a rename, and instances whose `OnValidate` runs). `scenes_marked_dirty` reports what actually happens; project code that marks Scenes dirty is disclosed.
+- Project code that changes a prefab during the targeted import makes the fresh token differ, so the edit or instantiation is refused (`LIVE_PREFAB_CONFLICT`); project code changing other objects of the edited copy is disclosed in `unrequested_changes`. All of it is `TOOL_INHERENT`.
+- A Human's Prefab Mode edit may be saved by Unity's own Prefab Mode auto-save; GPOS never saves, clears or discards it.
+
 ## [1.0.0-alpha.18] — Phase 2C-6B2A: Unity live asset references and asset authoring core
 
 Builds on the frozen Phase-2C-6B1 tree (`v1.0.0-alpha.17`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The foundation gains new diagnostic codes. Projects must pin `gpos_version` `1.0.0-alpha.18`.

@@ -28,6 +28,9 @@
 // final asset -> kept and the record closed; anything else -> CREATE_INCOMPLETE, nothing touched. No creation is
 // replayed. A failure inside a request removes only an exact, proven temporary asset of its own transaction.
 // Project code may run (AssetPostprocessors on import and move, ScriptableObject OnEnable and OnValidate).
+// Bridge 1.3.0: the prefab creation (PrefabAuthoring.CreatePrefab) is a transaction of this same record store, with
+// the same phases, steps, scratch folder, recovery and compensation; an undecidable PREFAB record is
+// PREFAB_CREATE_INCOMPLETE. The test seam AfterStep covers the prefab commands' steps too.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -53,7 +56,7 @@ namespace Gpos.LiveBridge
         // files at an exact point, or to stop the Editor process); a request cannot reach it.
         internal static Action<string, string> AfterStep;
 
-        static void Step(string name, string path)
+        internal static void Step(string name, string path)
         {
             var hook = AfterStep;
             if (hook != null) hook(name, path);
@@ -551,7 +554,7 @@ namespace Gpos.LiveBridge
             return d;
         }
 
-        static void CheckFolder(string folder)
+        internal static void CheckFolder(string folder)
         {
             AssetFiles.LinkFree(folder);
             string full = AssetFiles.Full(folder);
@@ -562,7 +565,7 @@ namespace Gpos.LiveBridge
 
         // Refuses (ASSET_EXISTS) when anything is at the final path: a file, a folder, a link, an orphan .meta, the same
         // name in another letter case, or an asset the AssetDatabase still knows there.
-        static void CheckAbsent(string folder, string path)
+        internal static void CheckAbsent(string folder, string path)
         {
             string file = path.Substring(folder.Length + 1);
             if (AssetFiles.Present(path) || AssetFiles.Present(path + ".meta"))
@@ -615,7 +618,7 @@ namespace Gpos.LiveBridge
             }
         }
 
-        sealed class CreateState
+        internal sealed class CreateState
         {
             public CreateTxn Txn;
             public bool Started, MoveAttempted;
@@ -704,7 +707,7 @@ namespace Gpos.LiveBridge
         // A creation that stopped inside this request: removes only its own exact, proven temporary asset (never the
         // final path) and its exact empty scratch folder, then clears the record; anything else keeps the record and
         // is ROLLBACK_INCOMPLETE.
-        static Refusal Compensate(CreateState st, string code, string message, string status, List<object> recovered)
+        internal static Refusal Compensate(CreateState st, string code, string message, string status, List<object> recovered)
         {
             var txn = st.Txn;
             if (!st.Started)
@@ -734,9 +737,9 @@ namespace Gpos.LiveBridge
     {
         static readonly Regex RecordName = new Regex("^([0-9a-f]{32})\\.json\\z");
 
-        static Refusal Incomplete(string why, Dictionary<string, object> data = null)
+        static Refusal Incomplete(string why, Dictionary<string, object> data = null, string code = "CREATE_INCOMPLETE")
         {
-            return new Refusal("CREATE_INCOMPLETE", why) { Data = data ?? new Dictionary<string, object> { { "mutation_started", false } } };
+            return new Refusal(code, why) { Data = data ?? new Dictionary<string, object> { { "mutation_started", false } } };
         }
 
         // .game/gpos-runtime/unity/asset-create-txn/<project key>, every component a real directory (never a link).
@@ -904,8 +907,9 @@ namespace Gpos.LiveBridge
                                                                       { "transaction", new Dictionary<string, object> { { "txn_id", t.TxnId }, { "phase", t.Phase },
                                                                           { "kind", t.Kind }, { "final_path", t.FinalPath }, { "session_id", t.SessionId },
                                                                           { "request_id", t.RequestId }, { "owner", t.Owner } } },
-                                                                      { "state", s.ToData() }, { "recovered", done } });
-                done.Add(new Dictionary<string, object> { { "txn_id", t.TxnId }, { "final_path", t.FinalPath }, { "outcome", outcome },
+                                                                      { "state", s.ToData() }, { "recovered", done } },
+                                     t.Kind == AssetKinds.Prefab ? "PREFAB_CREATE_INCOMPLETE" : "CREATE_INCOMPLETE");
+                done.Add(new Dictionary<string, object> { { "txn_id", t.TxnId }, { "kind", t.Kind }, { "final_path", t.FinalPath }, { "outcome", outcome },
                                                            { "changed", outcome == "TEMP_REMOVED" || s.Scratch != "ABSENT" } });
             }
             return done;

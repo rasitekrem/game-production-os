@@ -1,4 +1,5 @@
-// GPOS live bridge — asset references and asset authoring rules (Unity-free core, bridge 1.2.0).
+// GPOS live bridge — asset references and asset authoring rules (Unity-free core, bridge 1.2.0; the prefab creation
+// path and record kind in 1.3.0).
 // An asset is named only by its GlobalObjectId string: identifier type 1 (an imported asset or one of its typed
 // sub-assets), 3 (a source asset such as a .mat or .asset file) or 4 (a built-in resource of the two built-in GUIDs),
 // always with prefab id 0. There is no InstanceID, EntityId, caller path, package-cache path or file name as identity.
@@ -73,8 +74,17 @@ namespace Gpos.LiveBridge
         // asset kind. Returns the parent folder. The folder must already exist; that is checked by the caller.
         public static string CheckWritePath(string path, string ext)
         {
-            if (path == null || path.Length == 0 || path.Length > MaxPathLength) throw Invalid("an asset path has 1 to " + MaxPathLength + " characters");
             if (ext != ".mat" && ext != ".asset") throw Invalid("assets of this kind are never written");
+            return Check(path, ext);
+        }
+
+        // The same rules for a new prefab (bridge 1.3.0): only the prefab commands call it; the asset commands and
+        // AssetResolver.Authorable never accept a .prefab path.
+        public static string CheckPrefabPath(string path) { return Check(path, ".prefab"); }
+
+        static string Check(string path, string ext)
+        {
+            if (path == null || path.Length == 0 || path.Length > MaxPathLength) throw Invalid("an asset path has 1 to " + MaxPathLength + " characters");
             if (!path.StartsWith("Assets/", StringComparison.Ordinal)) throw Invalid("assets are written only below Assets/ (never Packages/, Library/ or an absolute path)");
             if (!path.EndsWith(ext, StringComparison.Ordinal)) throw Invalid("this kind of asset is written as a " + ext + " file");
             var parts = path.Split('/');
@@ -372,9 +382,13 @@ namespace Gpos.LiveBridge
     // anything is written and updated at each proven step. Identifiers and hashes only: the scratch folder and the
     // temporary asset are derived from the transaction id and the validated final path; nothing in a record is ever
     // used as a path without that validation. A record that is not exactly this shape is never acted on.
+    // Schema /1 (bridge 1.2.0) records a Material or ScriptableObject creation and is still written for them; schema
+    // /2 (bridge 1.3.0) records a PREFAB creation, whose identity is the prefab root (type 1). Both are read, each only
+    // with its own kinds.
     internal sealed class CreateTxn
     {
         public const string Schema = "gpos.unity.live-bridge.asset-create-txn/1";
+        public const string Schema2 = "gpos.unity.live-bridge.asset-create-txn/2";
         public const string Prepared = "PREPARED", ScratchReady = "SCRATCH_READY", TempProven = "TEMP_PROVEN", FinalProven = "FINAL_PROVEN";
         public static readonly string[] Phases = { Prepared, ScratchReady, TempProven, FinalProven };
         static readonly string[] Keys = { "schema", "txn_id", "project_key", "session_id", "request_id", "owner", "kind", "final_path",
@@ -386,7 +400,7 @@ namespace Gpos.LiveBridge
         public string TxnId, ProjectKey, SessionId, RequestId, Owner, Kind, FinalPath, Phase, ScratchMeta, Guid, GlobalId, Type,
                       TempFile, TempMeta, FinalFile, FinalMeta, StartedUtc;
 
-        public string Ext { get { return AssetKinds.Extension(Kind); } }
+        public string Ext { get { return Kind == AssetKinds.Prefab ? PrefabPaths.Extension : AssetKinds.Extension(Kind); } }
         public string ScratchFolder { get { return AssetPaths.ScratchFolder(TxnId); } }
         public string TempPath { get { return AssetPaths.TempPath(TxnId, FinalPath, Ext); } }
         public int PhaseIndex { get { return Array.IndexOf(Phases, Phase); } }
@@ -396,7 +410,7 @@ namespace Gpos.LiveBridge
         public string Write()
         {
             return Json.Write(new Dictionary<string, object> {
-                { "schema", Schema }, { "txn_id", TxnId }, { "project_key", ProjectKey }, { "session_id", SessionId },
+                { "schema", Kind == AssetKinds.Prefab ? Schema2 : Schema }, { "txn_id", TxnId }, { "project_key", ProjectKey }, { "session_id", SessionId },
                 { "request_id", RequestId }, { "owner", Owner }, { "kind", Kind }, { "final_path", FinalPath }, { "phase", Phase },
                 { "scratch_meta_sha256", ScratchMeta }, { "guid", Guid }, { "global_id", GlobalId }, { "type", Type },
                 { "temp_sha256", TempFile }, { "temp_meta_sha256", TempMeta }, { "final_sha256", FinalFile },
@@ -414,7 +428,7 @@ namespace Gpos.LiveBridge
             foreach (var k in Keys)
                 if (d[k] != null && !(d[k] is string)) throw Bad(k + " is not a string");
             Func<string, string> s = k => (string)d[k];
-            if (s("schema") != Schema) throw Bad("the schema is not " + Schema);
+            if (s("schema") != Schema && s("schema") != Schema2) throw Bad("the schema is not " + Schema + " or " + Schema2);
             var t = new CreateTxn {
                 TxnId = s("txn_id"), ProjectKey = s("project_key"), SessionId = s("session_id"), RequestId = s("request_id"),
                 Owner = s("owner"), Kind = s("kind"), FinalPath = s("final_path"), Phase = s("phase"), ScratchMeta = s("scratch_meta_sha256"),
@@ -425,9 +439,16 @@ namespace Gpos.LiveBridge
             if (t.SessionId == null || !Protocol.Hex32.IsMatch(t.SessionId) || t.RequestId == null || !Protocol.Hex32.IsMatch(t.RequestId))
                 throw Bad("the session or request id is not 32 hex");
             if (t.Owner == null || !Protocol.Owner.IsMatch(t.Owner)) throw Bad("the owner is not KIND:ID");
-            if (t.Kind != AssetKinds.Material && t.Kind != AssetKinds.ScriptableObject) throw Bad("the kind is not a creatable asset kind");
-            try { AssetPaths.CheckWritePath(t.FinalPath, t.Ext); }
-            catch (Refusal) { throw Bad("the final path is not a valid asset path"); }
+            if (s("schema") == Schema ? t.Kind != AssetKinds.Material && t.Kind != AssetKinds.ScriptableObject : t.Kind != AssetKinds.Prefab)
+                throw Bad("the kind is not a creatable asset kind of this record schema");
+            if (t.Kind == AssetKinds.Prefab)
+            {
+                try { PrefabPaths.CheckWritePath(t.FinalPath); }
+                catch (Refusal) { throw Bad("the final path is not a valid prefab path"); }
+            }
+            else
+                try { AssetPaths.CheckWritePath(t.FinalPath, t.Ext); }
+                catch (Refusal) { throw Bad("the final path is not a valid asset path"); }
             if (t.PhaseIndex < 0) throw Bad("the phase is unknown");
             if (t.StartedUtc == null || !Utc.IsMatch(t.StartedUtc)) throw Bad("the start time is not a UTC timestamp");
             int phase = t.PhaseIndex;
@@ -443,8 +464,15 @@ namespace Gpos.LiveBridge
             if (phase >= 2)
             {
                 if (t.Guid == null || !Protocol.Hex32.IsMatch(t.Guid)) throw Bad("the GUID is not 32 hex");
-                if (t.GlobalId != "GlobalObjectId_V1-3-" + t.Guid + "-" + (t.Kind == AssetKinds.Material ? "2100000" : "11400000") + "-0")
-                    throw Bad("the GlobalObjectId is not the main object of the recorded GUID");
+                if (t.Kind == AssetKinds.Prefab)
+                {
+                    if (!PrefabIds.IsRecordRoot(t.GlobalId, t.Guid)) throw Bad("the GlobalObjectId is not a prefab root of the recorded GUID");
+                }
+                else
+                {
+                    if (t.GlobalId != "GlobalObjectId_V1-3-" + t.Guid + "-" + (t.Kind == AssetKinds.Material ? "2100000" : "11400000") + "-0")
+                        throw Bad("the GlobalObjectId is not the main object of the recorded GUID");
+                }
                 if (t.Type == null || !ObjectIds.TypeId.IsMatch(t.Type)) throw Bad("the runtime type is not a type id");
             }
             else if (t.Guid != null || t.GlobalId != null || t.Type != null) throw Bad("identity is recorded before it was proven");

@@ -1,6 +1,6 @@
 # Unity live Editor plane (Phase 2C-6A, Scene authoring Phase 2C-6B1)
 
-Code: [`gpos/tools/unity/live.py`](../gpos/tools/unity/live.py) and the fixed bridge package in [`gpos/tools/unity/live_bridge/`](../gpos/tools/unity/live_bridge/manifest.json) · adapter id `unity` (the same adapter as the [batch plane](unity-adapter.md)) · bridge `com.gpos.live-bridge` 1.2.0, protocol `gpos.unity.live/3` · status: live session foundation plus [Scene authoring](unity-live-authoring.md) and [asset references and asset authoring](unity-live-assets.md). Built on the [tool adapter foundation](adapter-foundation.md), extended by SESSION leases, lease modes and the `OUTCOME_UNKNOWN` result status.
+Code: [`gpos/tools/unity/live.py`](../gpos/tools/unity/live.py) and the fixed bridge package in [`gpos/tools/unity/live_bridge/`](../gpos/tools/unity/live_bridge/manifest.json) · adapter id `unity` (the same adapter as the [batch plane](unity-adapter.md)) · bridge `com.gpos.live-bridge` 1.3.0, protocol `gpos.unity.live/4` · status: live session foundation plus [Scene authoring](unity-live-authoring.md), [asset references and asset authoring](unity-live-assets.md) and [prefab authoring](unity-live-prefabs.md). Built on the [tool adapter foundation](adapter-foundation.md), extended by SESSION leases, lease modes and the `OUTCOME_UNKNOWN` result status.
 
 The live plane lets an agent work with a Unity Editor that a Human already has open, after the Human approves it **inside the Editor**. It is a closed set of operations through a fixed, audited GPOS Editor bridge:
 
@@ -13,7 +13,7 @@ The live plane lets an agent work with a Unity Editor that a Human already has o
 | `unity.live-inspect` | `READ_ONLY`, `EDITOR` | `SESSION_REQUIRED` | bounded facts: session, focus, compilation, Play Mode, scenes, a bounded hierarchy summary |
 | `unity.live-enter-playmode`, `unity.live-pause`, `unity.live-resume`, `unity.live-exit-playmode` | `MUTATING`, `EDITOR` | `SESSION_REQUIRED` | the Editor's Play Mode state only |
 
-None produces evidence. There is no generic command, no C#, no reflection target, no `-executeMethod`, no menu execution, no input injection, no capture, no Editor launch, quit, focus or restart, and no MCP transport. Input for every capability: `unity_project`, exactly as in the batch plane. The thirteen Scene-authoring capabilities and the seven asset capabilities use the same session and bridge; see [unity-live-authoring.md](unity-live-authoring.md) and [unity-live-assets.md](unity-live-assets.md).
+None produces evidence. There is no generic command, no C#, no reflection target, no `-executeMethod`, no menu execution, no input injection, no capture, no Editor launch, quit, focus or restart, and no MCP transport. Input for every capability: `unity_project`, exactly as in the batch plane. The thirteen Scene-authoring capabilities, the seven asset capabilities and the nine prefab capabilities use the same session and bridge; see [unity-live-authoring.md](unity-live-authoring.md), [unity-live-assets.md](unity-live-assets.md) and [unity-live-prefabs.md](unity-live-prefabs.md).
 
 ## Bootstrap
 
@@ -35,8 +35,9 @@ Earlier released bridges are release content, each pinned in code by protocol an
 |---|---|---|---|---|
 | 1.0.0 | `gpos.unity.live/1` | [`history/1.0.0.json`](../gpos/tools/unity/live_bridge/history/1.0.0.json) | `v1.0.0-alpha.16` | `546b3cfb…8c66` |
 | 1.1.0 | `gpos.unity.live/2` | [`history/1.1.0.json`](../gpos/tools/unity/live_bridge/history/1.1.0.json) | `v1.0.0-alpha.17` | `00af2b3a…3394` |
+| 1.2.0 | `gpos.unity.live/3` | [`history/1.2.0.json`](../gpos/tools/unity/live_bridge/history/1.2.0.json) | `v1.0.0-alpha.18` | `042379a6…82ce` |
 
-A test reads each manifest from its frozen tag and fails when the copy or the pin differs. `unity.live-status` reports the installed package as ABSENT, EXACT, PREVIOUS (with its version) or UNTRUSTED. GPOS never talks to an earlier bridge: its sessions, Scene authoring and asset authoring need 1.2.0, so a PREVIOUS package (1.0.0 or 1.1.0) is `LIVE_BRIDGE_INCOMPATIBLE` until it is upgraded. Both upgrade directly to 1.2.0 with the same transaction.
+A test reads each manifest from its frozen tag and fails when the copy or the pin differs. `unity.live-status` reports the installed package as ABSENT, EXACT, PREVIOUS (with its version) or UNTRUSTED. GPOS never talks to an earlier bridge: its sessions, Scene, asset and prefab authoring need 1.3.0, so a PREVIOUS package (1.0.0, 1.1.0 or 1.2.0) is `LIVE_BRIDGE_INCOMPATIBLE` until it is upgraded. All three upgrade directly to 1.3.0 with the same transaction.
 
 `unity.live-install-bridge` upgrades a PREVIOUS package only while the project is closed (`ENGINE_PROJECT_LOCKED` otherwise), holding its `EXECUTION` writer lease. Replacing a directory is not one atomic step, so it is a transaction:
 

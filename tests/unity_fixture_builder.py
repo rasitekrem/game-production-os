@@ -336,3 +336,67 @@ def make_asset_project(path, editor_version, editor_executable):
     data["dependencies"].update({m: "1.0.0" for m in ASSET_MODULES})
     manifest_path.write_text(json.dumps(data, indent=2))
     return path
+
+
+# ---------------------------------------------------------------- Phase 2C-6B2B: the prefab fixture
+
+PREFAB_SCRIPTS = {
+    "Assets/PrefabScripts/PrefabRefs.cs": """using UnityEngine;
+public class PrefabRefs : MonoBehaviour
+{
+    public GameObject other; public Transform child; public BoxCollider box; public Material mat; public Texture tex;
+    public Texture2D tex2d; public Sprite sprite; public AudioClip clip; public Mesh mesh; public GameConfig config;
+    public GameObject prefab; public BoxCollider prefabBox; public PhysicsMaterial physics; public Object anything;
+    public int count; public float speed; public string title = "t";
+}
+""",
+    "Assets/PrefabScripts/PrefabProbe.cs": """using System.IO;
+using UnityEngine;
+// Project code in a prefab: while Temp/gpos-probe-validate exists, every OnValidate call of an instance in a saved
+// Scene changes serialized state (a prefab override); the prefab asset itself is left alone.
+[ExecuteAlways]
+public class PrefabProbe : MonoBehaviour
+{
+    public int validations; public int stamp; public int value; public int echo;
+    void OnValidate()
+    {
+        if (File.Exists("Temp/gpos-probe-validate") && gameObject.scene.IsValid() && gameObject.scene.path.EndsWith(".unity")) validations++;
+        // while Temp/gpos-probe-echo exists, echo is copied into the sibling PrefabRefs (project code changing another component)
+        var refs = GetComponent<PrefabRefs>();
+        if (File.Exists("Temp/gpos-probe-echo") && refs != null) refs.count = echo;
+    }
+}
+""",
+    "Assets/PrefabScripts/Editor/PrefabStamp.cs": """using System.IO;
+using System.Linq;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+// Project code on every prefab import: while Temp/gpos-probe-stamp exists, it stamps each imported PrefabProbe; while
+// Temp/gpos-dirty-scenes exists, it marks every open Scene dirty after a prefab was imported.
+class PrefabStamp : AssetPostprocessor
+{
+    void OnPostprocessPrefab(GameObject root)
+    {
+        if (!File.Exists("Temp/gpos-probe-stamp")) return;
+        foreach (var p in root.GetComponentsInChildren<PrefabProbe>(true)) p.stamp++;
+    }
+
+    static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
+    {
+        if (File.Exists("Temp/gpos-dirty-scenes") && imported.Any(p => p.EndsWith(".prefab"))) EditorSceneManager.MarkAllScenesDirty();
+    }
+}
+""",
+}
+
+
+def make_prefab_project(path, editor_version, editor_executable):
+    """The asset project plus the prefab fixture scripts: a component with every reviewed reference kind, a project
+    script whose OnValidate changes state on demand and an AssetPostprocessor whose OnPostprocessPrefab does. Prefabs,
+    Variants, nested and package prefabs and the Scene content are made in the lab Editor by the testkit."""
+    path = make_asset_project(path, editor_version, editor_executable)
+    for rel, text in PREFAB_SCRIPTS.items():
+        (path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (path / rel).write_text(text)
+    return path

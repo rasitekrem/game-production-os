@@ -217,6 +217,31 @@ The real groups use disposable projects from `unity_fixture_builder.make_asset_p
 
 The same EditorPrefs and Package Manager guards apply. `test_unity_live_bridge_core.py` also runs `unity_live_bridge_core/AssetCoreTests.cs`. `mutate_unity_assets.py` mutates the GPOS side, the bridge's asset core and the asset source boundaries against the fast suites and the core tests; with `--real`, it mutates the bridge's Editor-side asset code against R3 and R4 in real lab Editors.
 
+## Unity live prefab tests
+
+```bash
+python3 tests/test_unity_prefabs.py
+python3 tests/mutate_unity_prefabs.py
+python3 tests/mutate_unity_prefabs.py --real
+```
+
+Tests for Phase 2C-6B2B: prefab authoring through bridge 1.3.0. The fast groups need no Unity:
+
+- A: the nine capability declarations, the diagnostic codes and the absence of every deferred prefab operation.
+- B: the input grammar: persistent prefab ids (type 1, prefab id 0), Scene ids, `.prefab` paths, prefab property values that never name a Scene object, and exactly one place token for an instantiation.
+- C: the exact arguments GPOS sends and how every bridge answer maps to a result against the protocol stand-in, including `mutation_performed` once a targeted import happened (an instantiation refused after its import too), `OUTCOME_UNKNOWN` from the commit point on, recovery diagnostics by record kind and the side-effect disclosure.
+- D: the 1.2.0 history manifest is the one frozen in `v1.0.0-alpha.18`, and an exact 1.2.0 package is upgraded.
+- E: source boundaries of the bridge's prefab code: no deferred prefab operation, where each write primitive appears, the order of the edit lifecycle, the instantiation and the creation transaction, the alpha.18 asset surface authoring only Materials and ScriptableObjects, and the unchanged Scene prefab boundary.
+
+The real groups use disposable projects from `unity_fixture_builder.make_prefab_project` (the asset project plus a component with every reviewed reference kind, and project scripts whose `OnValidate` and AssetPostprocessor change state on demand) in lab-owned batch-mode Editors. The testkit prepares regular, nested, Variant, package and embedded-asset prefabs, a plain Scene subtree and prefab instances with every override kind, and stands in for the Human in Prefab Mode (open, open a nested prefab in context, edit, save, go back through the breadcrumb, return to the Scenes).
+
+- R5 is one prefab session end to end: inspection and its scope reasons, effective write authority, the alpha.18 asset surface refusing prefabs, instance inspection of every override kind, creation from a plain subtree (every reference, a real Sprite, the root's name and Transform) and every refused source and path, instantiation with stable Undo/Redo ids and its refusals (out of scope, dirty, stale token after the import), every edit through the isolated copy, properties and references including a real Sprite and both wrong Texture/Sprite types, and dependency propagation into a clean Scene.
+- R6 exercises every guard: Prefab Mode in isolation and a nested prefab in context through the breadcrumb, a dirty prefab, the version-control seam and read-only file, `.meta` and folder, a file changed before the save, an unimported external change found by the targeted import, `OUTCOME_UNKNOWN` after the save, a dirty dependent Scene against an unrelated one, the Scene scan bound, project callbacks, and ids and tokens across Domain Reload, reimport and a move.
+- R7 stops the lab Editor at exact steps (creation steps, during an edit before and after the save), restarts it and proves recovery, including records of every kind recovered by every creating command and a destination taken right before the move.
+- R8 upgrades a running 1.2.0 bridge only while the project is closed.
+
+The same EditorPrefs and Package Manager guards apply. `test_unity_live_bridge_core.py` also runs `unity_live_bridge_core/PrefabCoreTests.cs`. `mutate_unity_prefabs.py` mutates the GPOS side, the bridge's prefab core and the prefab source boundaries against the fast suite and the core tests; with `--real`, it mutates the bridge's Editor-side prefab code against R5, R6 and R7 in real lab Editors.
+
 ## Fixtures
 
 **Schema fixtures** — `fixtures/valid/*.json` and `fixtures/invalid/*.json` are patches applied to a valid example:

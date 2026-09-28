@@ -14,7 +14,11 @@
 //   * (Phase 2C-6B2A) prepares the asset fixture (sprite import, cubemap, 3D texture, prefab, materials, ScriptableObject
 //     assets, a second saved Scene), saves or imports one asset as a Human would, counts Material instances, and arms
 //     the bridge's test seam AssetAuthoring.AfterStep so that at one named step of an asset command it writes a file
-//     (an external program) or stops this Editor process (a crash) — the seam is unreachable from any request.
+//     (an external program) or stops this Editor process (a crash) — the seam is unreachable from any request;
+//   * (Phase 2C-6B2B) prepares the prefab fixture (regular, nested, Variant, package and embedded-asset prefabs, a
+//     plain Scene subtree, prefab instances with every override kind), drives Prefab Mode as a Human would (open a
+//     prefab, open a nested prefab in context, edit, save, go back, return to the Scenes), dirties a Scene, fills a
+//     Scene with many objects, moves an asset and sets the bridge's version-control test seam.
 // None of this exists in the production bridge: it has no activation switch, no approval command and no triggers.
 using System;
 using System.Collections.Generic;
@@ -36,6 +40,7 @@ namespace Gpos.LiveBridge.Testkit
     {
         public string op, target, path, kind, value, parent, scene, name, step, action, text;
         public bool keepWorld;
+        public int count;
     }
 
     [InitializeOnLoad]
@@ -276,6 +281,7 @@ namespace Gpos.LiveBridge.Testkit
                     return Ok("dirty", EditorUtility.IsDirty(target) ? "true" : "false");
                 }
                 case "import": AssetDatabase.ImportAsset(o.path, ImportAssetOptions.ForceUpdate); return Ok();
+                case "mark-dirty": EditorUtility.SetDirty(Find(o.target)); return Ok();   // an Editor tool marks an asset dirty
                 case "dirty": return Ok("dirty", EditorUtility.IsDirty(Find(o.target)) ? "true" : "false");
                 case "material-instances":
                     return Ok("count", Resources.FindObjectsOfTypeAll<Material>().Count(m => !EditorUtility.IsPersistent(m)).ToString(CultureInfo.InvariantCulture));
@@ -299,6 +305,90 @@ namespace Gpos.LiveBridge.Testkit
                 case "active-scene": return Ok("path", Q(SceneManager.GetActiveScene().path));
                 case "save-open-scenes": EditorSceneManager.SaveOpenScenes(); return Ok();
                 case "close-scene": EditorSceneManager.CloseScene(SceneManager.GetSceneByPath(o.scene), true); return Ok();
+                case "setup-prefabs": return SetupPrefabs();
+                case "stage-open":       // double-click a prefab: Prefab Mode in isolation
+                {
+                    var stage = PrefabStageUtility.OpenPrefab(o.path);
+                    return Ok("open", stage == null ? "false" : "true");
+                }
+                case "stage-open-in-context":   // open the nested instance `name` of the current stage in context
+                {
+                    var current = PrefabStageUtility.GetCurrentPrefabStage();
+                    var nested = current.prefabContentsRoot.GetComponentsInChildren<Transform>(true).First(t => t.name == o.name && PrefabUtility.IsAnyPrefabInstanceRoot(t.gameObject)).gameObject;
+                    var stage = PrefabStageUtility.OpenPrefab(o.path, nested, PrefabStage.Mode.InContext);
+                    return Ok("open", stage == null ? "false" : "true");
+                }
+                case "stage-edit":       // an Inspector edit inside the current stage (unsaved)
+                {
+                    var stage = PrefabStageUtility.GetCurrentPrefabStage();
+                    var root = stage.prefabContentsRoot;
+                    Undo.RecordObject(root.transform, "Human stage edit");
+                    root.transform.localScale = new Vector3(float.Parse(o.value, CultureInfo.InvariantCulture), 1, 1);
+                    EditorSceneManager.MarkSceneDirty(stage.scene);
+                    return Ok("dirty", stage.scene.isDirty ? "true" : "false");
+                }
+                case "stage-save":       // Ctrl+S in Prefab Mode
+                {
+                    var stage = PrefabStageUtility.GetCurrentPrefabStage();
+                    PrefabUtility.SaveAsPrefabAsset(stage.prefabContentsRoot, stage.assetPath);
+                    stage.ClearDirtiness();
+                    return Ok();
+                }
+                case "stage-back": StageUtility.GoBackToPreviousStage(); return Ok();
+                case "stage-main": StageUtility.GoToMainStage(); return Ok();
+                case "stage-state":      // the current stage and the breadcrumb (Unity's internal stage history, test only)
+                {
+                    var current = StageUtility.GetCurrentStage();
+                    var prefab = PrefabStageUtility.GetCurrentPrefabStage();
+                    return Ok("main", current == StageUtility.GetMainStage() ? "true" : "false", "prefab", prefab == null ? "null" : Q(prefab.assetPath),
+                              "dirty", prefab != null && prefab.scene.isDirty ? "true" : "false", "history", History().ToString(CultureInfo.InvariantCulture),
+                              "auto_save", prefab != null && AutoSave(prefab) ? "true" : "false");
+                }
+                case "stage-reset":      // the Human leaves Prefab Mode, saving what is unsaved
+                {
+                    for (int i = 0; i < 8 && StageUtility.GetCurrentStage() != StageUtility.GetMainStage(); i++)
+                    {
+                        var stage = PrefabStageUtility.GetCurrentPrefabStage();
+                        if (stage != null && stage.scene.isDirty)
+                        {
+                            PrefabUtility.SaveAsPrefabAsset(stage.prefabContentsRoot, stage.assetPath);
+                            stage.ClearDirtiness();
+                        }
+                        StageUtility.GoToMainStage();
+                    }
+                    return Ok("history", History().ToString(CultureInfo.InvariantCulture));
+                }
+                case "hide":             // a hidden, NotEditable object (what some Editor tools leave in a Scene)
+                {
+                    var go = (GameObject)Find(o.target);
+                    go.hideFlags = HideFlags.NotEditable;
+                    return Ok();
+                }
+                case "mark-scene-dirty": EditorSceneManager.MarkSceneDirty(SceneManager.GetSceneByPath(o.scene)); return Ok();
+                case "many-objects":     // an additive, never saved Scene with `count` empty objects
+                {
+                    var s = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+                    var active = SceneManager.GetActiveScene();
+                    SceneManager.SetActiveScene(s);
+                    for (int i = 0; i < o.count; i++) new GameObject("Many");
+                    SceneManager.SetActiveScene(active);
+                    return Ok("roots", s.rootCount.ToString(CultureInfo.InvariantCulture));
+                }
+                case "move-asset": { string e = AssetDatabase.MoveAsset(o.path, o.target); return Ok("error", Q(e)); }
+                case "vcs":              // the bridge's version-control test seam (true: as if a provider were active)
+                {
+                    var resolver = Type.GetType("Gpos.LiveBridge.PrefabResolver, Gpos.LiveBridge.Editor");
+                    resolver.GetField("TestVersionControlActive", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, o.value == "true");
+                    return Ok();
+                }
+                case "instance-count":   // how many instances of a prefab the Scene holds
+                {
+                    var asset = AssetDatabase.LoadMainAssetAtPath(o.path);
+                    var s = SceneManager.GetSceneByPath(o.scene);
+                    int n = s.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<Transform>(true))
+                             .Count(t => PrefabUtility.IsOutermostPrefabInstanceRoot(t.gameObject) && PrefabUtility.GetCorrespondingObjectFromSource(t.gameObject) == asset);
+                    return Ok("count", n.ToString(CultureInfo.InvariantCulture));
+                }
                 case "close-unsaved":
                 {
                     for (int i = SceneManager.sceneCount - 1; i >= 0; i--)
@@ -391,6 +481,162 @@ namespace Gpos.LiveBridge.Testkit
                 "refs", Q(Id(refsComponent)), "audio", Q(Id(audio)), "slots", Q(Id(slotRenderer)), "no_slots", Q(Id(noneRenderer)),
                 "instance_renderer", Q(Id(instance.GetComponent<MeshRenderer>())) };
             return Ok(ids.ToArray());
+        }
+
+        // The number of stages in Unity's breadcrumb (the Scenes stage included), from its internal navigation manager.
+        static int History()
+        {
+            var type = typeof(StageUtility).Assembly.GetType("UnityEditor.SceneManagement.StageNavigationManager");
+            if (type == null) return -1;
+            object instance = null;
+            for (var t = type; t != null && instance == null; t = t.BaseType)
+            {
+                var p = t.GetProperty("instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
+                if (p != null) instance = p.GetValue(null, null);
+            }
+            if (instance == null) return -2;
+            foreach (var name in new[] { "stageHistory", "m_NavigationHistory" })
+            {
+                var prop = type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                object value = prop != null ? prop.GetValue(instance, null) : null;
+                if (value == null)
+                {
+                    var field = type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    value = field != null ? field.GetValue(instance) : null;
+                }
+                var list = value as System.Collections.ICollection;
+                if (list != null) return list.Count;
+                if (value != null)
+                {
+                    var inner = value.GetType().GetMethod("GetHistory", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                    var history = inner != null ? inner.Invoke(value, null) as System.Collections.ICollection : null;
+                    if (history != null) return history.Count;
+                }
+            }
+            return -3;
+        }
+
+        static bool AutoSave(PrefabStage stage)
+        {
+            var p = typeof(PrefabStage).GetProperty("autoSave", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            return p != null && (bool)p.GetValue(stage, null);
+        }
+
+        static void Set(UnityEngine.Object o, string path, UnityEngine.Object value)
+        {
+            var so = new SerializedObject(o);
+            so.FindProperty(path).objectReferenceValue = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // The prefab fixture a Human would have made (after setup and setup-assets): Plain (a regular prefab with
+        // references inside it, duplicate child names and a grandchild), Probe (project callbacks), Outer (a nested
+        // instance of Plain), PlainVariant, Pkg (in the embedded package), Embedded (a prefab file with an embedded
+        // Mesh); in the Main Scene a plain subtree Source (references inside, to assets and a Sprite), Outside and
+        // Leak (a reference out of its subtree), an instance of Plain with every override kind, an instance of Outer
+        // with an override of its nested instance, and Holder (a plain parent).
+        static string SetupPrefabs()
+        {
+            if (!AssetDatabase.IsValidFolder("Assets/Made")) AssetDatabase.CreateFolder("Assets", "Made");
+            if (!AssetDatabase.IsValidFolder("Packages/com.gpos.fixture-assets/Prefabs")) AssetDatabase.CreateFolder("Packages/com.gpos.fixture-assets", "Prefabs");
+            var baseMat = AssetDatabase.LoadMainAssetAtPath("Assets/Materials/Base.mat");
+            var sprite = AssetDatabase.LoadAllAssetsAtPath("Assets/Art/hero.png").OfType<Sprite>().First();
+            var plain = new GameObject("Plain");
+            var refs = plain.AddComponent(TypeOf("PrefabRefs"));
+            var a = new GameObject("Child");
+            a.transform.SetParent(plain.transform, false);
+            var box = a.AddComponent<BoxCollider>();
+            var b = new GameObject("Child");
+            b.transform.SetParent(plain.transform, false);
+            b.AddComponent<SphereCollider>();
+            var leaf = new GameObject("Leaf");
+            leaf.transform.SetParent(a.transform, false);
+            Set(refs, "other", a); Set(refs, "child", b.transform); Set(refs, "box", box); Set(refs, "mat", baseMat);
+            var plainAsset = PrefabUtility.SaveAsPrefabAsset(plain, "Assets/Prefabs/Plain.prefab");
+            UnityEngine.Object.DestroyImmediate(plain);
+            var probe = new GameObject("Probe");
+            probe.AddComponent(TypeOf("PrefabProbe"));
+            probe.AddComponent(TypeOf("PrefabRefs"));
+            var probeAsset = PrefabUtility.SaveAsPrefabAsset(probe, "Assets/Prefabs/Probe.prefab");
+            UnityEngine.Object.DestroyImmediate(probe);
+            var outer = new GameObject("Outer");
+            var nested = (GameObject)PrefabUtility.InstantiatePrefab(plainAsset);
+            nested.transform.SetParent(outer.transform, false);
+            var outerAsset = PrefabUtility.SaveAsPrefabAsset(outer, "Assets/Prefabs/Outer.prefab");
+            UnityEngine.Object.DestroyImmediate(outer);
+            var forVariant = (GameObject)PrefabUtility.InstantiatePrefab(plainAsset);
+            var variantAsset = PrefabUtility.SaveAsPrefabAsset(forVariant, "Assets/Prefabs/PlainVariant.prefab");
+            UnityEngine.Object.DestroyImmediate(forVariant);
+            var pkg = new GameObject("Pkg");
+            pkg.AddComponent<BoxCollider>();
+            var pkgAsset = PrefabUtility.SaveAsPrefabAsset(pkg, "Packages/com.gpos.fixture-assets/Prefabs/Pkg.prefab");
+            UnityEngine.Object.DestroyImmediate(pkg);
+            var emb = new GameObject("Embedded");
+            var embAsset = PrefabUtility.SaveAsPrefabAsset(emb, "Assets/Prefabs/Embedded.prefab");
+            UnityEngine.Object.DestroyImmediate(emb);
+            AssetDatabase.AddObjectToAsset(new Mesh { name = "Inner" }, embAsset);
+            AssetDatabase.SaveAssets();
+            var scene = SceneManager.GetSceneByPath("Assets/Scenes/Main.unity");
+            var src = new GameObject("Source");
+            SceneManager.MoveGameObjectToScene(src, scene);
+            var srcRefs = src.AddComponent(TypeOf("PrefabRefs"));
+            var kid = new GameObject("Kid");
+            kid.transform.SetParent(src.transform, false);
+            var kidBox = kid.AddComponent<BoxCollider>();
+            var kid2 = new GameObject("Kid2");
+            kid2.transform.SetParent(src.transform, false);
+            Set(srcRefs, "other", kid); Set(srcRefs, "child", kid2.transform); Set(srcRefs, "box", kidBox); Set(srcRefs, "mat", baseMat);
+            Set(srcRefs, "sprite", sprite); Set(srcRefs, "prefab", plainAsset);
+            var srcSo = new SerializedObject(srcRefs);
+            srcSo.FindProperty("count").intValue = 7;
+            srcSo.ApplyModifiedPropertiesWithoutUndo();
+            src.transform.localPosition = new Vector3(1, 2, 3);
+            var outside = new GameObject("Outside");
+            SceneManager.MoveGameObjectToScene(outside, scene);
+            var leak = new GameObject("Leak");
+            SceneManager.MoveGameObjectToScene(leak, scene);
+            Set(leak.AddComponent(TypeOf("PrefabRefs")), "other", outside);
+            var bouncy = new PhysicsMaterial("Bouncy");
+            AssetDatabase.CreateAsset(bouncy, "Assets/Materials/Bouncy.physicMaterial");
+            var unsupported = new GameObject("Unsupported");
+            SceneManager.MoveGameObjectToScene(unsupported, scene);
+            Set(unsupported.AddComponent(TypeOf("PrefabRefs")), "physics", bouncy);
+            var holder = new GameObject("Holder");
+            SceneManager.MoveGameObjectToScene(holder, scene);
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(plainAsset, scene);
+            var instRefs = instance.GetComponent(TypeOf("PrefabRefs"));
+            var so = new SerializedObject(instRefs);
+            so.FindProperty("count").intValue = 5;                                                     // a property override
+            so.ApplyModifiedPropertiesWithoutUndo();
+            PrefabUtility.RecordPrefabInstancePropertyModifications(instRefs);
+            instance.AddComponent(TypeOf("AuthorSingle"));                                             // an added component
+            UnityEngine.Object.DestroyImmediate(instance.transform.GetChild(1).GetComponent<SphereCollider>());   // a removed component
+            var added = new GameObject("Added");                                                        // an added GameObject
+            added.transform.SetParent(instance.transform, false);
+            UnityEngine.Object.DestroyImmediate(instance.transform.GetChild(0).GetChild(0).gameObject);  // a removed GameObject
+            var outerInstance = (GameObject)PrefabUtility.InstantiatePrefab(outerAsset, scene);
+            var nestedRefs = outerInstance.transform.GetChild(0).GetComponent(TypeOf("PrefabRefs"));
+            var nso = new SerializedObject(nestedRefs);
+            nso.FindProperty("count").intValue = 9;                                                    // a nested override
+            nso.ApplyModifiedPropertiesWithoutUndo();
+            PrefabUtility.RecordPrefabInstancePropertyModifications(nestedRefs);
+            EditorSceneManager.SaveScene(scene);
+            Undo.ClearAll();
+            var p = plainAsset;
+            return Ok("plain", Q(Id(p)), "plain_refs", Q(Id(p.GetComponent(TypeOf("PrefabRefs"))) ), "plain_transform", Q(Id(p.transform)),
+                      "plain_child", Q(Id(p.transform.GetChild(0).gameObject)), "plain_child_box", Q(Id(p.transform.GetChild(0).GetComponent<BoxCollider>())),
+                      "plain_child2", Q(Id(p.transform.GetChild(1).gameObject)), "plain_child2_sphere", Q(Id(p.transform.GetChild(1).GetComponent<SphereCollider>())),
+                      "plain_leaf", Q(Id(p.transform.GetChild(0).GetChild(0).gameObject)),
+                      "probe", Q(Id(probeAsset)), "probe_component", Q(Id(probeAsset.GetComponent(TypeOf("PrefabProbe")))),
+                      "probe_refs", Q(Id(probeAsset.GetComponent(TypeOf("PrefabRefs")))),
+                      "outer", Q(Id(outerAsset)), "outer_nested", Q(Id(outerAsset.transform.GetChild(0).gameObject)),
+                      "outer_nested_refs", Q(Id(outerAsset.transform.GetChild(0).GetComponent(TypeOf("PrefabRefs")))),
+                      "variant", Q(Id(variantAsset)), "variant_refs", Q(Id(variantAsset.GetComponent(TypeOf("PrefabRefs")))),
+                      "pkg_prefab", Q(Id(pkgAsset)), "pkg_prefab_box", Q(Id(pkgAsset.GetComponent<BoxCollider>())), "embedded", Q(Id(embAsset)),
+                      "source", Q(Id(src)), "source_refs", Q(Id(srcRefs)), "source_kid", Q(Id(kid)), "source_kid_box", Q(Id(kidBox)), "source_kid2", Q(Id(kid2)),
+                      "outside", Q(Id(outside)), "leak", Q(Id(leak)), "holder", Q(Id(holder)), "unsupported", Q(Id(unsupported)),
+                      "instance", Q(Id(instance)), "instance_refs", Q(Id(instRefs)), "instance_child", Q(Id(instance.transform.GetChild(0).gameObject)),
+                      "instance_added", Q(Id(added)), "outer_instance", Q(Id(outerInstance)));
         }
 
         static Type TypeOf(string name)

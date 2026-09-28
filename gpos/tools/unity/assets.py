@@ -1,5 +1,5 @@
 """Unity live asset references and asset authoring (Phase 2C-6B2A): seven fixed capabilities through the audited
-bridge 1.2.0.
+bridge (1.2.0; unchanged in 1.3.0, which adds the prefab capabilities of prefabs.py).
 
     unity.live-asset-types              the asset kinds, the ScriptableObject and shader catalogs    READ_ONLY
     unity.live-asset-find               typed, bounded, paged lookup in ASSETS, PACKAGE or BUILTIN    READ_ONLY
@@ -184,11 +184,16 @@ def parse_inputs(cap, inputs):
 
 # ---------------------------------------------------------------- execution
 
-def _recovered(cap, records):
-    """One LIVE_ASSET_CREATE_RECOVERED per earlier interrupted creation the bridge closed before this request."""
-    return [lv._diag("LIVE_ASSET_CREATE_RECOVERED", f"an interrupted creation of {rec.get('final_path')!r} was closed "
-                                                    f"before this request: {rec.get('outcome')}", cap,
+def recovered_diagnostics(cap, records):
+    """One LIVE_ASSET_CREATE_RECOVERED (LIVE_PREFAB_CREATE_RECOVERED for a prefab) per earlier interrupted creation the
+    bridge closed before this request. Every creating command recovers every kind of record."""
+    return [lv._diag("LIVE_PREFAB_CREATE_RECOVERED" if rec.get("kind") == "PREFAB" else "LIVE_ASSET_CREATE_RECOVERED",
+                     f"an interrupted creation of {rec.get('final_path')!r} was closed before this request: "
+                     f"{rec.get('outcome')}", cap,
                      {"txn_id": rec.get("txn_id"), "outcome": rec.get("outcome")}) for rec in records or ()]
+
+
+_recovered = recovered_diagnostics
 
 
 def _success(cap, data):

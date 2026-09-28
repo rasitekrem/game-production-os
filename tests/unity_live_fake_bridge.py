@@ -38,7 +38,10 @@ AUTHORING = ("object-inspect", "component-types", "properties", "create-gameobje
              "set-renderer-material",
              # asset references and asset authoring (Phase 2C-6B2A)
              "asset-types", "asset-find", "asset-inspect", "create-material", "set-material-property",
-             "create-scriptable-object", "set-asset-property")
+             "create-scriptable-object", "set-asset-property",
+             # prefab authoring (Phase 2C-6B2B)
+             "prefab-inspect", "prefab-instance-inspect", "create-prefab", "instantiate-prefab", "set-prefab-gameobject",
+             "set-prefab-transform", "add-prefab-component", "remove-prefab-component", "set-prefab-property")
 
 
 def default_author_reply(command, args):

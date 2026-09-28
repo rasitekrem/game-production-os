@@ -24,6 +24,7 @@ namespace Gpos.LiveBridge
         public const string KindsDomain = "gpos.asset-kinds/1";
         public const string ScriptableCatalogDomain = "gpos.so-catalog/1";
         public const string ShaderCatalogDomain = "gpos.shader-catalog/1";
+        public const string PrefabDomain = "gpos.prefab/1";
 
         readonly StringBuilder text = new StringBuilder();
 

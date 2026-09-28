@@ -1,8 +1,8 @@
-"""The Unity live plane (Phase 2C-6A, Scene authoring Phase 2C-6B1, asset authoring Phase 2C-6B2A): a fixed Editor
-bridge and one Human-approved session per GPOS project.
+"""The Unity live plane (Phase 2C-6A, Scene authoring Phase 2C-6B1, asset authoring Phase 2C-6B2A, prefab authoring
+Phase 2C-6B2B): a fixed Editor bridge and one Human-approved session per GPOS project.
 
 Nine session capabilities here, thirteen Scene-authoring capabilities in authoring.py, seven asset capabilities in
-assets.py, and nothing generic:
+assets.py, nine prefab capabilities in prefabs.py, and nothing generic:
 
     unity.live-install-bridge   write the audited bridge package into a closed project, or upgrade an exact earlier
                                 released bridge there with a crash-recoverable transaction        MUTATING, EXECUTION
@@ -73,6 +73,11 @@ REFUSALS = {
     "ASSET_LIMIT": "LIVE_ASSET_LIMIT", "SHADER_NOT_IN_CATALOG": "LIVE_SHADER_NOT_IN_CATALOG",
     "ASSET_CONFLICT": "LIVE_ASSET_CONFLICT", "ASSET_DIRTY": "LIVE_ASSET_DIRTY", "ASSET_EXISTS": "LIVE_ASSET_EXISTS",
     "ASSET_NOT_EDITABLE": "LIVE_ASSET_NOT_EDITABLE", "CREATE_INCOMPLETE": "LIVE_ASSET_CREATE_INCOMPLETE",
+    # prefab authoring (Phase 2C-6B2B)
+    "PREFAB_REFUSED": "LIVE_PREFAB_REFUSED", "PREFAB_LIMIT": "LIVE_PREFAB_LIMIT",
+    "PREFAB_STAGE_OPEN": "LIVE_PREFAB_STAGE_OPEN", "PREFAB_DIRTY": "LIVE_PREFAB_DIRTY",
+    "PREFAB_CONFLICT": "LIVE_PREFAB_CONFLICT", "PREFAB_NOT_EDITABLE": "LIVE_PREFAB_NOT_EDITABLE",
+    "PREFAB_CREATE_INCOMPLETE": "LIVE_PREFAB_CREATE_INCOMPLETE",
 }
 # FAILED codes of an authoring command whose mutation began (the bridge reverted it; see authoring.py). An asset
 # command's PERSISTENCE_UNKNOWN (the commit point was reached) is LIVE_OUTCOME_UNKNOWN (authoring.outcome).
@@ -101,7 +106,13 @@ PROTOCOL_VOCABULARY = frozenset(REFUSALS) | frozenset({
     "ASSETS", "PACKAGE", "BUILTIN", "KINDS", "SCRIPTABLE_OBJECTS", "SHADERS", "REPLACE", "CREATE_FIRST",
     "AUDIO_USES_RESOURCE", "PER_RENDERER_DATA", "PREPARED", "SCRATCH_READY", "TEMP_PROVEN", "FINAL_PROVEN",
     "ABSENT", "EMPTY", "HOLDS_TEMP", "UNKNOWN", "EXACT", "DIFFERENT", "OURS_DIFFERENT", "OTHER",
-    "NOTHING_CREATED", "TEMP_REMOVED", "FINAL_KEPT", "ABANDONED"})
+    "NOTHING_CREATED", "TEMP_REMOVED", "FINAL_KEPT", "ABANDONED"}) | frozenset({
+    # prefabs: types, ownership roles, scope reasons, token scope, reference findings, instance status, override kinds
+    "REGULAR", "VARIANT", "OWNED", "NESTED_ROOT", "NESTED_CONTENT", "VARIANT_INHERITED", "NESTED_PRESENT",
+    "MISSING_SCRIPT", "HIDDEN_CONTENT", "EMBEDDED_ASSETS", "STAGE_OPEN", "DIRTY", "NOT_WRITABLE", "VERSION_CONTROL",
+    "NOT_OWNED", "NOT_COVERED", "NULL", "INSIDE", "OWN_SCRIPT", "REVIEWED_ASSET", "SCENE_OUTSIDE", "OTHER_SCRIPT",
+    "UNSUPPORTED_ASSET", "UNKNOWN_REFERENCE", "PREFAB_LINK", "CONNECTED", "MISSING_ASSET", "NOT_A_PREFAB",
+    "PROPERTY", "ADDED_COMPONENT", "REMOVED_COMPONENT", "ADDED_GAME_OBJECT", "REMOVED_GAME_OBJECT"})
 
 
 def _diag(code, message, cap, details=None):

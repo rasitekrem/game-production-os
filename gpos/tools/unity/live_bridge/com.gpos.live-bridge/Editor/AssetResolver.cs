@@ -198,10 +198,13 @@ namespace Gpos.LiveBridge
                 .Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList();
         }
 
-        // Whether GPOS may write this asset: a main Material (.mat) or catalogued ScriptableObject (.asset) below
-        // Assets/, alone in its file. Package and built-in assets are references only.
+        // Whether GPOS may write this asset through the asset commands: a main Material (.mat) or catalogued
+        // ScriptableObject (.asset) below Assets/, alone in its file. Package and built-in assets are references only.
+        // Only those two kinds are ever authorable here (bridge 1.3.0): prefab write authority belongs to the prefab
+        // commands alone (PrefabResolver), never to this generic asset surface.
         public static bool Authorable(AssetRef r)
         {
+            if (r.Kind != AssetKinds.Material && r.Kind != AssetKinds.ScriptableObject) return false;
             if (r.Source != AssetKinds.Assets || !r.Main) return false;
             string ext = AssetKinds.Extension(r.Kind);
             if (ext.Length == 0 || !r.Path.EndsWith(ext, StringComparison.Ordinal)) return false;

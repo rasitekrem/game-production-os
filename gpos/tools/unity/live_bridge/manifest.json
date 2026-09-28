@@ -1,5 +1,5 @@
 {
-  "bridge_version": "1.2.0",
+  "bridge_version": "1.3.0",
   "files": [
     {
       "path": "Editor.meta",
@@ -18,8 +18,8 @@
     },
     {
       "path": "Editor/AssetAuthoring.cs",
-      "sha256": "341b7f79a0e5ec7f99195dfd1bc7cdf8fc070c70ebcce25daa8c39139af4e89c",
-      "size": 57015
+      "sha256": "73e04b5e348a8670fe86bc06c39c39b6ebd6ccf9f9c121394369bb9f47856aa3",
+      "size": 57528
     },
     {
       "path": "Editor/AssetAuthoring.cs.meta",
@@ -38,8 +38,8 @@
     },
     {
       "path": "Editor/AssetResolver.cs",
-      "sha256": "496a4a4087761df672314ad16f15dafcd7fa41f19c25cfba1ccd813d58ad87f2",
-      "size": 15732
+      "sha256": "741fe5dfa2716ce2d32a6522393bca3885dc43ad174bae52052ef4bec2e073a4",
+      "size": 16060
     },
     {
       "path": "Editor/AssetResolver.cs.meta",
@@ -48,8 +48,8 @@
     },
     {
       "path": "Editor/Authoring.cs",
-      "sha256": "3b3312c4f0c06c93f197e9fd94b8307318df655ff452bed184bf078f49b62a5d",
-      "size": 46832
+      "sha256": "bfd58c9af91a99f589a3ec6ff0a208fb0760c23b2cdad2812fc28d2d15209118",
+      "size": 47099
     },
     {
       "path": "Editor/Authoring.cs.meta",
@@ -78,8 +78,8 @@
     },
     {
       "path": "Editor/Commands.cs",
-      "sha256": "b3cfab7b485310ec4c2be712d7b36774a8b8cc8f6ee34368a0dd2eb5dcde1ccd",
-      "size": 20989
+      "sha256": "fd711104b0f28b4620055d2cd7ec7111f66e548c02f58be13dbe31704699277b",
+      "size": 21049
     },
     {
       "path": "Editor/Commands.cs.meta",
@@ -93,8 +93,8 @@
     },
     {
       "path": "Editor/Core/AssetRules.cs",
-      "sha256": "d79cf0b67c6e45f32f7ffcf35621f68cf1870e023ad95057bbaba45e3dde75a6",
-      "size": 26530
+      "sha256": "8c283ba4baf96e9dbf55f953f7f25d62bde0bad400858944593adf3cec77f734",
+      "size": 28095
     },
     {
       "path": "Editor/Core/AssetRules.cs.meta",
@@ -132,6 +132,16 @@
       "size": 59
     },
     {
+      "path": "Editor/Core/PrefabRules.cs",
+      "sha256": "a768aa170dc18567acaad23149d5f7befb195b23688da2914429e09ce624de54",
+      "size": 10741
+    },
+    {
+      "path": "Editor/Core/PrefabRules.cs.meta",
+      "sha256": "0c5f445d09837f66d77ddd31ecaaa9f7c5dd7ac63921059c4b51a54f41f641b0",
+      "size": 59
+    },
+    {
       "path": "Editor/Core/PropertyRules.cs",
       "sha256": "3a0ec7b1dd30197670d2a1dd4ab6b69fa61588199c31cc5e4499b01298ca47ef",
       "size": 12270
@@ -153,8 +163,8 @@
     },
     {
       "path": "Editor/Core/Protocol.cs",
-      "sha256": "e03eee3af275f2b1d4371f33eb35f3ef4670b0e63d0442508b53b37601ee18e4",
-      "size": 13141
+      "sha256": "b8a3b9c9c96fd900430c9706d636e367d55d87ba8df41318a57b723b73b1d792",
+      "size": 15634
     },
     {
       "path": "Editor/Core/Protocol.cs.meta",
@@ -163,8 +173,8 @@
     },
     {
       "path": "Editor/Core/Tokens.cs",
-      "sha256": "66c61b4e62164efbab7e33f0756539dbb93ceaa7139a5a1dccd71ec3755476b9",
-      "size": 4907
+      "sha256": "bedcb64a0d9f5a7df834baa2e7b1ff2012ea401e50d8bd295341b4b7d4916757",
+      "size": 4967
     },
     {
       "path": "Editor/Core/Tokens.cs.meta",
@@ -212,9 +222,29 @@
       "size": 59
     },
     {
+      "path": "Editor/PrefabAuthoring.cs",
+      "sha256": "bacdeb733ed7150df62df837830cec59160de617bab5d156b32961aefb959610",
+      "size": 81587
+    },
+    {
+      "path": "Editor/PrefabAuthoring.cs.meta",
+      "sha256": "847766f1d7165fac0236fc43821b86cbc3c3d77adbe79c146a632b5a3fb4ab72",
+      "size": 59
+    },
+    {
+      "path": "Editor/PrefabResolver.cs",
+      "sha256": "333f7155a833e69fd0d63cc6308cda53a5a9a588218810ce7f25861ef3e69662",
+      "size": 21578
+    },
+    {
+      "path": "Editor/PrefabResolver.cs.meta",
+      "sha256": "68f723dc92924c8ef9e7b058afd641da5956d9a0b0373715567f7c093bea285c",
+      "size": 59
+    },
+    {
       "path": "Editor/Properties.cs",
-      "sha256": "8481ea753922be9a4f264e58b9dc599e63aec3577f8bb9845c224aa094d5f8e0",
-      "size": 18025
+      "sha256": "0c747e11b13a4f71032b31b23a725699778a4e4129be93f130552125d0eba87c",
+      "size": 19445
     },
     {
       "path": "Editor/Properties.cs.meta",
@@ -233,8 +263,8 @@
     },
     {
       "path": "package.json",
-      "sha256": "2082464b98eaf30f2fdc645b12869659ef21cf852c1860919fff259cef1d596a",
-      "size": 277
+      "sha256": "e0e3f44f29424c634ebc5cb7d2bbf3b8218301db3d0ec4f4a2543788d74326f4",
+      "size": 295
     },
     {
       "path": "package.json.meta",
@@ -242,8 +272,8 @@
       "size": 163
     }
   ],
-  "package_digest": "042379a6413c8b55ce3d6deada529fbdbe609c96b9dace56f256d94428c782ce",
+  "package_digest": "acdbb1c84e9be9e8fbd10bb6b2c09e4dbfae3e4d4e28ad74c4f5cc708a4f3f47",
   "package_id": "com.gpos.live-bridge",
-  "protocol": "gpos.unity.live/3",
+  "protocol": "gpos.unity.live/4",
   "schema": "gpos.unity.live-bridge.manifest/1"
 }

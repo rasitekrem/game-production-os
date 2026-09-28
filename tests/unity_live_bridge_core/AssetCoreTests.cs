@@ -254,7 +254,7 @@ namespace Gpos.LiveBridge
             }
             Check(!Protocol.IsAsset("set-renderer-material") && Protocol.ChangesScene("set-renderer-material"), "the renderer command is a Scene change");
             foreach (var generic in new[] { "asset-database", "refresh", "save-assets", "delete-asset", "move-asset", "import-asset", "create-folder",
-                                            "set-importer", "apply-prefab", "create-prefab", "reserialize" })
+                                            "set-importer", "apply-prefab", "reserialize" })
                 Equal("UNKNOWN_COMMAND", Code(() => Parse(Id(++n), AuthorReq(Id(n), generic, "{}"))), generic);
         }
     }

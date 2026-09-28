@@ -1,0 +1,249 @@
+{
+  "bridge_version": "1.2.0",
+  "files": [
+    {
+      "path": "Editor.meta",
+      "sha256": "7c6c0442ca25c854c08489e9c255ce02dda7e3b0eb6a11c0054e4f82ad34bd4f",
+      "size": 172
+    },
+    {
+      "path": "Editor/ApprovalWindow.cs",
+      "sha256": "9c3fc2b099e7429fe81fc2faad66bae5aef99112ca0d1453f2a913595ddda88b",
+      "size": 3858
+    },
+    {
+      "path": "Editor/ApprovalWindow.cs.meta",
+      "sha256": "4d105131459308ac87a7736eaf59764bf24c04ecd228df0e4097f2611e53c414",
+      "size": 59
+    },
+    {
+      "path": "Editor/AssetAuthoring.cs",
+      "sha256": "341b7f79a0e5ec7f99195dfd1bc7cdf8fc070c70ebcce25daa8c39139af4e89c",
+      "size": 57015
+    },
+    {
+      "path": "Editor/AssetAuthoring.cs.meta",
+      "sha256": "16138ea63f7da5fc27b5ae83cd2b3530d12f125e14b61a47f754c44ed84c7d0f",
+      "size": 59
+    },
+    {
+      "path": "Editor/AssetCatalogs.cs",
+      "sha256": "63ae83bc74261eadebbb2dba65f6ca5981156053f8debbf2fa191a28e2aaf188",
+      "size": 7004
+    },
+    {
+      "path": "Editor/AssetCatalogs.cs.meta",
+      "sha256": "fde5c0c9955f2b0cef19667160ff56f80c1e52d269eb30c6566e9948f118ef6d",
+      "size": 59
+    },
+    {
+      "path": "Editor/AssetResolver.cs",
+      "sha256": "496a4a4087761df672314ad16f15dafcd7fa41f19c25cfba1ccd813d58ad87f2",
+      "size": 15732
+    },
+    {
+      "path": "Editor/AssetResolver.cs.meta",
+      "sha256": "8d1b6d3e8ca60705e5352545730c99a5c90665fb690a87e5aa0f0463074a05db",
+      "size": 59
+    },
+    {
+      "path": "Editor/Authoring.cs",
+      "sha256": "3b3312c4f0c06c93f197e9fd94b8307318df655ff452bed184bf078f49b62a5d",
+      "size": 46832
+    },
+    {
+      "path": "Editor/Authoring.cs.meta",
+      "sha256": "0afc1978a93b4ceddc596aa521ed125901b50534b7d3c43db9c6dc3664536c8e",
+      "size": 59
+    },
+    {
+      "path": "Editor/Bridge.cs",
+      "sha256": "1373f81ed433dba9eceb1a12204ac4e89de50ab8b7113debeceaf46ba3ea2f53",
+      "size": 8750
+    },
+    {
+      "path": "Editor/Bridge.cs.meta",
+      "sha256": "7774cbf6fa1151822cfefa3deba42cd466f7c7310f59de52e52769c028eceb42",
+      "size": 59
+    },
+    {
+      "path": "Editor/Catalog.cs",
+      "sha256": "f52b0fe39d3b0c860a36e32583114082bbb5b989934eed849fabbccd50d213d4",
+      "size": 4720
+    },
+    {
+      "path": "Editor/Catalog.cs.meta",
+      "sha256": "56d0a9b899da2c471033e0e83d17d383790c035f7b8bb99cc49cb82ea130bdd4",
+      "size": 59
+    },
+    {
+      "path": "Editor/Commands.cs",
+      "sha256": "b3cfab7b485310ec4c2be712d7b36774a8b8cc8f6ee34368a0dd2eb5dcde1ccd",
+      "size": 20989
+    },
+    {
+      "path": "Editor/Commands.cs.meta",
+      "sha256": "9b18d592178d4535abbdc8b15eee49c01e55932c8458608ac599e880d9022c53",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core.meta",
+      "sha256": "f10b1fe98a202f455c21e2a46759a869a3f8de76b2e369be941a4ef10420fad2",
+      "size": 172
+    },
+    {
+      "path": "Editor/Core/AssetRules.cs",
+      "sha256": "d79cf0b67c6e45f32f7ffcf35621f68cf1870e023ad95057bbaba45e3dde75a6",
+      "size": 26530
+    },
+    {
+      "path": "Editor/Core/AssetRules.cs.meta",
+      "sha256": "2bc1009d49f26d5986a49c3b43be2c545672fd07174fc1b75c73f2c611292ce6",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/Journal.cs",
+      "sha256": "990f304d1430239c71c34a5ac01d15f5303483635de1f298a27a32579b9afafc",
+      "size": 3366
+    },
+    {
+      "path": "Editor/Core/Journal.cs.meta",
+      "sha256": "c1bd5c2d8ff59762ca8a3015f66dc146fed59408ba8a36a38df2e894b07d8435",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/Json.cs",
+      "sha256": "6369ee28a144b370e9bfceb78f33798b38a7bcbc5eff5a482090cc89e269f27d",
+      "size": 8263
+    },
+    {
+      "path": "Editor/Core/Json.cs.meta",
+      "sha256": "b43f64ac262585bd88bce4222e808bd52905988a821d817b05843ca1b8a23f16",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/ObjectIds.cs",
+      "sha256": "64ea77cd5c435d7fec12079db74781e6d4fa02aea4147e5ed86d88c5f85fc66d",
+      "size": 3959
+    },
+    {
+      "path": "Editor/Core/ObjectIds.cs.meta",
+      "sha256": "ffa3579b1ace39a3294b297a7814979feceec729989ae68c5ad22366ca6ff687",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/PropertyRules.cs",
+      "sha256": "3a0ec7b1dd30197670d2a1dd4ab6b69fa61588199c31cc5e4499b01298ca47ef",
+      "size": 12270
+    },
+    {
+      "path": "Editor/Core/PropertyRules.cs.meta",
+      "sha256": "e94d82664a278c2adc513d84bdc1f9d7160cd1f13330d673e5902936af70d68a",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/Proposals.cs",
+      "sha256": "a7a7a72df10ffc4a436ff22ed098745f78724f16b8fa80a78641d07481268257",
+      "size": 7583
+    },
+    {
+      "path": "Editor/Core/Proposals.cs.meta",
+      "sha256": "01f13d23044d2ea8f93b2127b790bf472dcdc20dfb91ff2991f83d66aa925581",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/Protocol.cs",
+      "sha256": "e03eee3af275f2b1d4371f33eb35f3ef4670b0e63d0442508b53b37601ee18e4",
+      "size": 13141
+    },
+    {
+      "path": "Editor/Core/Protocol.cs.meta",
+      "sha256": "7fee55b81a27ffc29408568080e28173739340cb0643f60741cb103234aa5fbb",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/Tokens.cs",
+      "sha256": "66c61b4e62164efbab7e33f0756539dbb93ceaa7139a5a1dccd71ec3755476b9",
+      "size": 4907
+    },
+    {
+      "path": "Editor/Core/Tokens.cs.meta",
+      "sha256": "8f35526133187959be8d2973cfb141b512cfdfa2208af7e8992e73db94bbffe9",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/Transitions.cs",
+      "sha256": "a32ab073f21c601bf66b512c67f89cba28d9f8e829c14994bd8d98673d4174d1",
+      "size": 4750
+    },
+    {
+      "path": "Editor/Core/Transitions.cs.meta",
+      "sha256": "5b1d33ccf3f14cf5115a94b2934ef7a2685bc724f8af91da11527d4fb8777998",
+      "size": 59
+    },
+    {
+      "path": "Editor/Gpos.LiveBridge.Editor.asmdef",
+      "sha256": "bc1bf2f0363f5842798c934a27b02823702b5ca696cbd14ae25a4ca0f85539fb",
+      "size": 326
+    },
+    {
+      "path": "Editor/Gpos.LiveBridge.Editor.asmdef.meta",
+      "sha256": "ec40fb133fde0b21f3206892fe1b6e19838d65d9992baf1b806846f753ddf3f6",
+      "size": 166
+    },
+    {
+      "path": "Editor/Identity.cs",
+      "sha256": "d670e86ed26401086d10a437f0bc7919af21de646ad0ab41e30da0d045625864",
+      "size": 4621
+    },
+    {
+      "path": "Editor/Identity.cs.meta",
+      "sha256": "1da652ac6736bd0068e54e4bc0a95cc7289afa41814e21e4dcb910f85a61b2cf",
+      "size": 59
+    },
+    {
+      "path": "Editor/Ipc.cs",
+      "sha256": "c908c36c550df77752fb510e83890be944f551b3a69459d05b9033528967c9b8",
+      "size": 9545
+    },
+    {
+      "path": "Editor/Ipc.cs.meta",
+      "sha256": "d3e569389777a71ad5832b60c5ea2b94be8d94e3ffbe9ef2c85e6a403d16f684",
+      "size": 59
+    },
+    {
+      "path": "Editor/Properties.cs",
+      "sha256": "8481ea753922be9a4f264e58b9dc599e63aec3577f8bb9845c224aa094d5f8e0",
+      "size": 18025
+    },
+    {
+      "path": "Editor/Properties.cs.meta",
+      "sha256": "766bf2541afc68a80bfaa35b0a65f4e664e2ee4a74d0a8b340eaef14259366b1",
+      "size": 59
+    },
+    {
+      "path": "Editor/Scene.cs",
+      "sha256": "3151da9d7584712a113eecefd30e2266754240c00b2b3882fadbfe318635bbb3",
+      "size": 18682
+    },
+    {
+      "path": "Editor/Scene.cs.meta",
+      "sha256": "6a7131040466e24ccb131949adc6d136cbfed7e885a1ea643655b5f038b4a849",
+      "size": 59
+    },
+    {
+      "path": "package.json",
+      "sha256": "2082464b98eaf30f2fdc645b12869659ef21cf852c1860919fff259cef1d596a",
+      "size": 277
+    },
+    {
+      "path": "package.json.meta",
+      "sha256": "231233723809d1a5a7e6afbfa2f6a641b4be38235299d6b83b00664bd6cd3dd0",
+      "size": 163
+    }
+  ],
+  "package_digest": "042379a6413c8b55ce3d6deada529fbdbe609c96b9dace56f256d94428c782ce",
+  "package_id": "com.gpos.live-bridge",
+  "protocol": "gpos.unity.live/3",
+  "schema": "gpos.unity.live-bridge.manifest/1"
+}

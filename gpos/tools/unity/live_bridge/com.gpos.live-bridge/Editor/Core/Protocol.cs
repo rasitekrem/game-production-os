@@ -28,10 +28,10 @@ namespace Gpos.LiveBridge
 
     internal static class Protocol
     {
-        public const string Name = "gpos.unity.live/3";
-        public const string RequestSchema = "gpos.unity.live.request/3";
-        public const string ResponseSchema = "gpos.unity.live.response/3";
-        public const string BridgeVersion = "1.2.0";
+        public const string Name = "gpos.unity.live/4";
+        public const string RequestSchema = "gpos.unity.live.request/4";
+        public const string ResponseSchema = "gpos.unity.live.response/4";
+        public const string BridgeVersion = "1.3.0";
         public const string PackageId = "com.gpos.live-bridge";
         public const int MaxRequestBytes = 64 * 1024;
         public const int MaxResponseBytes = 256 * 1024;
@@ -94,6 +94,18 @@ namespace Gpos.LiveBridge
             { "create-scriptable-object", AuthoringSpec(true, "path", "type_id", "expected_so_catalog_digest") },
             { "set-asset-property", AuthoringSpec(true, "asset", "path", "kind", "value", "expected_asset_token") },
             { "set-renderer-material", AuthoringSpec(true, "renderer", "material", "slot", "expected_component_token") },
+            // Prefab authoring (bridge 1.3.0): inspection, one plain Scene subtree saved as a new regular prefab,
+            // instantiation into a Scene, and bounded edits of one regular prefab's own objects.
+            { "prefab-inspect", AuthoringSpec(false, "prefab", "component", "path_prefix", "page") },
+            { "prefab-instance-inspect", AuthoringSpec(false, "object", "page") },
+            { "create-prefab", AuthoringSpec(true, "source", "path", "expected_subtree_token") },
+            { "instantiate-prefab", AuthoringSpec(true, "prefab", "scene", "parent", "sibling", "local_position", "local_rotation", "local_scale",
+                                                 "expected_prefab_token", "expected_parent_token", "expected_scene_roots_token") },
+            { "set-prefab-gameobject", AuthoringSpec(true, "object", "name", "active", "tag", "layer", "static_flags", "expected_prefab_token") },
+            { "set-prefab-transform", AuthoringSpec(true, "object", "local_position", "local_rotation", "local_scale", "expected_prefab_token") },
+            { "add-prefab-component", AuthoringSpec(true, "object", "type_id", "expected_prefab_token", "expected_catalog_digest") },
+            { "remove-prefab-component", AuthoringSpec(true, "component", "expected_prefab_token") },
+            { "set-prefab-property", AuthoringSpec(true, "component", "path", "kind", "value", "expected_prefab_token") },
         };
 
         static Spec AuthoringSpec(bool mutating, params string[] args)
@@ -110,9 +122,21 @@ namespace Gpos.LiveBridge
         // A Scene- or asset-authoring command: only in Edit Mode, with nothing pending (Transitions.AuthoringBusy).
         public static bool IsAuthoring(string command) { return Specs[command].Authoring; }
 
-        public static bool ChangesScene(string command) { return Specs[command].Authoring && Specs[command].Mutating && !IsAsset(command); }
+        public static bool ChangesScene(string command) { return Specs[command].Authoring && Specs[command].Mutating && !IsAsset(command) && !ChangesPrefabAsset(command); }
 
-        public static bool ChangesAssets(string command) { return Specs[command].Mutating && IsAsset(command); }
+        public static bool ChangesAssets(string command) { return Specs[command].Mutating && (IsAsset(command) || ChangesPrefabAsset(command)); }
+
+        // A prefab command (bridge 1.3.0): prefab objects are type-1 GlobalObjectIds. instantiate-prefab changes a
+        // Scene; create-prefab and the prefab edits change one prefab file.
+        public static bool IsPrefab(string command) { return Array.IndexOf(PrefabCommands, command) >= 0; }
+
+        public static bool ChangesPrefabAsset(string command) { return Array.IndexOf(PrefabAssetMutations, command) >= 0; }
+
+        static readonly string[] PrefabCommands = { "prefab-inspect", "prefab-instance-inspect", "create-prefab", "instantiate-prefab", "set-prefab-gameobject",
+                                                    "set-prefab-transform", "add-prefab-component", "remove-prefab-component", "set-prefab-property" };
+
+        static readonly string[] PrefabAssetMutations = { "create-prefab", "set-prefab-gameobject", "set-prefab-transform", "add-prefab-component",
+                                                          "remove-prefab-component", "set-prefab-property" };
 
         // An asset command (bridge 1.2.0): identifiers are asset GlobalObjectIds; mutations persist project files.
         public static bool IsAsset(string command) { return command.StartsWith("asset-", StringComparison.Ordinal) || Array.IndexOf(AssetMutations, command) >= 0; }

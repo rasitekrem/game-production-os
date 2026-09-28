@@ -1,7 +1,8 @@
 // GPOS live bridge — the closed command set. Each command reads or changes only what its name says:
 // status, attach proposals and their Human approval, bind/unbind of one session, stale-session recovery grants,
 // bounded inspection, the four Play Mode transitions, (bridge 1.1.0) the Scene-authoring commands in Authoring.cs
-// and (bridge 1.2.0) the asset commands in AssetAuthoring.cs. Nothing here evaluates code, calls a method by name, runs a menu item or reads an arbitrary object.
+// (bridge 1.2.0) the asset commands in AssetAuthoring.cs and (bridge 1.3.0) the prefab commands in PrefabAuthoring.cs.
+// Nothing here evaluates code, calls a method by name, runs a menu item or reads an arbitrary object.
 using System;
 using System.Collections.Generic;
 using System.IO;

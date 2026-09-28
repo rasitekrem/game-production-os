@@ -56,6 +56,8 @@ CODES = {
     "LIVE_ASSET_PATH_INVALID": (INVALID_REQUEST, "the asset path is not a plain path below Assets/ into an existing folder with the kind's one extension"),
     "LIVE_ASSET_LIMIT": (INVALID_REQUEST, "the asset, its files or the lookup exceed a fixed bound; nothing is hashed, listed partially or written"),
     "LIVE_SHADER_NOT_IN_CATALOG": (INVALID_REQUEST, "the shader is not in the closed shader catalog"),
+    "LIVE_PREFAB_REFUSED": (INVALID_REQUEST, "the prefab or source is outside the authorable scope (a Variant, model, package or nested prefab, a non-owned object, prefab-instance content, a missing script, hidden content or an unsupported reference)"),
+    "LIVE_PREFAB_LIMIT": (INVALID_REQUEST, "the prefab, source subtree, instance or Scene scan exceeds a fixed bound; nothing is hashed, listed partially or written"),
     "DRY_RUN_UNSUPPORTED": (INVALID_REQUEST, "the capability does not support dry run"),
     "MUTATION_NOT_ALLOWED": (INVALID_REQUEST, "a mutating capability was requested without explicit mutation consent"),
     "TIMEOUT_NOT_PERMITTED": (INVALID_REQUEST, "the requested timeout is outside the capability's policy bounds"),
@@ -131,6 +133,11 @@ CODES = {
     "LIVE_ASSET_EXISTS": (CONFLICT, "something already exists at the asset path (a file, an orphan .meta or a letter-case variant); nothing is overwritten or renamed"),
     "LIVE_ASSET_NOT_EDITABLE": (CONFLICT, "version control does not have the file open for edit, a provider is active for a creation, or the folder is not writable"),
     "LIVE_ASSET_CREATE_INCOMPLETE": (CONFLICT, "an asset creation cannot be finished or undone from proven facts; nothing unknown was deleted, moved or overwritten"),
+    "LIVE_PREFAB_STAGE_OPEN": (CONFLICT, "a Prefab Mode stage is open; GPOS changes no prefab and instantiates none while one is, and never drives Prefab Mode"),
+    "LIVE_PREFAB_DIRTY": (CONFLICT, "the prefab has unsaved editor changes; they are never saved or instantiated by GPOS"),
+    "LIVE_PREFAB_CONFLICT": (CONFLICT, "the prefab or source changed since its token was read, changed on disk before the save, or a dirty loaded Scene depends on it; nothing was saved or created"),
+    "LIVE_PREFAB_NOT_EDITABLE": (CONFLICT, "version control is active or does not have the prefab open for edit, or the OS does not let GPOS write its file, .meta or folder"),
+    "LIVE_PREFAB_CREATE_INCOMPLETE": (CONFLICT, "a prefab creation cannot be finished or undone from proven facts; nothing unknown was deleted, moved or overwritten"),
     # execution (FAILED / TIMED_OUT / CANCELLED)
     "EXECUTION_FAILED": (FAILED, "the tool executed and reported failure"),
     "ENGINE_TESTS_NOT_EXECUTED": (FAILED, "the test run completed without executing any test; no test evidence exists"),
@@ -170,6 +177,11 @@ CODES = {
     "LIVE_ASSET_CREATED": (INFO, "a new asset was created at exactly the requested path below Assets/; creation is not undoable"),
     "LIVE_ASSET_SAVED": (INFO, "the asset edit was saved to that one asset's file"),
     "LIVE_ASSET_CREATE_RECOVERED": (INFO, "an interrupted asset creation was closed from proven facts before this request"),
+    "LIVE_PREFAB_CREATED": (INFO, "a new regular prefab was created from a plain Scene subtree at exactly the requested path below Assets/; the source stays plain Scene content; not undoable"),
+    "LIVE_PREFAB_SAVED": (INFO, "the prefab edit was saved to that one prefab's file; not undoable"),
+    "LIVE_PREFAB_INSTANTIATED": (INFO, "one instance of the prefab was created in the Scene as one Undo group; nothing was saved"),
+    "LIVE_PREFAB_CREATE_RECOVERED": (INFO, "an interrupted prefab creation was closed from proven facts before this request"),
+    "LIVE_PREFAB_SIDE_EFFECTS": (INFO, "project code changed other objects of the prefab, or loaded Scenes were marked dirty, as a consequence; nothing was saved"),
 }
 
 

@@ -1,4 +1,5 @@
-// GPOS live bridge — the Scene-authoring commands (bridge 1.1.0; asset references and set-renderer-material in 1.2.0).
+// GPOS live bridge — the Scene-authoring commands (bridge 1.1.0; asset references and set-renderer-material in 1.2.0;
+// the prefab commands of 1.3.0 are dispatched to PrefabAuthoring.cs, which reuses this mutation envelope).
 // Each reads or changes only what its name says, through fixed Unity Editor APIs; there is no generic call, no method
 // name, no menu, no reflection target and no asset write here (the asset commands are in AssetAuthoring.cs). An
 // object reference may name a reviewed asset (AssetResolver) — a Scene change that points at an asset, never a
@@ -45,7 +46,7 @@ namespace Gpos.LiveBridge
             return s;
         }
 
-        static bool? Bool(Dictionary<string, object> a, string key)
+        internal static bool? Bool(Dictionary<string, object> a, string key)
         {
             object v = a[key];
             if (v == null) return null;
@@ -70,18 +71,18 @@ namespace Gpos.LiveBridge
             return s;
         }
 
-        static void Absent(Dictionary<string, object> a, string key, string why)
+        internal static void Absent(Dictionary<string, object> a, string key, string why)
         {
             if (a[key] != null) throw new Refusal("BAD_ARGUMENTS", key + " is not accepted " + why);
         }
 
-        static void Expect(string expected, string actual, string what)
+        internal static void Expect(string expected, string actual, string what)
         {
             if (expected != actual)
                 throw new Refusal("AUTHORING_CONFLICT", what + " changed since it was inspected; re-inspect and decide again (nothing was changed)");
         }
 
-        static Vector3? Vec3(Dictionary<string, object> a, string key)
+        internal static Vector3? Vec3(Dictionary<string, object> a, string key)
         {
             if (a[key] == null) return null;
             var l = a[key] as List<object>;
@@ -89,7 +90,7 @@ namespace Gpos.LiveBridge
             return new Vector3(PropertyRules.ToFloat32(l[0]), PropertyRules.ToFloat32(l[1]), PropertyRules.ToFloat32(l[2]));
         }
 
-        static Quaternion? Rotation(Dictionary<string, object> a, string key)
+        internal static Quaternion? Rotation(Dictionary<string, object> a, string key)
         {
             if (a[key] == null) return null;
             var q = PropertyRules.UnitQuaternion(a[key]);
@@ -98,7 +99,7 @@ namespace Gpos.LiveBridge
 
         static void PrefabBoundary(UnityEngine.Object o, params string[] allowed) { PrefabBoundary("the object", o, allowed); }
 
-        static void PrefabBoundary(string what, UnityEngine.Object o, params string[] allowed)
+        internal static void PrefabBoundary(string what, UnityEngine.Object o, params string[] allowed)
         {
             string role = SceneObjects.Role(o);
             if (!allowed.Contains(role))
@@ -112,6 +113,7 @@ namespace Gpos.LiveBridge
             var a = r.Args;
             AssetCatalogs.Reset();
             if (Protocol.IsAsset(r.Command)) return AssetAuthoring.Run(r);
+            if (Protocol.IsPrefab(r.Command)) return PrefabAuthoring.Run(r);
             switch (r.Command)
             {
                 case "object-inspect": return Inspect(a);
@@ -134,7 +136,7 @@ namespace Gpos.LiveBridge
         // ------------------------------------------------------------ the mutation envelope
 
         // Pre-state: the tokens an operation promised not to disturb, recomputed from ids after a revert.
-        sealed class PreState
+        internal sealed class PreState
         {
             readonly List<KeyValuePair<string, string>> items = new List<KeyValuePair<string, string>>();
             readonly Dictionary<string, string> values = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -180,8 +182,8 @@ namespace Gpos.LiveBridge
 
         // `change` makes and verifies the change inside the Undo group; `report` describes the result (ids, tokens)
         // only after the group is collapsed and closed, so nothing about the result is recorded in the group itself.
-        static Dictionary<string, object> Mutate(string undoName, Scene scene, PreState pre, Action change,
-                                                 Func<Dictionary<string, object>> report)
+        internal static Dictionary<string, object> Mutate(string undoName, Scene scene, PreState pre, Action change,
+                                                   Func<Dictionary<string, object>> report)
         {
             Undo.IncrementCurrentGroup();
             int group = Undo.GetCurrentGroup();
@@ -562,7 +564,7 @@ namespace Gpos.LiveBridge
                     { "tokens", Tokens("transform", SceneObjects.TransformToken(t), "transform_chain", SceneObjects.ChainToken(go)) } });
         }
 
-        static bool Same(Vector3 a, Vector3 b) { return a.x.Equals(b.x) && a.y.Equals(b.y) && a.z.Equals(b.z); }
+        internal static bool Same(Vector3 a, Vector3 b) { return a.x.Equals(b.x) && a.y.Equals(b.y) && a.z.Equals(b.z); }
 
         // ------------------------------------------------------------ components
 

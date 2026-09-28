@@ -287,9 +287,11 @@ PREFAB_SIDE_EFFECTS = {
     prefabs.INSTANTIATE: "imports one prefab and creates one instance of it in the open Scene as one named Undo group (the "
                          "Scene becomes dirty; nothing is saved); project Editor callbacks may run",
 }
-PREFAB_EDIT_SIDE_EFFECT = ("imports, edits (Unity's isolated copy) and saves one .prefab file; not undoable; loaded Scenes "
-                           "holding its instances are marked dirty and dependent prefabs change effectively; project "
-                           "code and AssetPostprocessors may run")
+PREFAB_EDIT_SIDE_EFFECT = ("imports, edits (Unity's isolated copy) and saves one .prefab file; not undoable; its "
+                           "effective content propagates to instances in loaded Scenes and dependent prefabs; Scenes "
+                           "that go from clean to dirty are reported in scenes_marked_dirty (Unity itself did not dirty "
+                           "them in the measured cases, project callbacks may); GPOS never saves or cleans a Scene; "
+                           "project code and AssetPostprocessors may run")
 
 
 def _prefab(cap_id, category, description, operation_class, timeout):

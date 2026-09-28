@@ -51,10 +51,12 @@ EDITS = (SET_GAMEOBJECT, SET_TRANSFORM, ADD_COMPONENT, REMOVE_COMPONENT, SET_PRO
 LIMITATION = ("Editor prefab state only: SUCCESS means the Unity Editor completed this operation. It is not evidence of "
               "gameplay, rendering, build or target behaviour. Project code may have run as a consequence "
               "(OnValidate, Awake and OnEnable of ExecuteAlways scripts, AssetPostprocessors including "
-              "OnPostprocessPrefab, the reimport of dependent assets); saving a prefab also changes the effective "
-              "content of Variants and prefabs that include it and of their instances in loaded Scenes, which Unity "
-              "marks dirty (TOOL_INHERENT dependency propagation; nothing is saved). A creation and an edit are not "
-              "undoable; an instantiation is one Scene Undo group.")
+              "OnPostprocessPrefab, the reimport of dependent assets). Saving a prefab propagates its effective "
+              "content to its instances in loaded Scenes and may change the effective content of Variants and "
+              "prefabs that include it (TOOL_INHERENT dependency propagation). Loaded Scenes that go from clean to "
+              "dirty are measured and reported in scenes_marked_dirty: in the measured alpha.19 cases Unity itself "
+              "did not mark them dirty, but project callbacks may. GPOS never saves or cleans those Scenes. A "
+              "creation and an edit are not undoable; an instantiation is one Scene Undo group.")
 
 PREFAB_ID = re.compile(r"^GlobalObjectId_V1-1-([0-9a-f]{32})-(\d{1,20})-0$")
 PREFAB_PATH_EXT = ".prefab"

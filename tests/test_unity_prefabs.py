@@ -85,7 +85,10 @@ class A_Declarations(unittest.TestCase):
                 self.assertEqual((c.potential_evidence, c.artifact_kinds, c.requires_tool), ((), (), False))
                 self.assertEqual(c.side_effect_scope == "NONE", read_only)
         self.assertIn("not undoable", caps[P.CREATE_PREFAB].side_effect_scope)
-        self.assertIn("marked dirty", caps[P.SET_PROPERTY].side_effect_scope)
+        self.assertIn("scenes_marked_dirty", caps[P.SET_PROPERTY].side_effect_scope)
+        self.assertIn("never saves or cleans", caps[P.SET_PROPERTY].side_effect_scope)
+        self.assertNotIn("are marked dirty", caps[P.SET_PROPERTY].side_effect_scope)     # measured: Unity did not
+        self.assertNotIn("which Unity marks dirty", P.LIMITATION)
 
     def test_no_deferred_or_generic_prefab_surface(self):
         names = " ".join(c.id for c in UnityAdapter.descriptor.capabilities)

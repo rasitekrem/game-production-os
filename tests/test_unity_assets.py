@@ -69,7 +69,7 @@ def call(cap, **inputs):
 class A_Declarations(unittest.TestCase):
     def test_seven_fixed_asset_capabilities(self):
         caps = {c.id: c for c in UnityAdapter.descriptor.capabilities}
-        self.assertEqual(len(caps), 41)
+        self.assertEqual(len(caps), 45)
         self.assertEqual(len(A.CAPABILITY_IDS), 7)
         self.assertTrue(set(A.CAPABILITY_IDS) <= set(caps))
         self.assertFalse(set(A.CAPABILITY_IDS) & set(au.CAPABILITY_IDS))
@@ -252,7 +252,7 @@ class C_Mapping(LiveCase):
                 else:
                     self.assertEqual(self.codes(r), set())
         req = sorted((self.b.live / "claimed").glob("*.json"), key=lambda f: f.stat().st_mtime)[-1]
-        self.assertEqual(json.loads(req.read_text())["schema"], "gpos.unity.live.request/4")
+        self.assertEqual(json.loads(req.read_text())["schema"], "gpos.unity.live.request/5")
 
     def test_bad_inputs_are_refused_before_anything_is_sent(self):
         before = len(self.b.claimed_ids)

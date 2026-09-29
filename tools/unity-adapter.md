@@ -94,7 +94,19 @@ The working directory is the workspace. Never passed: `-quit` (the Unity Test Fr
 
 The foundation takes the single-writer lease `EDITOR_PROJECT:<resolved GPOS project root>` **before** Unity is launched and releases it afterwards; symbolic-link spellings of the same project map to the same lease. A held lease is a `CONFLICT` and nothing is launched; a stale lease is reported, never broken. The live plane's SESSION lease is the same resource: while a live session holds the project, a batch run is `LIVE_SESSION_HELD` (`CONFLICT`) before Unity is launched.
 
-Unity's own project lock is a second, independent layer. A `Temp/UnityLockfile` that already exists is `ENGINE_PROJECT_LOCKED` (`CONFLICT`) and nothing is launched; the adapter never deletes or bypasses it. A run killed by its timeout can leave that file behind, and a human must remove it. A second instance that Unity itself refuses is also classified `ENGINE_PROJECT_LOCKED`.
+Unity's own project lock is a second, independent layer (alpha.20, Phase 2C-6C). A running Editor holds an exclusive whole-file lock on `Temp/UnityLockfile`. A batch run that stops on a compile error exits without Unity's `Temp/` clean-up and leaves the file behind, unheld (measured on Unity 6000.5.8f1: more than 600 s in 3 of 3 runs, never clearing by itself; the next Unity launch accepts the project and replaces the file). The file's presence alone is therefore no longer a conflict. Before the workspace is prepared, and again immediately before the launch, the adapter proves the project's lock read-only ([`project_lock.py`](../gpos/tools/unity/project_lock.py), macOS):
+
+- **process proof:** the kernel lists this user's processes; for each one whose kernel executable path is the discovered Hub Editor, the exact argument vector (KERN_PROCARGS2, never joined `ps` text) must carry exactly one absolute `-projectPath` that is this project (same file identity or real path — never a text or prefix match). Import workers count. A failed or truncated listing, an unreadable candidate, a missing, repeated, relative or malformed project argument, or a bound exceeded is `PROCESS_STATE_UNKNOWN`, never "no process";
+- **lock proof:** the lockfile is `lstat`ed (a link or a non-regular file is unknown), opened read-only with O_NOFOLLOW and O_NONBLOCK, `fstat`ed (the same regular file) and queried with F_GETLK. No lock is taken, and the file is never written, truncated, renamed or removed.
+
+| Effective state | When | Result |
+|---|---|---|
+| `NO_LOCK` | no lockfile, and `NO_MATCH_PROVEN` before and after | the run proceeds with no delay |
+| `ACTIVE_EDITOR` | `MATCHING_EDITOR` at either proof, or the OS reports the lock held | `ENGINE_PROJECT_LOCKED`; no second Editor is launched |
+| `ORPHAN_UNHELD` | a regular lockfile nobody holds, and `NO_MATCH_PROVEN` before and after the lock query | the run proceeds; `ENGINE_PROJECT_ORPHAN_LOCK` (`INFO`) records that GPOS left the file alone and Unity applied its own project-lock semantics |
+| `LOCK_STATE_UNKNOWN` | anything that cannot be proven, or another platform | `ENGINE_PROJECT_LOCKED`; nothing is launched |
+
+`ENGINE_PROJECT_LOCKED` carries `lock_state` in its details, and the result's data carries `project_lock`. The race between the final proof and the launch remains: Unity arbitrates it with its own project lock, and the second instance it refuses is classified `ENGINE_PROJECT_LOCKED` as before, never retried. Processes of other users are not listed; an Editor of another user that holds the project is still seen through the lock query. The rule is measured on macOS only; no other platform inherits it without its own measurement and review. `unity.live-install-bridge` keeps its closed-project rule: any existing lockfile is `ENGINE_PROJECT_LOCKED`.
 
 ## Results
 
@@ -132,7 +144,7 @@ The descriptor declares `TOOL_INHERENT`, allowlisted for `unity` only. GPOS prov
 
 ## Dry run
 
-A dry run validates the project path and layout, the version file, the exact Editor, the package sources, the Unity lock and output collisions, and returns a three-line plan. It starts no Unity process and creates no workspace, package cache, results or evidence; it cannot know whether packages resolve, scripts compile or tests execute.
+A dry run validates the project path and layout, the version file, the exact Editor, the package sources, the Unity lock proof (reported as `project_lock`) and output collisions, and returns a three-line plan. It starts no Unity process and creates no workspace, package cache, results or evidence; it cannot know whether packages resolve, scripts compile or tests execute.
 
 ## Security review
 
@@ -143,7 +155,7 @@ A dry run validates the project path and layout, the version file, the exact Edi
 | silent Editor substitution or project upgrade | refused: exact version or `ENGINE_EDITOR_VERSION_UNAVAILABLE`; never `-accept-apiupdate` |
 | project-controlled network sources | refused before launch: scoped registries, registry overrides, Git and URL dependencies, Git lock sources |
 | inherited user Package Manager configuration or proxies | none: GPOS-owned empty configuration files and cache; proxies not in the environment allowlist |
-| concurrent writers | GPOS lease on the resolved root before launch; Unity's lock refused, never deleted |
+| concurrent writers | GPOS lease on the resolved root before launch; Unity's lock proven read-only, an active or unprovable one refused, never deleted or modified |
 | exit code 0 read as a pass | never: valid results with at least one test are required |
 | results-file attacks | bounded size, no DTD or entities, strict counts |
 | subprocess or network code in GPOS | none: the Unity modules import neither; `process.py` gained nothing |
@@ -153,7 +165,7 @@ A dry run validates the project path and layout, the version file, the exact Edi
 
 - macOS only, validated with Unity 6000.5.8f1; exactly one Hub-installed Editor.
 - The log signatures used for classification are version-specific; an unknown failure is reported as unclassified.
-- A run killed by its timeout may leave `Temp/UnityLockfile`, which blocks later runs until a human removes it.
+- A run that stops on a compile error, or is killed by its timeout, leaves `Temp/UnityLockfile` behind; the next run proceeds only when the read-only proof shows it unheld with no Unity process for the project (macOS).
 - The results XML embeds local absolute paths; the Editor log contains machine and session identifiers.
 - Package Manager user-level settings are isolated, but the Unity process tree is not network-confined.
 

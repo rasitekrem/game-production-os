@@ -1310,8 +1310,8 @@ class L01_Boundaries(TmpCase):
                                    "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/assets.py", "unity/authoring.py",
                                    "unity/bridge_install.py",
                                "unity/identity.py", "unity/live.py", "unity/live_ipc.py", "unity/live_status.py",
-                               "unity/prefabs.py", "unity/project.py",
-                                   "unity/results.py", "validation.py"])
+                               "unity/prefabs.py", "unity/project.py", "unity/project_lock.py",
+                                   "unity/results.py", "unity/sources.py", "validation.py"])
 
     def test_the_synthetic_adapter_is_test_only_and_git_is_not(self):
         from gpos.tools.git import GitAdapter

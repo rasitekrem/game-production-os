@@ -264,8 +264,8 @@ namespace Gpos.LiveBridge
                 Equal("MALFORMED_REQUEST", Code(() => Parse(Id(++n), Req(Id(n), kv.Key, args))), kv.Key + " needs the session");
             }
             Check(!Protocol.IsAuthoring("inspect") && !Protocol.IsAuthoring("pause"), "the alpha.16 commands are not authoring");
-            Equal("gpos.unity.live/4", Protocol.Name, "protocol");
-            Equal("1.3.0", Protocol.BridgeVersion, "version");
+            Equal("gpos.unity.live/5", Protocol.Name, "protocol");
+            Equal("1.4.0", Protocol.BridgeVersion, "version");
             foreach (var generic in new[] { "execute", "eval", "invoke", "menu", "reflect", "save-scene-as", "apply-prefab", "set-asset" })
                 Equal("UNKNOWN_COMMAND", Code(() => Parse(Id(++n), AuthorReq(Id(n), generic, "{}"))), generic);
         }

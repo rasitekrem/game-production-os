@@ -193,7 +193,8 @@ MUTATIONS = [
         (CORE + "Protocol.cs", "return new Spec { Session = true, Mutating = mutating, Authoring = true, Args = args };",
          "return new Spec { Session = false, Mutating = mutating, Authoring = true, Args = args };")]),
     ("C#: authoring commands count as Play Mode commands", "core", [
-        (CORE + "Protocol.cs", "return Specs[command].Mutating && !Specs[command].Authoring; }", "return Specs[command].Mutating; }")]),
+        (CORE + "Protocol.cs", "return Specs[command].Mutating && !Specs[command].Authoring && !Specs[command].Sources; }",
+         "return Specs[command].Mutating && !Specs[command].Sources; }")]),
 ]
 
 
@@ -245,8 +246,8 @@ REAL_MUTATIONS = [
     ("Editor: requirements are not catalogued", "real", [
         (ED + "Catalog.cs", "                        if (required != null) e.Requires.Add(TypeKey(required));", "                        if (required == null) e.Requires.Add(TypeKey(required));")]),
     ("Editor: authoring runs while playing", "real", [
-        (ED + "Commands.cs", '                string busy = Transitions.AuthoringBusy(Transitions.Phase(LiveBridge.Flags()), LoadPending() != null);\n                if (busy != null) throw new Refusal("EDITOR_BUSY", busy);\n',
-         "")]),
+        (ED + "Commands.cs", '                string busy = Transitions.AuthoringBusy(Transitions.Phase(LiveBridge.Flags()), LoadPending() != null);\n                if (busy != null) throw new Refusal("EDITOR_BUSY", busy);\n                Answer(r.Id, "OK", null, null, Authoring.Run(r));',
+         '                Answer(r.Id, "OK", null, null, Authoring.Run(r));')]),
     ("Editor: set-property writes a Transform", "real", [
         (ED + "Authoring.cs", '            if (c is Transform) throw new Refusal("PROPERTY_UNSUPPORTED", "a Transform is set with set-transform");\n', "")]),
     ("Editor: a required component can be removed", "real", [

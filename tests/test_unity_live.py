@@ -155,7 +155,7 @@ class A_Registration(unittest.TestCase):
         d = default_registry(FW).get("unity").descriptor
         self.assertEqual((d.adapter_id, d.adapter_kind, d.state_model, d.network), ("unity", "CLI", "STATEFUL",
                                                                                       "TOOL_INHERENT"))
-        self.assertEqual(len(d.capabilities), 41)   # 3 batch + 9 live session + 13 Scene authoring + 7 asset + 9 prefab (alpha.19)
+        self.assertEqual(len(d.capabilities), 45)   # 3 batch + 9 live session + 13 Scene authoring + 7 asset + 9 prefab + 4 source (alpha.20)
         notes = " ".join(d.compatibility_notes)
         self.assertIn("One adapter, two planes", notes)
         self.assertIn("process-driven", notes)
@@ -191,9 +191,10 @@ class A_Registration(unittest.TestCase):
             self.assertIn("establishes no player-loop, frame, gameplay", caps[cid].description)
 
     def test_no_generic_or_forbidden_surface(self):
-        from gpos.tools.unity import assets, authoring, prefabs   # checked in their own suites
+        from gpos.tools.unity import assets, authoring, prefabs, sources   # checked in their own suites
         names = " ".join(c.id for c in UnityAdapter.descriptor.capabilities
-                         if c.id not in authoring.CAPABILITY_IDS + assets.CAPABILITY_IDS + prefabs.CAPABILITY_IDS)
+                         if c.id not in authoring.CAPABILITY_IDS + assets.CAPABILITY_IDS + prefabs.CAPABILITY_IDS
+                         + sources.CAPABILITY_IDS)
         for word in ("execute", "method", "menu", "eval", "script", "launch", "start", "quit", "close", "focus",
                      "input", "author", "capture", "scene", "prefab", "asset", "refresh", "mcp"):
             self.assertNotIn(word, names.replace("playmode", "").replace("inspect", ""), word)
@@ -244,7 +245,7 @@ class C_Manifest(unittest.TestCase):
         self.assertEqual(gen.main(["--check"]), 0)
         manifest = bi.verify_source()
         self.assertEqual((manifest["package_id"], manifest["bridge_version"], manifest["protocol"]),
-                         ("com.gpos.live-bridge", "1.3.0", "gpos.unity.live/4"))
+                         ("com.gpos.live-bridge", "1.4.0", "gpos.unity.live/5"))
         paths = {e["path"] for e in manifest["files"]}
         self.assertIn("package.json", paths)
         self.assertTrue(all(p + ".meta" in paths for p in paths if not p.endswith(".meta")))

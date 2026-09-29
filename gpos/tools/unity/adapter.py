@@ -1,5 +1,6 @@
 """Production engine adapter: Unity, with a batch plane (Phase 2C-5) and a live Editor plane (Phase 2C-6A, Scene
-authoring Phase 2C-6B1, asset references and asset authoring Phase 2C-6B2A, prefab authoring Phase 2C-6B2B).
+authoring Phase 2C-6B1, asset references and asset authoring Phase 2C-6B2A, prefab authoring Phase 2C-6B2B, source
+synchronization and compilation facts Phase 2C-6C).
 
 Batch plane, process-driven, each capability STATELESS:
 
@@ -9,8 +10,8 @@ Batch plane, process-driven, each capability STATELESS:
 
 Live plane, driven by the fixed GPOS Editor bridge and one Human-approved session per GPOS project (see
 live.py): install-bridge, status, attach, detach, inspect and the four Play Mode transitions, plus thirteen Scene
-authoring capabilities (authoring.py), seven asset capabilities (assets.py) and nine prefab capabilities
-(prefabs.py). It never launches,
+authoring capabilities (authoring.py), seven asset capabilities (assets.py), nine prefab capabilities
+(prefabs.py) and four source and compilation capabilities (sources.py). It never launches,
 quits, focuses or restarts an Editor and produces no evidence. The batch and live planes share one writer
 resource, `EDITOR_PROJECT:<resolved GPOS project root>`: a live SESSION lease makes a batch run a conflict before
 Unity is launched, and a batch run's lease makes an attach a conflict. The adapter's overall state model is
@@ -33,8 +34,13 @@ A test run is one fixed batch invocation:
 
 never with -quit (the Test Framework exits the Editor when the run completes), -accept-apiupdate,
 -noUpm, -nographics or -executeMethod. Before any launch the project is checked statically (layout,
-exact version, package sources) and a pre-existing Unity project lock is a conflict; the GPOS
-single-writer lease on the project is held by the foundation for the whole run. Package Manager
+exact version, package sources) and its Unity project lock is proven read-only (project_lock.py): an Editor
+of this user with exactly this project open, or a lock the OS reports held, is a conflict; so is anything
+that cannot be proven. A leftover lockfile nobody holds (a batch run that stopped on a compile error leaves
+one) is not a conflict when no Unity process has the project open before and after the lock query and
+again immediately before the launch: GPOS never touches the file and Unity applies its own project-lock
+semantics (it replaces the file). The GPOS single-writer lease on the project is held by the foundation for
+the whole run. Package Manager
 configuration is isolated per execution: empty GPOS-owned user and global configuration files in the
 workspace and a GPOS runtime package cache, so the user's own configuration, tokens and registries are
 never read or inherited.
@@ -64,6 +70,8 @@ from . import authoring
 from . import live
 from . import prefabs
 from . import project as up
+from . import project_lock as pl
+from . import sources
 from . import results as ur
 
 ADAPTER_ID = "unity"
@@ -108,7 +116,8 @@ LIMITATIONS = (
 )
 SIDE_EFFECTS = ("opens the Unity project in batch mode: Unity writes Library/, Temp/, Logs/, UserSettings/ and may "
                 "write .meta files, Packages/packages-lock.json, ProjectSettings/*.asset and the revision line of "
-                "ProjectSettings/ProjectVersion.txt; user-level Unity state "
+                "ProjectSettings/ProjectVersion.txt; Unity replaces or removes a leftover, unheld Temp/UnityLockfile "
+                "itself (GPOS never touches it); user-level Unity state "
                 "(Editor preferences, caches, logs, licensing client) changes; results, logs and Package Manager "
                 "configuration go to the execution workspace, the package cache to the GPOS runtime area")
 
@@ -329,6 +338,46 @@ PREFAB_CAPABILITIES = (
                                                "and save the prefab.", "MUTATING", _asset_write),
 )
 
+_source_note = ("Sources: other programs write source files; GPOS takes exact .cs, .asmdef and .asmref paths below Assets/ "
+                "only — never code, content, a folder, a compile command or a global Refresh. Compilation facts come "
+                "from CompilationPipeline callbacks journaled in the Editor session (kept across Domain Reloads, lost "
+                "when the Editor quits); they are never evidence.")
+SOURCE_SIDE_EFFECTS = {
+    sources.SYNC: "imports exactly the named existing sources (Unity may create their .meta files) and, for each deleted "
+                  "source, its direct parent folder recursively (one folder up only when that folder is gone too; never "
+                  "Assets itself), which also imports anything else new or changed there — all listed; Unity then "
+                  "compiles and may reload the domain as it decides; project code may run as a consequence",
+}
+
+
+def _source(cap_id, category, description, operation_class, timeout):
+    side_effect = "NONE" if operation_class == "READ_ONLY" else SOURCE_SIDE_EFFECTS[cap_id]
+    return _live(cap_id, category, description, operation_class, "STATEFUL", "SESSION_REQUIRED", timeout,
+                 input_kinds=sources.input_kinds(cap_id), notes=(_project_note, _live_note, _source_note),
+                 side_effect_scope=side_effect)
+
+
+SOURCE_CAPABILITIES = (
+    _source(sources.SYNC, "TRANSFORM", "Tell the attached Editor about exact source paths other programs changed or "
+                                       "deleted: a targeted import of each existing .cs, .asmdef or .asmref path, and a "
+                                       "bounded recursive import of the folder of each deleted one; no content, no "
+                                       "compile command, no global Refresh.", "MUTATING",
+            TimeoutPolicy(default=120.0, maximum=300.0)),
+    _source(sources.STATUS, "INSPECT", "The attached Editor's compilation facts: phase, compiling, updating, "
+                                       "compilation_failed, reload, compile and sync generations, the last finished "
+                                       "compilations, per-assembly error and warning counts and the journal's retention "
+                                       "limits. Triggers nothing.", "READ_ONLY", _short),
+    _source(sources.DIAGNOSTICS, "INSPECT", "The compiler messages of the Editor-session compilation journal "
+                                            "(assembly, severity, project-relative file, line, column, clipped text, "
+                                            "compile generation), paged and filtered only by compile generation, "
+                                            "severity or an exact journaled assembly.", "READ_ONLY", _short),
+    _source(sources.WAIT, "INSPECT", "Observe the attached Editor until it has settled in Edit Mode — after a named sync, "
+                                     "until a compilation that started after it has succeeded (with a Domain Reload) or "
+                                     "failed — or until the timeout, then report the facts. Imports, compiles, "
+                                     "refreshes, reloads, restarts and replays nothing.", "READ_ONLY",
+            TimeoutPolicy(default=120.0, maximum=300.0)),
+)
+
 CAPABILITIES = (
     Capability(
         id=INSPECT, category="INSPECT", operation_class="READ_ONLY", state_model="STATELESS",
@@ -359,7 +408,7 @@ CAPABILITIES = (
         potential_evidence=(("TEST_EVIDENCE", "AUTOMATED_TEST"),),
         timeout=TimeoutPolicy(default=1800.0, maximum=3600.0), side_effect_scope=SIDE_EFFECTS,
         notes=(_project_note, "The project must require exactly the probed Editor version.")),
-) + LIVE_CAPABILITIES + AUTHORING_CAPABILITIES + ASSET_CAPABILITIES + PREFAB_CAPABILITIES
+) + LIVE_CAPABILITIES + AUTHORING_CAPABILITIES + ASSET_CAPABILITIES + PREFAB_CAPABILITIES + SOURCE_CAPABILITIES
 
 DESCRIPTOR = model.AdapterDescriptor(
     adapter_id=ADAPTER_ID, adapter_version=ADAPTER_VERSION, tool_family="ENGINE", target_tool="Unity Editor",
@@ -384,20 +433,26 @@ DESCRIPTOR = model.AdapterDescriptor(
         "edits reviewed properties of existing ones, saving only that asset; no prefab asset, import-setting, move, "
         "rename, delete, package or built-in asset mutation, no arbitrary AssetDatabase call, no SaveAssets and no "
         "global Refresh; version-control providers other than none are untested.",
+        "Source synchronization (bridge 1.4.0) imports exact source paths and the bounded folders of deleted ones; it "
+        "writes no file, takes no code or content, requests no compilation and never refreshes globally. Compilation "
+        "facts are Editor-session CompilationPipeline facts, never evidence.",
+        "The batch plane proves a project's Unity lock read-only on macOS (kernel process facts and an F_GETLK query); "
+        "no other platform inherits that rule without its own measurement and review.",
     ))
 
 
 class UnityAdapter(model.ToolAdapter):
-    """`hub_roots`, `platform`, `capture_bytes` and `live_seams` are code-level seams for tests; a request can
-    change none."""
+    """`hub_roots`, `platform`, `capture_bytes`, `live_seams` and `lock_proof` are code-level seams for tests; a
+    request can change none."""
 
     descriptor = DESCRIPTOR
 
-    def __init__(self, hub_roots=None, platform=None, capture_bytes=CAPTURE_BYTES, live_seams=None):
+    def __init__(self, hub_roots=None, platform=None, capture_bytes=CAPTURE_BYTES, live_seams=None, lock_proof=None):
         self._platform = platform or sys.platform
         self._hub_roots = tuple(hub_roots) if hub_roots is not None else HUB_ROOTS.get(self._platform, ())
         self._capture_bytes = capture_bytes
         self._live_seams = dict(live_seams or {})
+        self._lock_proof = lock_proof or pl.assess
 
     # ------------------------------------------------------------ discovery and probe
 
@@ -481,6 +536,8 @@ class UnityAdapter(model.ToolAdapter):
             return assets.execute(request, context, **self._live_seams)
         if cap in prefabs.CAPABILITY_IDS:
             return prefabs.execute(request, context, **self._live_seams)
+        if cap in sources.CAPABILITY_IDS:
+            return sources.execute(request, context, **self._live_seams)
         if cap not in (INSPECT, EDITMODE, PLAYMODE):
             raise AssertionError(f"{cap} is declared but not implemented")
         root = Path(context.project_root)
@@ -501,11 +558,9 @@ class UnityAdapter(model.ToolAdapter):
                 "ENGINE_EDITOR_VERSION_UNAVAILABLE",
                 f"the project requires Unity {required}; the installed Editor is {installed}; no other version, "
                 f"upgrade or downgrade is used", ADAPTER_ID, cap),))
-        lock = project / "Temp" / "UnityLockfile"
-        if lock.exists() or lock.is_symlink():
-            return AdapterOutcome(ok=True, diagnostics=(dg.make(
-                "ENGINE_PROJECT_LOCKED", "the Unity project has a Temp/UnityLockfile: another Editor may have it open; "
-                                         "the lock is never removed or bypassed", ADAPTER_ID, cap),))
+        proof = self._lock_proof(project, context.probe.tool_path)
+        if proof.state not in pl.PROCEED:
+            return _locked(cap, proof)
         workspace = Path(context.workspace)
         existing = [n for n in WORKSPACE_FILES if (workspace / n).exists() or (workspace / n).is_symlink()]
         if existing:
@@ -518,7 +573,7 @@ class UnityAdapter(model.ToolAdapter):
                       "whether packages resolve, scripts compile, the Editor starts and how many tests execute is only "
                       "checked by a real execution",
                       "no Unity process, workspace, package cache, results or evidence is created by a dry run"),
-                data=dict(summary, test_platform=platform))
+                data=dict(summary, test_platform=platform, project_lock=proof.state))
         cache = tp.runtime_dir(root, *UPM_CACHE)
         cache.mkdir(parents=True, exist_ok=True)
         for name in (UPM_USER_NAME, UPM_GLOBAL_NAME):   # GPOS-owned, empty: nothing is inherited from the user
@@ -528,9 +583,18 @@ class UnityAdapter(model.ToolAdapter):
         spec = proc.ToolProcessSpec(executable=context.probe.tool_path, argv=argv, cwd=str(workspace),
                                     timeout=context.timeout, env=upm_environment(workspace, cache),
                                     capture_bytes=self._capture_bytes)
+        proof = self._lock_proof(project, context.probe.tool_path)   # fresh, immediately before the launch
+        if proof.state not in pl.PROCEED:
+            return _locked(cap, proof)
         outcome = context.run(spec)
         record = dict(command=_command(spec, project, workspace), environment=spec.env.metadata())
-        return self._classify(cap, context, outcome, record, workspace, summary, platform)
+        result = self._classify(cap, context, outcome, record, workspace, summary, platform)
+        if proof.state == pl.ORPHAN_UNHELD:
+            result = replace(result, diagnostics=tuple(result.diagnostics) + (dg.make(
+                "ENGINE_PROJECT_ORPHAN_LOCK", "an unheld leftover Temp/UnityLockfile existed and no Unity process had "
+                                              "the project open; GPOS did not modify it, and Unity was allowed to apply "
+                                              "its own project-lock semantics", ADAPTER_ID, cap, details=proof.details()),))
+        return replace(result, data=dict(result.data or {}, project_lock=proof.state))
 
     def _classify(self, cap, context, outcome, record, workspace, summary, platform):
         results_path, log_path = workspace / RESULTS_NAME, workspace / LOG_NAME
@@ -609,6 +673,21 @@ def upm_environment(workspace, cache):
         ("UPM_USER_CONFIG_FILE", str((workspace / UPM_USER_NAME).resolve())),
         ("UPM_GLOBAL_CONFIG_FILE", str((workspace / UPM_GLOBAL_NAME).resolve())),
         ("UPM_CACHE_ROOT", str(Path(cache).resolve()))))
+
+
+LOCK_MESSAGES = {
+    pl.ACTIVE_EDITOR: "a Unity Editor has this project open (a Unity process of this user names it, or the OS reports "
+                      "Temp/UnityLockfile held); no second Editor is launched",
+    pl.LOCK_STATE_UNKNOWN: "whether a Unity Editor has this project open cannot be proven; nothing is launched",
+}
+
+
+def _locked(cap, proof):
+    """ENGINE_PROJECT_LOCKED from a read-only proof; the lockfile is never removed, modified or bypassed."""
+    why = "; ".join(r for r in proof.reasons if r)
+    return AdapterOutcome(ok=True, data={"project_lock": proof.state}, diagnostics=(dg.make(
+        "ENGINE_PROJECT_LOCKED", LOCK_MESSAGES[proof.state] + (f" ({why})" if why else ""), ADAPTER_ID, cap,
+        details=proof.details()),))
 
 
 def _refuse(capability_id, message):

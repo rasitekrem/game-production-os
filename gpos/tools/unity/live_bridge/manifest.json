@@ -1,5 +1,5 @@
 {
-  "bridge_version": "1.3.0",
+  "bridge_version": "1.4.0",
   "files": [
     {
       "path": "Editor.meta",
@@ -58,8 +58,8 @@
     },
     {
       "path": "Editor/Bridge.cs",
-      "sha256": "1373f81ed433dba9eceb1a12204ac4e89de50ab8b7113debeceaf46ba3ea2f53",
-      "size": 8750
+      "sha256": "a128effac2ff143aa842612af9d88c7ec318b5731116d77a238c1e0d0b7913c6",
+      "size": 8908
     },
     {
       "path": "Editor/Bridge.cs.meta",
@@ -78,12 +78,22 @@
     },
     {
       "path": "Editor/Commands.cs",
-      "sha256": "fd711104b0f28b4620055d2cd7ec7111f66e548c02f58be13dbe31704699277b",
-      "size": 21049
+      "sha256": "5c2387a2618f9312a78b3cfe6cbf505ff9f29c9593a8f0a418478862278ba7da",
+      "size": 21797
     },
     {
       "path": "Editor/Commands.cs.meta",
       "sha256": "9b18d592178d4535abbdc8b15eee49c01e55932c8458608ac599e880d9022c53",
+      "size": 59
+    },
+    {
+      "path": "Editor/Compilation.cs",
+      "sha256": "e0debb36026c9b6158b825bad93b9e3dbb897d6f58a8370319fbfd028b98682e",
+      "size": 10391
+    },
+    {
+      "path": "Editor/Compilation.cs.meta",
+      "sha256": "14ecd1d6060803632ac6d1681a7cbf6b79d4991694175214ac07608ffe72c817",
       "size": 59
     },
     {
@@ -163,12 +173,22 @@
     },
     {
       "path": "Editor/Core/Protocol.cs",
-      "sha256": "b8a3b9c9c96fd900430c9706d636e367d55d87ba8df41318a57b723b73b1d792",
-      "size": 15634
+      "sha256": "cb927d19c7409892c8102a42a472ebba42f6caae3fa6f88268e78d217bb8bd14",
+      "size": 16636
     },
     {
       "path": "Editor/Core/Protocol.cs.meta",
       "sha256": "7fee55b81a27ffc29408568080e28173739340cb0643f60741cb103234aa5fbb",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/SourceRules.cs",
+      "sha256": "81186b46c286d7d0fc9000dbff3181f1d46db5dddd253b42c91001400cd62ac2",
+      "size": 20852
+    },
+    {
+      "path": "Editor/Core/SourceRules.cs.meta",
+      "sha256": "7444fc4e50e7382efe28b9be85de8f7da8c8e12497a36693acc5532e843e5f7a",
       "size": 59
     },
     {
@@ -262,9 +282,19 @@
       "size": 59
     },
     {
+      "path": "Editor/SourceSync.cs",
+      "sha256": "824bd72745e229b91d3bbf85aa584951d563b804e8c36e59d75ac6b38ce6b098",
+      "size": 17245
+    },
+    {
+      "path": "Editor/SourceSync.cs.meta",
+      "sha256": "9e9b8b1b7336405e34378d521d8b4e32ead8d038dce31a6e1a1b872576b66df8",
+      "size": 59
+    },
+    {
       "path": "package.json",
-      "sha256": "e0e3f44f29424c634ebc5cb7d2bbf3b8218301db3d0ec4f4a2543788d74326f4",
-      "size": 295
+      "sha256": "d3b5dda500803664f7b6a760d7ec2e0765540e73c9f00c0f72583087b330c6aa",
+      "size": 319
     },
     {
       "path": "package.json.meta",
@@ -272,8 +302,8 @@
       "size": 163
     }
   ],
-  "package_digest": "acdbb1c84e9be9e8fbd10bb6b2c09e4dbfae3e4d4e28ad74c4f5cc708a4f3f47",
+  "package_digest": "4d69424e3a9396e16ec792fb01ad6e8b8c9d6a69a03f4f53b049c6828ab5e27a",
   "package_id": "com.gpos.live-bridge",
-  "protocol": "gpos.unity.live/4",
+  "protocol": "gpos.unity.live/5",
   "schema": "gpos.unity.live-bridge.manifest/1"
 }

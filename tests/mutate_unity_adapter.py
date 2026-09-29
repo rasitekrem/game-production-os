@@ -152,12 +152,14 @@ MUTATIONS = [
     ("EditMode tests take no single-writer lease", [
         (ADAPTER, EDIT_INPUTS + '\n        execution_context="AUTOMATED_TEST", single_writer_required=True, resource_kind="EDITOR_PROJECT",',
          EDIT_INPUTS + '\n        execution_context="AUTOMATED_TEST", single_writer_required=False,')]),
-    ("pre-launch Unity lock check removed", [
-        (ADAPTER, "        if lock.exists() or lock.is_symlink():\n            return AdapterOutcome",
-         "        if False:\n            return AdapterOutcome")]),
+    ("pre-launch Unity lock proof removed", [
+        (ADAPTER, "        if proof.state not in pl.PROCEED:\n            return _locked(cap, proof)\n        workspace",
+         "        workspace"),
+        (ADAPTER, "        if proof.state not in pl.PROCEED:\n            return _locked(cap, proof)\n        outcome = context.run(spec)",
+         "        outcome = context.run(spec)")]),
     ("a Unity lockfile is deleted to proceed", [
-        (ADAPTER, "        if lock.exists() or lock.is_symlink():\n            return AdapterOutcome",
-         "        if lock.exists():\n            lock.unlink()\n        if False:\n            return AdapterOutcome")]),
+        (ADAPTER, "        workspace = Path(context.workspace)\n",
+         "        lock = project / \"Temp\" / \"UnityLockfile\"\n        if lock.exists():\n            lock.unlink()\n        workspace = Path(context.workspace)\n")]),
     ("refused second instance not classified", [
         (RESULTS, '    (PROJECT_LOCKED, ("another Unity instance is running with this project open",\n'
                   '                      "Multiple Unity instances cannot open the same project")),\n', "")]),

@@ -174,7 +174,7 @@ namespace Gpos.LiveBridge
                 Check(Protocol.ChangesScene(c) && !Protocol.ChangesAssets(c) && !Protocol.IsPrefab(c), c + " stays a Scene command");
             foreach (var c in new[] { "create-material", "set-material-property", "create-scriptable-object", "set-asset-property" })
                 Check(!Protocol.ChangesScene(c) && Protocol.ChangesAssets(c) && !Protocol.IsPrefab(c), c + " stays an asset command");
-            Equal(14 + 13 + 7 + 9, Protocol.Commands.Count(), "the closed allowlist: 14 session and Play Mode, 13 Scene, 7 asset and 9 prefab commands");
+            Equal(14 + 13 + 7 + 9 + 3, Protocol.Commands.Count(), "the closed allowlist: 14 session and Play Mode, 13 Scene, 7 asset, 9 prefab and (bridge 1.4.0) 3 source commands");
             foreach (var deferred in new[] { "apply-prefab", "apply-prefab-override", "revert-prefab", "revert-prefab-override", "unpack-prefab",
                                              "create-variant", "connect-prefab", "save-as-prefab-and-connect", "open-prefab-stage", "close-prefab-stage",
                                              "save-prefab-stage", "create-prefab-child", "delete-prefab-child", "prefab-utility", "edit-model-prefab" })

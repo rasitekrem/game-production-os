@@ -14,6 +14,11 @@ cover the bridge itself. Behaviour switches:
     on_approve(proposal_id)  called right after a simulated approval (e.g. to take a conflicting lease)
     author_reply(command, args) -> (status, code, data)   the answer to a Scene- or asset-authoring command;
                              every authoring call is recorded in `author_calls` as (command, args)
+    source_reply(args) -> (status, code, data)   the answer to sync-sources (default: every path imported); every
+                             sync is recorded in `source_calls`. The compilation model (`comp`: counters, the last
+                             finished compilation, sync records, the reload generation, Unity's flags) feeds the
+                             heartbeat, compilation-status and compilation-diagnostics; start_compile, finish_compile
+                             and reload advance it as Unity would (tests drive them, often from a timer)
     protocol / bridge_version  what the bridge publishes (an earlier release's values make it incompatible)
 """
 
@@ -42,6 +47,8 @@ AUTHORING = ("object-inspect", "component-types", "properties", "create-gameobje
              # prefab authoring (Phase 2C-6B2B)
              "prefab-inspect", "prefab-instance-inspect", "create-prefab", "instantiate-prefab", "set-prefab-gameobject",
              "set-prefab-transform", "add-prefab-component", "remove-prefab-component", "set-prefab-property")
+# source synchronization and compilation facts (Phase 2C-6C)
+SOURCES = ("sync-sources", "compilation-status", "compilation-diagnostics")
 
 
 def default_author_reply(command, args):
@@ -70,8 +77,11 @@ class FakeBridge:
         self.phase = "EDIT"
         self.proposals, self.executed, self.claimed_ids = {}, [], []
         self.author_calls, self.author_reply = [], None
+        self.source_calls, self.source_reply, self.diagnostics_reply = [], None, None
+        self.comp = {"started": 0, "finished": 0, "sync": 0, "last": None, "finishes": [], "syncs": [], "reload": 1,
+                     "failed": False, "compiling": False, "updating": False, "entries": []}
         self.protocol, self.bridge_version = bi.PROTOCOL, bi.BRIDGE_VERSION
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
 
     # ------------------------------------------------------------ process identity seam
 
@@ -134,10 +144,51 @@ class FakeBridge:
         self.write("bridge.json", dict(self.identity(), state=state, session_id=self.session, owner=self.owner,
                                        utc=now_utc().isoformat()))
 
+    def state(self):
+        c = self.comp
+        phase = self.phase if self.phase != "EDIT" else ("COMPILING" if c["compiling"] else "UPDATING" if c["updating"] else "EDIT")
+        return {"phase": phase, "focused": False, "compiling": c["compiling"], "updating": c["updating"],
+                "playing": self.phase in ("PLAYING", "PAUSED"), "paused": self.phase == "PAUSED",
+                "compilation_failed": c["failed"], "pending_transition": False}
+
+    def summary(self):
+        c, last = self.comp, self.comp["last"]
+        sync = c["syncs"][-1] if c["syncs"] else None
+        return {"compile_generation": c["started"], "completed_compiles": c["finished"], "sync_generation": c["sync"],
+                "last_compile": None if not last else {k: last[k] for k in ("compile_generation", "reload_generation",
+                                                                            "errors", "warnings")},
+                "latest_sync": None if not sync else {k: sync[k] for k in ("sync_generation",
+                                                                           "compile_started_before_sync")}}
+
     def beat(self):
-        self.write("heartbeat.json", {"boot_id": self.boot, "generation": 1, "seq": 1, "utc": now_utc().isoformat(),
-                                      "editor_pid": self.pid, "session_id": self.session,
-                                      "state": {"phase": self.phase, "focused": False}})
+        with self.lock:
+            self.write("heartbeat.json", {"boot_id": self.boot, "generation": self.comp["reload"], "seq": 1,
+                                          "utc": now_utc().isoformat(), "editor_pid": self.pid, "session_id": self.session,
+                                          "state": self.state(), "compilation": self.summary()})
+
+    # ------------------------------------------------------------ the compilation model (what Unity would do)
+
+    def start_compile(self):
+        with self.lock:
+            self.comp["started"] += 1
+            self.comp["compiling"] = True
+
+    def finish_compile(self, errors=0, warnings=0, entries=None):
+        with self.lock:
+            c = self.comp
+            c["finished"] += 1
+            c["last"] = {"compile_generation": c["started"], "sequence": c["finished"], "reload_generation": c["reload"],
+                         "errors": errors, "warnings": warnings, "assemblies": 1, "utc": now_utc().isoformat()}
+            c["finishes"] = (c["finishes"] + [c["last"]])[-16:]
+            if entries is not None:
+                c["entries"] = entries
+            c["compiling"] = False
+            c["failed"] = errors > 0
+
+    def reload(self):
+        with self.lock:
+            self.comp["reload"] += 1
+            self.comp["failed"] = False
 
     # ------------------------------------------------------------ protocol
 
@@ -175,7 +226,7 @@ class FakeBridge:
         if req["boot_id"] != self.boot:
             return self.respond(rid, "REFUSED", "BOOT_MISMATCH")
         cmd, args, owner = req["command"], req["args"], req["owner"]
-        if cmd in ("unbind", "inspect", "enter-playmode", "exit-playmode", "pause", "resume") + AUTHORING:
+        if cmd in ("unbind", "inspect", "enter-playmode", "exit-playmode", "pause", "resume") + AUTHORING + SOURCES:
             if not self.session:
                 return self.respond(rid, "REFUSED", "SESSION_NOT_BOUND")
             if req["session_id"] != self.session or owner != self.owner:
@@ -192,6 +243,14 @@ class FakeBridge:
                 return self.respond(rid, "REFUSED", "EDITOR_BUSY")
             self.author_calls.append((cmd, args))
             status, code, data = (self.author_reply or default_author_reply)(cmd, args)
+            return self.respond(rid, status, code, data)
+        if cmd == "sync-sources":
+            if self.mode == "interrupt":
+                return self.respond(rid, "INTERRUPTED", "NOT_REPLAYED")
+            if self.busy or self.state()["phase"] != "EDIT":
+                return self.respond(rid, "REFUSED", "EDITOR_BUSY")
+            self.source_calls.append(args)
+            status, code, data = (self.source_reply or self.default_sync)(args)
             return self.respond(rid, status, code, data)
         getattr(self, "cmd_" + cmd.replace("-", "_"))(rid, args, owner)
 
@@ -316,3 +375,53 @@ class FakeBridge:
 
     def cmd_resume(self, rid, args, owner):
         self.editor_state(rid, "resume", ("PAUSED",), "PLAYING")
+
+    # ------------------------------------------------------------ sources and compilation facts (Phase 2C-6C)
+
+    def default_sync(self, args):
+        c = self.comp
+        c["sync"] += 1
+        before = c["started"]
+        c["syncs"] = (c["syncs"] + [{"sync_generation": c["sync"], "compile_started_before_sync": before,
+                                     "compile_started_after_sync": before, "compiling_after_sync": True,
+                                     "reload_generation": c["reload"], "utc": now_utc().isoformat()}])[-64:]
+        return "OK", None, {
+            "mutation_started": True, "sync_generation": c["sync"], "imports": len(args["sources"]) + (1 if args["deleted"] else 0),
+            "compile_started_before_sync": before, "compile_started_after_sync": before, "compiling_after_sync": True,
+            "reload_generation": c["reload"],
+            "sources": [{"path": p, "known_before": True, "known_after": True, "meta_existed_before": True,
+                         "meta_created": False} for p in args["sources"]],
+            "deleted": [{"path": p, "state": "SYNCHRONIZED", "folder": p.rsplit("/", 1)[0], "parent_widened": False}
+                        for p in args["deleted"]],
+            "folders": [], "disclosure": None}
+
+    def cmd_compilation_status(self, rid, args, owner):
+        with self.lock:
+            c = self.comp
+            self.respond(rid, "OK", None, {
+                "state": self.state(), "boot_id": self.boot, "reload_generation": c["reload"],
+                "compile_generation": c["started"], "completed_compiles": c["finished"],
+                "last_compile": None if not c["last"] else dict(c["last"], reloaded_after=c["reload"] > c["last"]["reload_generation"]),
+                "recent_compiles": list(c["finishes"]), "sync_generation": c["sync"],
+                "latest_sync": c["syncs"][-1] if c["syncs"] else None, "syncs": list(c["syncs"]),
+                "assemblies": [{"assembly": e["assembly"], "compile_generation": e["compile_generation"],
+                                "errors": sum(1 for m in e["messages"] if m["severity"] == "ERROR"),
+                                "warnings": sum(1 for m in e["messages"] if m["severity"] == "WARNING"),
+                                "kept": len(e["messages"]), "dropped": 0} for e in c["entries"]],
+                "journal": {"started_utc": self.started.isoformat(), "reset": False, "assemblies": len(c["entries"]),
+                            "messages": sum(len(e["messages"]) for e in c["entries"]), "errors": 0, "warnings": 0,
+                            "limits": {"assemblies": 64, "messages": 256, "messages_per_assembly": 32,
+                                       "message_chars": 512, "recent_compiles": 16, "syncs": 64, "page": 50}}})
+
+    def cmd_compilation_diagnostics(self, rid, args, owner):
+        if self.diagnostics_reply:
+            return self.respond(rid, *self.diagnostics_reply(args))
+        rows = [dict(m, assembly=e["assembly"], compile_generation=e["compile_generation"])
+                for e in sorted(self.comp["entries"], key=lambda e: e["assembly"]) for m in e["messages"]
+                if (args["severity"] is None or m["severity"] == args["severity"])
+                and (args["assembly"] is None or e["assembly"] == args["assembly"])
+                and (args["generation"] is None or e["compile_generation"] == args["generation"])]
+        page = args["page"] or 0
+        self.respond(rid, "OK", None, {"entries": rows[page * 50:(page + 1) * 50], "total": len(rows), "page": page,
+                                       "pages": max(1, (len(rows) + 49) // 50), "page_size": 50,
+                                       "filters": {k: args[k] for k in ("generation", "severity", "assembly")}})

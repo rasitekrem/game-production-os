@@ -34,6 +34,7 @@ import os
 import plistlib
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -212,6 +213,15 @@ class StandIn:
         return json.loads(self.record.read_text())
 
 
+def hold_lock(path):
+    """TEST-ONLY: a child Python process that holds an exclusive flock on `path` (what a running Editor does)."""
+    code = ("import fcntl, sys, time\nf = open(sys.argv[1])\nfcntl.flock(f, fcntl.LOCK_EX)\nprint('held', flush=True)\n"
+            "time.sleep(600)\n")
+    child = subprocess.Popen([sys.executable, "-c", code, str(path)], stdout=subprocess.PIPE, text=True)
+    assert child.stdout.readline().strip() == "held"
+    return child
+
+
 # ---------------------------------------------------------------- base case
 
 class UnityCase(unittest.TestCase):
@@ -298,11 +308,12 @@ class A_Registration(UnityCase):
         # alpha.16: the adapter manages the live plane's long-lived session; each batch capability stays STATELESS
 
     def test_exactly_three_capabilities(self):
-        from gpos.tools.unity import assets, authoring, live, prefabs
+        from gpos.tools.unity import assets, authoring, live, prefabs, sources
         caps = {c.id: c for c in ua.DESCRIPTOR.capabilities
-                if c.id not in live.CAPABILITY_IDS + authoring.CAPABILITY_IDS + assets.CAPABILITY_IDS + prefabs.CAPABILITY_IDS}
+                if c.id not in live.CAPABILITY_IDS + authoring.CAPABILITY_IDS + assets.CAPABILITY_IDS + prefabs.CAPABILITY_IDS
+                + sources.CAPABILITY_IDS}
         self.assertEqual(sorted(caps), ["unity.inspect-project", "unity.run-editmode-tests", "unity.run-playmode-tests"])
-        self.assertEqual(len(ua.DESCRIPTOR.capabilities), 41)   # plus nine live-session (alpha.16), thirteen authoring, seven asset (alpha.18) and nine prefab (alpha.19)
+        self.assertEqual(len(ua.DESCRIPTOR.capabilities), 45)   # plus nine live-session (alpha.16), thirteen authoring, seven asset (alpha.18), nine prefab (alpha.19) and four source (alpha.20)
         i = caps[ua.INSPECT]
         self.assertEqual((i.category, i.operation_class, i.state_model, i.execution_context, i.requires_tool,
                           i.single_writer_required, i.dry_run_supported, i.input_kinds, i.artifact_kinds,
@@ -685,17 +696,41 @@ class K_Lease(UnityCase):
 # ---------------------------------------------------------------- L  Unity project lock
 
 class L_UnityLock(UnityCase):
-    def test_an_existing_unity_lock_is_a_conflict_and_is_never_removed(self):
+    """alpha.20 (D5): the lockfile's presence alone is no longer a conflict; the read-only proof decides (the whole
+    decision table is in tests/test_unity_sources.py)."""
+
+    def test_a_held_unity_lock_is_a_conflict_and_is_never_removed(self):
         s = StandIn(self.tmp / "s", results=nunit())
         p = self.unity_project(version=STANDIN_VERSION)
         (p / "Game/Temp").mkdir()
         lock = p / "Game/Temp/UnityLockfile"
         lock.write_bytes(b"")
-        for cap in (ua.EDITMODE, ua.PLAYMODE):
-            result = self.run_cap(cap, p, registry=s.registry())
-            self.assertStatus(result, tdg.CONFLICT, "ENGINE_PROJECT_LOCKED")
+        holder = hold_lock(lock)
+        try:
+            for cap in (ua.EDITMODE, ua.PLAYMODE):
+                result = self.run_cap(cap, p, registry=s.registry())
+                self.assertStatus(result, tdg.CONFLICT, "ENGINE_PROJECT_LOCKED")
+                (d,) = [d for d in result.diagnostics if d.code == "ENGINE_PROJECT_LOCKED"]
+                self.assertEqual(json.loads(d.details)["lock_state"], "ACTIVE_EDITOR")
+        finally:
+            holder.kill()
+            holder.wait()
         self.assertTrue(lock.exists())
         self.assertFalse(s.record.exists())
+
+    def test_an_unheld_leftover_lock_is_left_to_unity(self):
+        s = StandIn(self.tmp / "s", results=nunit())
+        p = self.unity_project(version=STANDIN_VERSION)
+        (p / "Game/Temp").mkdir()
+        lock = p / "Game/Temp/UnityLockfile"
+        lock.write_bytes(b"")
+        before = lock.stat()
+        result = self.run_cap(ua.EDITMODE, p, registry=s.registry())
+        self.assertStatus(result, tdg.SUCCESS, "ENGINE_PROJECT_ORPHAN_LOCK")
+        self.assertEqual(result.data["project_lock"], "ORPHAN_UNHELD")
+        self.assertTrue(s.record.exists())
+        after = lock.stat()   # the stand-in does not touch it, and GPOS never does
+        self.assertEqual((after.st_ino, after.st_size, after.st_mtime_ns), (before.st_ino, before.st_size, before.st_mtime_ns))
 
     def test_a_refused_second_instance_is_a_conflict(self):
         s = StandIn(self.tmp / "s", exit=1, stdout="It looks like another Unity instance is running with this project "
@@ -983,8 +1018,12 @@ class Y_CommandSurface(UnityCase):
                     names |= {a.name.split(".")[0] for a in node.names}
                 elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                     names.add(node.module.split(".")[0])
-            self.assertEqual(names & {"subprocess", "socket", "ssl", "http", "urllib", "requests", "asyncio", "ctypes"},
-                             set(), path)
+            # alpha.20: the one read-only macOS lock proof (project_lock.py) binds four fixed libSystem calls; its
+            # symbols are pinned in tests/test_unity_sources.py
+            banned = {"subprocess", "socket", "ssl", "http", "urllib", "requests", "asyncio"}
+            if path.name != "project_lock.py":
+                banned.add("ctypes")
+            self.assertEqual(names & banned, set(), path)
 
     def test_the_adapter_reads_only_its_declared_input(self):
         text = (ROOT / "gpos/tools/unity/adapter.py").read_text()
@@ -1014,7 +1053,7 @@ class Z_Cli(UnityCase):
         code, out = cli("list")
         self.assertEqual(code, 0)
         self.assertIn("6 tool adapter", out)
-        self.assertIn("unity 1.0.0 · ENGINE · 41 capabilities", out)
+        self.assertIn("unity 1.0.0 · ENGINE · 45 capabilities", out)
         code, out = cli("describe", "unity")
         self.assertEqual(code, 0)
         self.assertIn("network TOOL_INHERENT", out)

@@ -58,6 +58,10 @@ CODES = {
     "LIVE_SHADER_NOT_IN_CATALOG": (INVALID_REQUEST, "the shader is not in the closed shader catalog"),
     "LIVE_PREFAB_REFUSED": (INVALID_REQUEST, "the prefab or source is outside the authorable scope (a Variant, model, package or nested prefab, a non-owned object, prefab-instance content, a missing script, hidden content or an unsupported reference)"),
     "LIVE_PREFAB_LIMIT": (INVALID_REQUEST, "the prefab, source subtree, instance or Scene scan exceeds a fixed bound; nothing is hashed, listed partially or written"),
+    "LIVE_SOURCE_PATH_INVALID": (INVALID_REQUEST, "a source path is not an exact .cs, .asmdef or .asmref path in plain folders below Assets/ spelled as on disk, or it is named twice"),
+    "LIVE_SOURCE_SYNC_LIMIT": (INVALID_REQUEST, "the sync names too many paths, a source is too large, or a folder to import exceeds the entry, depth or folder-count bound; nothing was imported"),
+    "LIVE_SYNC_GENERATION_UNKNOWN": (INVALID_REQUEST, "the sync generation is not one this editor session recorded, or it is no longer retained"),
+    "LIVE_DIAGNOSTICS_FILTER_UNKNOWN": (INVALID_REQUEST, "the compile generation or assembly is not in the retained compilation journal"),
     "DRY_RUN_UNSUPPORTED": (INVALID_REQUEST, "the capability does not support dry run"),
     "MUTATION_NOT_ALLOWED": (INVALID_REQUEST, "a mutating capability was requested without explicit mutation consent"),
     "TIMEOUT_NOT_PERMITTED": (INVALID_REQUEST, "the requested timeout is outside the capability's policy bounds"),
@@ -108,7 +112,7 @@ CODES = {
     "REPOSITORY_STATE_CONFLICT": (CONFLICT, "the repository has no exact committed revision (uncommitted work or no commit yet)"),
     "TARGET_DEVICE_NOT_READY": (CONFLICT, "the named target device is connected but not ready (offline, unauthorized or still booting)"),
     "TARGET_PROCESS_NOT_RUNNING": (CONFLICT, "the named application process is not running on the target device"),
-    "ENGINE_PROJECT_LOCKED": (CONFLICT, "the engine project is already open or locked by another editor instance"),
+    "ENGINE_PROJECT_LOCKED": (CONFLICT, "the engine project is already open or locked by another editor instance, or that could not be ruled out"),
     # live sessions (Phase 2C-6A): the SESSION lease is generic foundation state
     "LIVE_SESSION_HELD": (CONFLICT, "a live SESSION lease holds this resource; no other writer acts until it is detached or recovered"),
     "LIVE_SESSION_MISMATCH": (CONFLICT, "the session id, canonical owner or binding does not match the SESSION lease"),
@@ -138,6 +142,9 @@ CODES = {
     "LIVE_PREFAB_CONFLICT": (CONFLICT, "the prefab or source changed since its token was read, changed on disk before the save, or a dirty loaded Scene depends on it; nothing was saved or created"),
     "LIVE_PREFAB_NOT_EDITABLE": (CONFLICT, "version control is active or does not have the prefab open for edit, or the OS does not let GPOS write its file, .meta or folder"),
     "LIVE_PREFAB_CREATE_INCOMPLETE": (CONFLICT, "a prefab creation cannot be finished or undone from proven facts; nothing unknown was deleted, moved or overwritten"),
+    # live source synchronization and compilation facts (Phase 2C-6C)
+    "LIVE_SOURCE_SYNC_REFUSED": (CONFLICT, "a named source is missing, a deleted source still exists, or its folder cannot be synchronized (the Assets root, more than one gone folder level, a link); nothing was imported"),
+    "LIVE_NOT_READY": (CONFLICT, "the editor did not settle in Edit Mode (with a compile outcome newer than the sync, when one was named) before the wait ended; nothing was triggered"),
     # execution (FAILED / TIMED_OUT / CANCELLED)
     "EXECUTION_FAILED": (FAILED, "the tool executed and reported failure"),
     "ENGINE_TESTS_NOT_EXECUTED": (FAILED, "the test run completed without executing any test; no test evidence exists"),
@@ -152,6 +159,7 @@ CODES = {
     "LIVE_TRANSITION_FAILED": (FAILED, "the editor did not complete the requested state transition; it is not retried"),
     "LIVE_ROLLBACK_INCOMPLETE": (FAILED, "the operation failed and was reverted, but the state its pre-state tokens cover was not restored; inspect before anything else"),
     "LIVE_AUTHORING_FAILED": (FAILED, "the editor raised an error during the operation; it was reverted and the state its pre-state tokens cover was restored"),
+    "LIVE_SOURCE_SYNC_INCOMPLETE": (FAILED, "imports began but did not complete as asked (an import failed, or the editor still knows a deleted source); nothing is retried or undone"),
     "LIVE_OUTCOME_UNKNOWN": (OUTCOME_UNKNOWN, "the editor may have started or completed the request, but its final effect is unknown; it is never retried, re-read the live status"),
     # defects (INTERNAL_ERROR)
     "ADAPTER_INTERNAL_ERROR": (INTERNAL_ERROR, "the adapter raised an unexpected exception"),
@@ -182,6 +190,10 @@ CODES = {
     "LIVE_PREFAB_INSTANTIATED": (INFO, "one instance of the prefab was created in the Scene as one Undo group; nothing was saved"),
     "LIVE_PREFAB_CREATE_RECOVERED": (INFO, "an interrupted prefab creation was closed from proven facts before this request"),
     "LIVE_PREFAB_SIDE_EFFECTS": (INFO, "project code changed other objects of the prefab, or loaded Scenes were marked dirty, as a consequence; nothing was saved"),
+    "LIVE_SOURCES_SYNCED": (INFO, "the editor imported exactly the named sources (and the folders of deleted ones); compilation and domain reload follow as the editor decides"),
+    "LIVE_SOURCE_SYNC_SIDE_EFFECTS": (INFO, "a recursive folder import also imported or removed other assets, or created, removed or changed .meta files; all are listed"),
+    "LIVE_COMPILATION_FAILED": (INFO, "the settled compilation failed: the editor keeps its previous scripts and refuses play mode and test runs until the errors are fixed"),
+    "ENGINE_PROJECT_ORPHAN_LOCK": (INFO, "an unheld leftover engine project lock file existed with no editor process for the project; GPOS did not modify it and the engine applied its own project-lock semantics"),
 }
 
 

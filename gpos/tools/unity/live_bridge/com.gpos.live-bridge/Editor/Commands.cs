@@ -1,7 +1,8 @@
 // GPOS live bridge — the closed command set. Each command reads or changes only what its name says:
 // status, attach proposals and their Human approval, bind/unbind of one session, stale-session recovery grants,
 // bounded inspection, the four Play Mode transitions, (bridge 1.1.0) the Scene-authoring commands in Authoring.cs
-// (bridge 1.2.0) the asset commands in AssetAuthoring.cs and (bridge 1.3.0) the prefab commands in PrefabAuthoring.cs.
+// (bridge 1.2.0) the asset commands in AssetAuthoring.cs, (bridge 1.3.0) the prefab commands in PrefabAuthoring.cs and
+// (bridge 1.4.0) sync-sources in SourceSync.cs and the two compilation readers in Compilation.cs.
 // Nothing here evaluates code, calls a method by name, runs a menu item or reads an arbitrary object.
 using System;
 using System.Collections.Generic;
@@ -84,6 +85,13 @@ namespace Gpos.LiveBridge
                 string busy = Transitions.Busy(Transitions.Phase(LiveBridge.Flags()), LoadPending() != null);
                 if (busy != null) throw new Refusal("EDITOR_BUSY", busy);
             }
+            if (Protocol.ChangesSources(r.Command))
+            {
+                string busy = Transitions.AuthoringBusy(Transitions.Phase(LiveBridge.Flags()), LoadPending() != null);
+                if (busy != null) throw new Refusal("EDITOR_BUSY", busy);
+                Answer(r.Id, "OK", null, null, SourceSync.Run(r));   // refused before any import, or imported (Refusal.Data)
+                return;
+            }
             if (Protocol.IsAuthoring(r.Command))
             {
                 string busy = Transitions.AuthoringBusy(Transitions.Phase(LiveBridge.Flags()), LoadPending() != null);
@@ -103,6 +111,8 @@ namespace Gpos.LiveBridge
                 case "consume-recovery": ConsumeRecovery(r); return;
                 case "unbind": Unbind(r); return;
                 case "inspect": Answer(r.Id, "OK", null, null, Inspect()); return;
+                case "compilation-status": Answer(r.Id, "OK", null, null, Compilation.Status()); return;
+                case "compilation-diagnostics": Answer(r.Id, "OK", null, null, Compilation.Diagnostics(r.Args)); return;
                 case "enter-playmode":
                 case "exit-playmode": Transition(r); return;
                 case "pause":

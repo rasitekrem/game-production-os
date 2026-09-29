@@ -1,8 +1,10 @@
 """The Unity live plane (Phase 2C-6A, Scene authoring Phase 2C-6B1, asset authoring Phase 2C-6B2A, prefab authoring
-Phase 2C-6B2B): a fixed Editor bridge and one Human-approved session per GPOS project.
+Phase 2C-6B2B, source synchronization and compilation facts Phase 2C-6C): a fixed Editor bridge and one Human-approved
+session per GPOS project.
 
 Nine session capabilities here, thirteen Scene-authoring capabilities in authoring.py, seven asset capabilities in
-assets.py, nine prefab capabilities in prefabs.py, and nothing generic:
+assets.py, nine prefab capabilities in prefabs.py, four source and compilation capabilities in sources.py, and nothing
+generic:
 
     unity.live-install-bridge   write the audited bridge package into a closed project, or upgrade an exact earlier
                                 released bridge there with a crash-recoverable transaction        MUTATING, EXECUTION
@@ -78,10 +80,14 @@ REFUSALS = {
     "PREFAB_STAGE_OPEN": "LIVE_PREFAB_STAGE_OPEN", "PREFAB_DIRTY": "LIVE_PREFAB_DIRTY",
     "PREFAB_CONFLICT": "LIVE_PREFAB_CONFLICT", "PREFAB_NOT_EDITABLE": "LIVE_PREFAB_NOT_EDITABLE",
     "PREFAB_CREATE_INCOMPLETE": "LIVE_PREFAB_CREATE_INCOMPLETE",
+    # source synchronization and compilation facts (Phase 2C-6C)
+    "SOURCE_PATH_INVALID": "LIVE_SOURCE_PATH_INVALID", "SOURCE_SYNC_LIMIT": "LIVE_SOURCE_SYNC_LIMIT",
+    "SOURCE_SYNC_REFUSED": "LIVE_SOURCE_SYNC_REFUSED", "JOURNAL_FILTER_UNKNOWN": "LIVE_DIAGNOSTICS_FILTER_UNKNOWN",
 }
 # FAILED codes of an authoring command whose mutation began (the bridge reverted it; see authoring.py). An asset
 # command's PERSISTENCE_UNKNOWN (the commit point was reached) is LIVE_OUTCOME_UNKNOWN (authoring.outcome).
-AUTHORING_FAILURES = {"ROLLBACK_INCOMPLETE": "LIVE_ROLLBACK_INCOMPLETE", "AUTHORING_FAILED": "LIVE_AUTHORING_FAILED"}
+AUTHORING_FAILURES = {"ROLLBACK_INCOMPLETE": "LIVE_ROLLBACK_INCOMPLETE", "AUTHORING_FAILED": "LIVE_AUTHORING_FAILED",
+                      "SOURCE_SYNC_INCOMPLETE": "LIVE_SOURCE_SYNC_INCOMPLETE"}
 
 # Every status, code, state and phase the bridge protocol and the live plane report (documentation vocabulary).
 PROTOCOL_VOCABULARY = frozenset(REFUSALS) | frozenset({
@@ -112,7 +118,10 @@ PROTOCOL_VOCABULARY = frozenset(REFUSALS) | frozenset({
     "MISSING_SCRIPT", "HIDDEN_CONTENT", "EMBEDDED_ASSETS", "STAGE_OPEN", "DIRTY", "NOT_WRITABLE", "VERSION_CONTROL",
     "NOT_OWNED", "NOT_COVERED", "NULL", "INSIDE", "OWN_SCRIPT", "REVIEWED_ASSET", "SCENE_OUTSIDE", "OTHER_SCRIPT",
     "UNSUPPORTED_ASSET", "UNKNOWN_REFERENCE", "PREFAB_LINK", "CONNECTED", "MISSING_ASSET", "NOT_A_PREFAB",
-    "PROPERTY", "ADDED_COMPONENT", "REMOVED_COMPONENT", "ADDED_GAME_OBJECT", "REMOVED_GAME_OBJECT"})
+    "PROPERTY", "ADDED_COMPONENT", "REMOVED_COMPONENT", "ADDED_GAME_OBJECT", "REMOVED_GAME_OBJECT"}) | frozenset({
+    # sources and compilation: deleted-source states, compiler message severities, settled outcomes
+    "SYNCHRONIZED", "ALREADY_SYNCHRONIZED", "NOT_IMPORTED", "STILL_KNOWN", "ERROR", "WARNING", "SUCCEEDED",
+    "NONE_OBSERVED"})
 
 
 def _diag(code, message, cap, details=None):

@@ -63,6 +63,7 @@ namespace Gpos.LiveBridge
             }
             catch { }
             EditorApplication.update += Tick;
+            Compilation.Register();   // bridge 1.4.0: the compilation journal (CompilationPipeline callbacks only)
             AssemblyReloadEvents.beforeAssemblyReload += () => { reloading = true; Ipc.Event("before-assembly-reload"); Heartbeat(true); };
             CompilationPipeline.compilationStarted += _ => Ipc.Event("compilation-started");
             CompilationPipeline.compilationFinished += _ => Ipc.Event("compilation-finished");
@@ -178,7 +179,7 @@ namespace Gpos.LiveBridge
             {
                 Ipc.AtomicReplace(Path.Combine(Place.LiveDir, "heartbeat.json"), Json.Write(new Dictionary<string, object> {
                     { "boot_id", BootId }, { "generation", Generation }, { "seq", seq }, { "utc", DateTime.UtcNow.ToString("o") },
-                    { "editor_pid", pid }, { "session_id", SessionId }, { "state", State() } }));
+                    { "editor_pid", pid }, { "session_id", SessionId }, { "state", State() }, { "compilation", Compilation.Summary() } }));
             }
             catch { }
         }

@@ -1,6 +1,6 @@
 # Unity live Editor plane (Phase 2C-6A, Scene authoring Phase 2C-6B1)
 
-Code: [`gpos/tools/unity/live.py`](../gpos/tools/unity/live.py) and the fixed bridge package in [`gpos/tools/unity/live_bridge/`](../gpos/tools/unity/live_bridge/manifest.json) · adapter id `unity` (the same adapter as the [batch plane](unity-adapter.md)) · bridge `com.gpos.live-bridge` 1.3.0, protocol `gpos.unity.live/4` · status: live session foundation plus [Scene authoring](unity-live-authoring.md), [asset references and asset authoring](unity-live-assets.md) and [prefab authoring](unity-live-prefabs.md). Built on the [tool adapter foundation](adapter-foundation.md), extended by SESSION leases, lease modes and the `OUTCOME_UNKNOWN` result status.
+Code: [`gpos/tools/unity/live.py`](../gpos/tools/unity/live.py) and the fixed bridge package in [`gpos/tools/unity/live_bridge/`](../gpos/tools/unity/live_bridge/manifest.json) · adapter id `unity` (the same adapter as the [batch plane](unity-adapter.md)) · bridge `com.gpos.live-bridge` 1.4.0, protocol `gpos.unity.live/5` · status: live session foundation plus [Scene authoring](unity-live-authoring.md), [asset references and asset authoring](unity-live-assets.md), [prefab authoring](unity-live-prefabs.md) and [source synchronization and compilation facts](unity-live-sources.md). Built on the [tool adapter foundation](adapter-foundation.md), extended by SESSION leases, lease modes and the `OUTCOME_UNKNOWN` result status.
 
 The live plane lets an agent work with a Unity Editor that a Human already has open, after the Human approves it **inside the Editor**. It is a closed set of operations through a fixed, audited GPOS Editor bridge:
 
@@ -36,8 +36,9 @@ Earlier released bridges are release content, each pinned in code by protocol an
 | 1.0.0 | `gpos.unity.live/1` | [`history/1.0.0.json`](../gpos/tools/unity/live_bridge/history/1.0.0.json) | `v1.0.0-alpha.16` | `546b3cfb…8c66` |
 | 1.1.0 | `gpos.unity.live/2` | [`history/1.1.0.json`](../gpos/tools/unity/live_bridge/history/1.1.0.json) | `v1.0.0-alpha.17` | `00af2b3a…3394` |
 | 1.2.0 | `gpos.unity.live/3` | [`history/1.2.0.json`](../gpos/tools/unity/live_bridge/history/1.2.0.json) | `v1.0.0-alpha.18` | `042379a6…82ce` |
+| 1.3.0 | `gpos.unity.live/4` | [`history/1.3.0.json`](../gpos/tools/unity/live_bridge/history/1.3.0.json) | `v1.0.0-alpha.19` | `acdbb1c8…3f47` |
 
-A test reads each manifest from its frozen tag and fails when the copy or the pin differs. `unity.live-status` reports the installed package as ABSENT, EXACT, PREVIOUS (with its version) or UNTRUSTED. GPOS never talks to an earlier bridge: its sessions, Scene, asset and prefab authoring need 1.3.0, so a PREVIOUS package (1.0.0, 1.1.0 or 1.2.0) is `LIVE_BRIDGE_INCOMPATIBLE` until it is upgraded. All three upgrade directly to 1.3.0 with the same transaction.
+A test reads each manifest from its frozen tag and fails when the copy or the pin differs. `unity.live-status` reports the installed package as ABSENT, EXACT, PREVIOUS (with its version) or UNTRUSTED. GPOS never talks to an earlier bridge: its sessions, Scene, asset, prefab authoring and source synchronization need 1.4.0, so a PREVIOUS package (1.0.0, 1.1.0, 1.2.0 or 1.3.0) is `LIVE_BRIDGE_INCOMPATIBLE` until it is upgraded. All four upgrade directly to 1.4.0 with the same transaction.
 
 `unity.live-install-bridge` upgrades a PREVIOUS package only while the project is closed (`ENGINE_PROJECT_LOCKED` otherwise), holding its `EXECUTION` writer lease. Replacing a directory is not one atomic step, so it is a transaction:
 
@@ -88,14 +89,17 @@ The folders keep nothing older than 10 minutes and at most 256 files each.
 
 ## Protocol
 
-A request (schema `gpos.unity.live.request/2`; responses `gpos.unity.live.response/2`) has exactly: schema, request id (equal to its file name), session id (only for commands that act on a session), owner (`KIND:ID`), the bridge boot id it is addressed to, one command from a closed list, a fixed argument set, `issued_utc` and `start_deadline_utc` (at most 120 s later). Requests are at most 64 KiB and responses at most 256 KiB; JSON is strict (duplicate keys, trailing data and non-JSON numbers are refused; depth at most 8). Response statuses: OK, REFUSED, FAILED, INTERRUPTED.
+A request (schema `gpos.unity.live.request/5`; responses `gpos.unity.live.response/5`) has exactly: schema, request id (equal to its file name), session id (only for commands that act on a session), owner (`KIND:ID`), the bridge boot id it is addressed to, one command from a closed list, a fixed argument set, `issued_utc` and `start_deadline_utc` (at most 120 s later). Requests are at most 64 KiB and responses at most 256 KiB; JSON is strict (duplicate keys, trailing data and non-JSON numbers are refused; depth at most 8). Response statuses: OK, REFUSED, FAILED, INTERRUPTED.
 
 ```
 status  propose-attach  attach-status  abandon-proposal  bind  propose-recovery  recovery-status
 consume-recovery  unbind  inspect  enter-playmode  exit-playmode  pause  resume
 object-inspect  component-types  properties  create-gameobject  delete-gameobject  set-parent
 set-gameobject  set-transform  add-component  remove-component  set-property  save-scene
+sync-sources  compilation-status  compilation-diagnostics
 ```
+
+The asset and prefab commands are listed in [asset authoring](unity-live-assets.md) and [prefab authoring](unity-live-prefabs.md). Bridge 1.4.0 adds the last line; its heartbeat also carries the compilation counters `unity.live-wait-ready` observes.
 
 Every argument key of an authoring command is always present; an absent value is `null`.
 
@@ -105,7 +109,7 @@ There is no approval command: approval exists only as a button in the Editor win
 
 **Deadlines and waiting.** A request whose start deadline passed before the bridge could start it is refused `LIVE_REQUEST_EXPIRED` and never runs. When GPOS stops waiting, it tries to rename the request into withdrawn/; exactly one of that rename and the bridge's claim can succeed. A withdrawn request never runs (`LIVE_REQUEST_WITHDRAWN`, `CANCELLED`). If the bridge had already claimed it and no answer arrived, the result is `LIVE_OUTCOME_UNKNOWN` with status `OUTCOME_UNKNOWN` (exit 9): the effect is unknown, `mutation_performed` is true for a mutating capability, nothing is retried, and the caller must re-read `unity.live-status`. The frozen `TIMED_OUT` status is never used for live operations.
 
-**Busy Editor.** Play Mode commands are refused `EDITOR_BUSY` while Unity is compiling, importing, reloading, quitting, in a Play Mode transition or finishing another transition. Scene-authoring commands run only in Edit Mode with nothing pending. Nothing is queued.
+**Busy Editor.** Play Mode commands are refused `EDITOR_BUSY` while Unity is compiling, importing, reloading, quitting, in a Play Mode transition or finishing another transition. Scene-authoring commands and sync-sources run only in Edit Mode with nothing pending. Nothing is queued. The two compilation readers answer in any phase.
 
 ## Human approval
 

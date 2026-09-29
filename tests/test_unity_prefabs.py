@@ -66,7 +66,7 @@ EDITOR_SOURCE = bi.SOURCE / "Editor"
 class A_Declarations(unittest.TestCase):
     def test_nine_fixed_prefab_capabilities(self):
         caps = {c.id: c for c in UnityAdapter.descriptor.capabilities}
-        self.assertEqual(len(caps), 41)
+        self.assertEqual(len(caps), 45)
         self.assertEqual(len(P.CAPABILITY_IDS), 9)
         self.assertEqual(set(P.CAPABILITY_IDS), {
             "unity.live-prefab-inspect", "unity.live-prefab-instance-inspect", "unity.live-create-prefab",
@@ -233,7 +233,7 @@ class C_Mapping(LiveCase):
                 expected = {P.CREATE_PREFAB: {"LIVE_PREFAB_CREATED"}, P.INSTANTIATE: {"LIVE_PREFAB_INSTANTIATED"}}
                 self.assertEqual(self.codes(r), expected.get(cap, set() if cap in P.READ_ONLY else {"LIVE_PREFAB_SAVED"}))
         req = sorted((self.b.live / "claimed").glob("*.json"), key=lambda f: f.stat().st_mtime)[-1]
-        self.assertEqual(json.loads(req.read_text())["schema"], "gpos.unity.live.request/4")
+        self.assertEqual(json.loads(req.read_text())["schema"], "gpos.unity.live.request/5")
 
     def test_bad_inputs_are_refused_before_anything_is_sent(self):
         before = len(self.b.claimed_ids)
@@ -385,10 +385,7 @@ class D_Release(LiveCase):
         self.assertEqual(hashlib.sha256(frozen).hexdigest(),
                          "d37ce938c5060262f62b5a008f62700a27ae2e8307aa27944b89069a08141948")
         self.assertEqual(bi.PREVIOUS["1.2.0"], ("gpos.unity.live/3", ta.FROZEN_DIGEST_12))
-        self.assertEqual((bi.BRIDGE_VERSION, bi.PROTOCOL), ("1.3.0", "gpos.unity.live/4"))
-        manifest = bi.verify_source()
-        self.assertEqual((manifest["bridge_version"], manifest["protocol"], len(manifest["files"])),
-                         ("1.3.0", "gpos.unity.live/4", 54))
+        manifest = bi.verify_source()   # the current release (1.4.0, alpha.20) is pinned in tests/test_unity_sources.py
         names = {e["path"] for e in manifest["files"]}
         self.assertTrue({"Editor/PrefabAuthoring.cs", "Editor/PrefabResolver.cs", "Editor/Core/PrefabRules.cs"} <= names)
 

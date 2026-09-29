@@ -242,6 +242,33 @@ The real groups use disposable projects from `unity_fixture_builder.make_prefab_
 
 The same EditorPrefs and Package Manager guards apply. `test_unity_live_bridge_core.py` also runs `unity_live_bridge_core/PrefabCoreTests.cs`. `mutate_unity_prefabs.py` mutates the GPOS side, the bridge's prefab core and the prefab source boundaries against the fast suite and the core tests; with `--real`, it mutates the bridge's Editor-side prefab code against R5, R6 and R7 in real lab Editors.
 
+## Unity live source and compilation tests
+
+```bash
+python3 tests/test_unity_sources.py
+python3 tests/mutate_unity_sources.py
+python3 tests/mutate_unity_sources.py --real
+```
+
+Tests for Phase 2C-6C: source synchronization, compilation facts and wait-ready through bridge 1.4.0, and the batch plane's read-only project-lock proof. The fast groups need no Unity:
+
+- A: the four capability declarations, and no compile, refresh, write, move or code capability anywhere.
+- B: the source path grammar, strict JSON path lists named once, and the closed diagnostics and wait inputs.
+- C: the exact paths GPOS sends and how every bridge answer maps to a result against the protocol stand-in (which models Unity's compilation counters): `mutation_performed` from the first import on, no mutation when nothing was imported, the side-effect disclosure, `OUTCOME_UNKNOWN`, the facts GPOS derives, and sanitized, paged diagnostics.
+- W: wait-ready as observation only (nothing but compilation-status is sent): success after a proven reload, a completed failure, no success without a reload, a stale failure flag before the reload, a timeout with facts (`NONE_OBSERVED`), the causal baseline read before the first import, an older compilation never satisfying a sync, a changed Editor boot, and the 300 s bound.
+- D: the 1.3.0 history manifest is the one frozen in `v1.0.0-alpha.19`, and an exact 1.3.0 package is upgraded.
+- E: source boundaries: no forbidden mechanism in the bridge's source code, the two `ImportAsset` calls exactly where reviewed, every check before the first import and the baseline before it, the read-only lock proof (four libSystem calls, a read-only no-follow open, no lock taken, no write) and an adapter that never touches the lockfile.
+- L: the lock proof with a scripted OS (every row of the decision table, unknown never meaning "no process", exact project matching, the candidate bound, lock-query failures, links, directories and FIFOs, a lockfile replaced while examined), with the real macOS calls on this host (a flock held by a child process, the argument vector of this process, the listing and argv bounds), and through the adapter with a stand-in Editor (both proofs, the orphan diagnostic, the dry run, Unity's own refusal of the race, and the installer's unchanged closed-project rule).
+
+The real groups use disposable projects from `unity_fixture_builder.make_prefab_project` in lab-owned batch-mode Editors; the test itself stands in for the external tooling that writes source files.
+
+- R9 is one source/compile session: a new script and its `.meta`, an exact reimport that never imports an unrelated file, a syntax error (existing types stay authorable, Unity refuses Play Mode), a type error and its fix (a cached assembly and a superseded error), a warning-only compilation, asmdef and asmref, coalesced imports and a sync refused while compiling, monotonic generations, a wait timeout with facts, paging and filters over two warning assemblies, CS2001 without an absolute path, and the journal lost at an Editor restart.
+- R10 covers the session and ids across a reload and the catalog digest, requests during a compilation (`EDITOR_BUSY`) and during a reload (run once), a namespace change and a class rename, a move with its `.meta`, deletion synchronization with an unrelated file reported, D1, D2 (one widening only), the entry, depth and link bounds, no global Refresh, and a missing script that is never repaired.
+- R11 is the permanent end-to-end qualification of the whole loop, with no Human Unity step.
+- R12 is the real stale-lock contract: no lock, an orphan left by a compile error and replaced by Unity, an active matching Editor, a held flock without a matching process, an Editor with an unprovable (relative) project argument, Unity arbitrating the final race, and link and FIFO lockfiles.
+
+The same EditorPrefs and Package Manager guards apply. `test_unity_live_bridge_core.py` also runs `unity_live_bridge_core/SourceCoreTests.cs`. `mutate_unity_sources.py` mutates the GPOS side, the lock proof, the adapter, the bridge's source core and its source boundaries against the fast suites and the core tests; with `--real`, it mutates the bridge's Editor-side source and compilation code against R9 and R10 in real lab Editors.
+
 ## Fixtures
 
 **Schema fixtures** — `fixtures/valid/*.json` and `fixtures/invalid/*.json` are patches applied to a valid example:

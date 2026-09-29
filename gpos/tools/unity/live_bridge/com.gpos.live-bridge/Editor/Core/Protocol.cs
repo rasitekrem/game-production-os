@@ -1,7 +1,8 @@
 // GPOS live bridge — the closed request protocol (Unity-free core).
 // A request is one immutable JSON file: exact keys, a request id bound to its file name, the canonical owner
 // KIND:ID, the bridge boot it is addressed to, one command from a closed allowlist with a fixed argument set, and
-// an issue time plus a start deadline. There is no generic command, no code, no reflection target and no path.
+// an issue time plus a start deadline. There is no generic command, no code and no reflection target; a path argument
+// is an exact asset, prefab or (bridge 1.4.0) source path checked by AssetPaths or SourcePaths.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -28,10 +29,10 @@ namespace Gpos.LiveBridge
 
     internal static class Protocol
     {
-        public const string Name = "gpos.unity.live/4";
-        public const string RequestSchema = "gpos.unity.live.request/4";
-        public const string ResponseSchema = "gpos.unity.live.response/4";
-        public const string BridgeVersion = "1.3.0";
+        public const string Name = "gpos.unity.live/5";
+        public const string RequestSchema = "gpos.unity.live.request/5";
+        public const string ResponseSchema = "gpos.unity.live.response/5";
+        public const string BridgeVersion = "1.4.0";
         public const string PackageId = "com.gpos.live-bridge";
         public const int MaxRequestBytes = 64 * 1024;
         public const int MaxResponseBytes = 256 * 1024;
@@ -48,7 +49,7 @@ namespace Gpos.LiveBridge
 
         sealed class Spec
         {
-            public bool Session, Mutating, Authoring;
+            public bool Session, Mutating, Authoring, Sources;
             public string[] Args;
         }
 
@@ -106,6 +107,11 @@ namespace Gpos.LiveBridge
             { "add-prefab-component", AuthoringSpec(true, "object", "type_id", "expected_prefab_token", "expected_catalog_digest") },
             { "remove-prefab-component", AuthoringSpec(true, "component", "expected_prefab_token") },
             { "set-prefab-property", AuthoringSpec(true, "component", "path", "kind", "value", "expected_prefab_token") },
+            // Source synchronization and compilation facts (bridge 1.4.0): exact source paths in, targeted imports only;
+            // the two readers answer in any Editor phase and change nothing.
+            { "sync-sources", new Spec { Session = true, Mutating = true, Sources = true, Args = new[] { "sources", "deleted" } } },
+            { "compilation-status", new Spec { Session = true, Args = new string[0] } },
+            { "compilation-diagnostics", new Spec { Session = true, Args = new[] { "generation", "severity", "assembly", "page" } } },
         };
 
         static Spec AuthoringSpec(bool mutating, params string[] args)
@@ -117,7 +123,11 @@ namespace Gpos.LiveBridge
 
         public static bool NeedsSession(string command) { return Specs[command].Session; }
 
-        public static bool ChangesEditorState(string command) { return Specs[command].Mutating && !Specs[command].Authoring; }
+        public static bool ChangesEditorState(string command) { return Specs[command].Mutating && !Specs[command].Authoring && !Specs[command].Sources; }
+
+        // The source sync (bridge 1.4.0): only in Edit Mode with nothing pending, like authoring; it changes neither a
+        // Scene nor an asset GPOS authors — it asks Unity to import exact source paths.
+        public static bool ChangesSources(string command) { return Specs[command].Sources; }
 
         // A Scene- or asset-authoring command: only in Edit Mode, with nothing pending (Transitions.AuthoringBusy).
         public static bool IsAuthoring(string command) { return Specs[command].Authoring; }

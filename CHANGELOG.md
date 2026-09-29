@@ -4,6 +4,52 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.20] — Phase 2C-6C: Unity source, compile and diagnostics core
+
+Builds on the frozen Phase-2C-6B2B tree (`v1.0.0-alpha.19`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The foundation gains new diagnostic codes. Projects must pin `gpos_version` `1.0.0-alpha.20`.
+
+The `unity` adapter's live plane gains source synchronization and compilation facts through the fixed bridge 1.4.0 (protocol `gpos.unity.live/5`): four capabilities on the Human-approved session. Other programs write source files; GPOS names exact paths. The batch plane proves Unity's project lock read-only instead of treating a leftover lockfile as a conflict. Excluded:
+
+- C# text or file content, a source-write command, a compile or recompile command, `RequestScriptCompilation`;
+- `AssetDatabase.Refresh`, an arbitrary `AssetDatabase` operation, a caller-named folder or extension, a move command;
+- `Editor.log` parsing; reflection, `executeMethod`, menus, input, processes and network in the bridge;
+- deleting, truncating, rewriting or locking `Temp/UnityLockfile`; a time-based stale-lock grace.
+
+### Added
+
+- **Source capabilities** (`gpos/tools/unity/sources.py`; bridge `SourceSync.cs`, `Compilation.cs` and the Unity-free core `SourceRules.cs`):
+  - `unity.live-sync-sources` (`TRANSFORM`, `MUTATING`): an exact `ImportAsset` of each named existing `.cs`, `.asmdef` or `.asmref` path below `Assets/`; for each deleted one, a recursive import of its direct parent folder, or — only when that folder is gone too — of exactly one folder above it, never `Assets` itself (D1, D2); at most 64 paths and 4 folders;
+  - `unity.live-compilation-status` and `unity.live-compilation-diagnostics` (`INSPECT`, `READ_ONLY`);
+  - `unity.live-wait-ready` (`INSPECT`, `READ_ONLY`): observation only, at most 300 s;
+  - all `STATEFUL`, `EDITOR`, `SESSION_REQUIRED`, and none produces evidence.
+- **Validation before the first import:** every path, the derived folders, and a bounded, link-free before-snapshot of each folder (1000 entries, 6 levels); after the imports, a second snapshot and the report of every asset imported or removed and every `.meta` created, removed or changed. `mutation_performed` is true from the first import on.
+- **The compile-generation model:** compile, completed-compile, sync and reload generations; the causal baseline `compile_started_before_sync` read before a sync's first import; a settled outcome after a sync is a finished compilation newer than that baseline: `FAILED` (errors) or `SUCCEEDED` (no errors and a proven Domain Reload). A failed compilation is Edit Mode with `compilation_failed`, not a phase; coalesced compilations are never counted as one per edit.
+- **The compilation journal:** `CompilationPipeline` callbacks only, kept in the Editor session (survives Domain Reloads, lost at Editor quit), bounded (64 assemblies, 32 messages each, 256 in total, 512 characters), deterministically ordered, with project-relative files and paths, sanitized again through the redaction boundary; stale error entries of cached assemblies are dropped after a reload that proves a clean compilation.
+- **The read-only project-lock proof** of the batch test plane (`gpos/tools/unity/project_lock.py`, macOS): the exact argument vectors of this user's Hub Editor processes (`KERN_PROCARGS2`) matched by file identity of `-projectPath`, and an `F_GETLK` query on `Temp/UnityLockfile` opened read-only and link-free; effective states `NO_LOCK`, `ACTIVE_EDITOR`, `ORPHAN_UNHELD` and `LOCK_STATE_UNKNOWN`, proven before the workspace is prepared and again immediately before the launch.
+- `live_bridge/history/1.3.0.json`: the manifest frozen in `v1.0.0-alpha.19`, byte for byte, with its digest pinned in code.
+- Diagnostics:
+  - `LIVE_SOURCE_PATH_INVALID`, `LIVE_SOURCE_SYNC_LIMIT`, `LIVE_SYNC_GENERATION_UNKNOWN` and `LIVE_DIAGNOSTICS_FILTER_UNKNOWN` (invalid requests);
+  - `LIVE_SOURCE_SYNC_REFUSED` and `LIVE_NOT_READY` (conflicts); `LIVE_SOURCE_SYNC_INCOMPLETE` (failed);
+  - `LIVE_SOURCES_SYNCED`, `LIVE_SOURCE_SYNC_SIDE_EFFECTS`, `LIVE_COMPILATION_FAILED` and `ENGINE_PROJECT_ORPHAN_LOCK` (informational).
+- [tools/unity-live-sources.md](tools/unity-live-sources.md).
+- Tests:
+  - `tests/test_unity_sources.py`: fast groups; real R9 (the source/compile loop), R10 (reloads, identity, deletion synchronization and its bounds), R11 (the permanent end-to-end qualification: file tooling, compile error, diagnostics, fix, reload, catalogs, Scene, asset and prefab authoring, Play Mode, batch EditMode and PlayMode tests, a failing test, its fix through the live loop, a passing rerun, a reopened project) and R12 (the real stale-lock contract);
+  - `tests/unity_live_bridge_core/SourceCoreTests.cs`;
+  - `tests/mutate_unity_sources.py`, with a `--real` mode for the bridge's Editor-side source code.
+
+### Changed
+
+- Bridge `com.gpos.live-bridge` 1.4.0, protocol `gpos.unity.live/5`, request and response schemas `/5`; the heartbeat carries the compilation counters. Installed 1.0.0, 1.1.0, 1.2.0 and 1.3.0 packages are PREVIOUS and `LIVE_BRIDGE_INCOMPATIBLE` until upgraded, all directly to 1.4.0 with the alpha.17 transaction.
+- The `unity` descriptor has 45 capabilities (3 batch, 9 live session, 13 Scene authoring, 7 asset, 9 prefab, 4 source).
+- `unity.run-editmode-tests` and `unity.run-playmode-tests` no longer refuse a project merely because `Temp/UnityLockfile` exists: an active or unprovable lock stays `ENGINE_PROJECT_LOCKED` (with `lock_state`), an unheld leftover with no Unity process for the project proceeds (`ENGINE_PROJECT_ORPHAN_LOCK`), and GPOS never touches the file. `unity.live-install-bridge` keeps its closed-project rule.
+- The structural ban on `ctypes` in the Unity modules admits exactly `project_lock.py`, which binds four read-only libSystem calls.
+- The Scene, asset and prefab tests pin 45 capabilities, protocol `/5` and the 1.3.0 history.
+
+### Notes
+
+- Measured with Unity 6000.5.8f1 (D4): a batch run that stops on a compile error leaves an unheld `Temp/UnityLockfile` for more than 600 s (3 of 3 runs); it never cleared by itself; an active Editor holds a whole-file lock that `F_GETLK` reports; a later Unity launch accepts the orphan and replaces the file; a second launch against a held lock is refused by Unity.
+- Measured: restoring a source to a version Unity compiled before takes the assembly from its cache without reporting it, and the domain reloads.
+
 ## [1.0.0-alpha.19] — Phase 2C-6B2B: Unity live prefab authoring core
 
 Builds on the frozen Phase-2C-6B2A tree (`v1.0.0-alpha.18`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The foundation gains new diagnostic codes. Projects must pin `gpos_version` `1.0.0-alpha.19`.

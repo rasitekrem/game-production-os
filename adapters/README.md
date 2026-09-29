@@ -2,7 +2,7 @@
 
 Status: Phase 2B · GPOS `1.0.0-alpha.20` · agent adapter layer in [`gpos/adapters/`](../gpos/adapters/__init__.py)
 
-An adapter connects GPOS contracts to a specific agent runtime or tool. Phase 2B implements **agent adapters** for two coding agents: [Claude Code](claude-code.md) and [Codex](codex.md). They render the same GPOS authority into each agent's native project instructions and skills. Engine, DCC, device and repository-hosting adapters are later phases.
+An adapter connects GPOS contracts to a specific agent runtime or tool. Phase 2B implements **agent adapters** for two coding agents: [Claude Code](claude-code.md) and [Codex](codex.md). They render the same GPOS authority into each agent's native project instructions and skills. Tool adapters — repository (Git), media (FFmpeg/ffprobe), device (Android ADB), DCC (Blender) and engine (Unity) — are implemented on the tool adapter foundation and documented in [tools/README.md](../tools/README.md); repository-hosting adapters are later work.
 
 > **Generated agent files are disposable projections. Canonical authority is GPOS plus Project Locked Authority.**
 
@@ -11,8 +11,8 @@ An adapter connects GPOS contracts to a specific agent runtime or tool. Phase 2B
 An adapter may:
 
 - generate agent-specific instruction files from GPOS sources,
-- expose tool capabilities (capture, render, profile, deploy) that produce GPOS-typed evidence (later phases),
-- read and write GPOS records (routing, gate, evidence) in the formats defined in `schemas/`, filling evidence provenance from the tool itself wherever possible (later phases).
+- expose tool capabilities (capture, render, profile, deploy) that produce GPOS-typed evidence (the tool adapters of [tools/README.md](../tools/README.md); profiling and deployment beyond them are later work),
+- read and write GPOS records (routing, gate, evidence) in the formats defined in `schemas/`, filling evidence provenance from the tool itself wherever possible (tool adapters offer evidence candidates today; registering records into a project stays a separate, Human-authorized step).
 
 An adapter may **not**:
 

@@ -11,7 +11,8 @@ sync names exact `.cs`, `.asmdef` and `.asmref` paths below Assets/: an existing
 create its .meta); a deleted one is synchronized by a recursive import of its direct parent folder — or, only when that
 folder is gone too, of exactly one folder above it — never the Assets root and never a global Refresh. The bridge
 validates every path and snapshots every such folder (bounded, link-free) before its first import, records the causal
-baseline `compile_started_before_sync` before that import, and reports everything else the folder import did. Once an
+baseline `compile_started_before_sync` before that import, and reports what the folder import did within the bounded
+walk of the folder's files (stale database entries whose files were already gone may be reconciled unlisted). Once an
 import has begun the call reports mutation_performed, whatever follows. Unity then compiles and reloads as it decides:
 one edit is never claimed to be one compilation (Unity coalesces and abandons compilations).
 
@@ -261,7 +262,8 @@ def _success(cap, data):
         diags.append(lv._diag("LIVE_SOURCE_SYNC_SIDE_EFFECTS",
                               f"Unity created {effects['meta_created']} .meta file(s), imported {effects['other_imported']} "
                               f"and removed {effects['other_removed']} other asset(s), and removed or changed "
-                              f"{effects['meta_removed_or_changed']} .meta file(s); every one is listed", cap, effects))
+                              f"{effects['meta_removed_or_changed']} .meta file(s), each listed within the bounded walk of "
+                              f"the folder; stale entries whose files were already gone may be reconciled unlisted", cap, effects))
     return diags
 
 

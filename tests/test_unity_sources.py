@@ -108,7 +108,8 @@ class A_Declarations(unittest.TestCase):
                 if cls == "READ_ONLY":
                     self.assertEqual(c.side_effect_scope, "NONE")
         sync = caps[S.SYNC].side_effect_scope
-        for words in ("imports exactly the named existing sources", ".meta", "never Assets itself", "all listed"):
+        for words in ("imports exactly the named existing sources", ".meta", "never Assets itself", "listed within the bounded walk",
+                      "may be reconciled unlisted"):
             self.assertIn(words, sync)
         self.assertIn("Imports, compiles, refreshes, reloads, restarts and replays nothing", caps[S.WAIT].description)
 
@@ -549,7 +550,9 @@ class E_Boundaries(unittest.TestCase):
                      "DeleteAsset", "MoveAsset", "CreateAsset", "CopyAsset", "Editor.log", "consoleLogPath", "LogEntries",
                      "StartAssetEditing", "StopAssetEditing", "ForceReserializeAssets", "Undo.", "EditorApplication.Exit",
                      "OpenScene", "SaveScene", "ImportAssetOptions.ForceUpdate", "chmod", "unlink", "rename(",
-                     "SetInt(", "GetFiles(\"*.cs\"", "EditorUtility.RequestScriptReload", "AssetDatabase.ImportPackage")
+                     "SetInt(", "GetFiles(\"*.cs\"", "EditorUtility.RequestScriptReload", "AssetDatabase.ImportPackage",
+                     "GetAllAssetPaths", "FindAssets", "GetAllAssetBundleNames", "GetAssetPathsFromAssetBundle",
+                     "GUIDToAssetPath", "LoadAllAssetsAtPath", "GetDependencies")
         for name in self.BRIDGE:
             text = self.text(name)
             for word in forbidden:
@@ -562,6 +565,9 @@ class E_Boundaries(unittest.TestCase):
     def test_every_import_is_exactly_where_reviewed(self):
         sync = self.text("SourceSync.cs")
         self.assertEqual(sync.count("AssetDatabase.ImportAsset("), 2)
+        # the only AssetDatabase lookup is one path at a time, for entries the bounded walk visits and exact requested paths
+        self.assertEqual(sync.count("AssetDatabase.AssetPathToGUID("), 1)
+        self.assertEqual(sorted(set(re.findall(r"AssetDatabase\.(\w+)", sync))), ["AssetPathToGUID", "ImportAsset"])
         self.assertEqual(sync.count("AssetDatabase.ImportAsset(path)"), 1)
         self.assertEqual(sync.count("AssetDatabase.ImportAsset(folder, ImportAssetOptions.ImportRecursive)"), 1)
         for name in sorted(p.relative_to(EDITOR_SOURCE).as_posix() for p in EDITOR_SOURCE.rglob("*.cs")):
@@ -584,7 +590,7 @@ class E_Boundaries(unittest.TestCase):
         check = sync[sync.index("static Checked Check("):sync.index("static Dictionary<string, object> Import(")]
         for word in ("SyncRun", "ImportAsset", "BeginSync", "Host"):
             self.assertNotIn(word, check, word)
-        for word in ("Probe(p", "SourcePaths.DirectParent(p)", "SourcePaths.Widened(p)", "SourcePaths.Roots(", "Take(root, all, MaxEntries)"):
+        for word in ("Probe(p", "SourcePaths.DirectParent(p)", "SourcePaths.Widened(p)", "SourcePaths.Roots(", "Take(root, MaxEntries)"):
             self.assertIn(word, check, word)
         rules = self.text("Core/SourceRules.cs")
         body = rules[rules.index("public static SyncMarks Run("):rules.index("internal sealed class CompileMessage")]
@@ -1446,15 +1452,23 @@ class R10_RealReloadAndIdentity(RealSources):
 
     def test_05_a_deletion_is_synced_through_its_folder_and_everything_else_reported(self):
         self.write("Assets/Loop/Beta.cs", mb("Beta"))
-        self.synced("Assets/Loop/Beta.cs")
+        self.write("Assets/Loop/Stale.cs", mb("StaleOne"))
+        self.synced("Assets/Loop/Beta.cs", "Assets/Loop/Stale.cs")
         self.remove("Assets/Loop/Beta.cs")
+        self.remove("Assets/Loop/Stale.cs")                                  # deleted by other tooling, never named
         self.write("Assets/Loop/Note.txt", "an unrelated new file")
         d, _ = self.synced(deleted=("Assets/Loop/Beta.cs",))
         (f,) = d["folders"]
         self.assertEqual((f["folder"], f["parent_widened"]), ("Assets/Loop", False))
-        self.assertEqual(f["imported_new"], ["Assets/Loop/Note.txt"])
-        self.assertIn("Assets/Loop/Beta.cs", f["removed"])
+        self.assertEqual(f["imported_new"], ["Assets/Loop/Note.txt"])          # found by the bounded walk's own lookups
+        self.assertEqual(f["requested_removed"], ["Assets/Loop/Beta.cs"])     # checked by its exact path
+        self.assertEqual(f["removed"], [])
         self.assertIn("Assets/Loop/Note.txt.meta", f["meta_created"])
+        self.assertGreater(f["known_inspected_before"], 0)
+        # the narrowed contract: Unity also reconciled the stale entry, which no bounded walk can see, and it is not listed
+        self.assertEqual(self.known("Assets/Loop/Stale.cs"), "")
+        self.assertNotIn("Assets/Loop/Stale.cs", json.dumps(d))
+        self.assertIn("not enumerable within the bound and are not listed", d["disclosure"])
         self.assertEqual(d["deleted"][0], {"path": "Assets/Loop/Beta.cs", "state": "SYNCHRONIZED", "folder": "Assets/Loop",
                                            "parent_widened": False})
         self.assertIn("anything else new or changed in that folder", d["disclosure"])
@@ -1507,7 +1521,7 @@ class R10_RealReloadAndIdentity(RealSources):
         d, _ = self.synced(deleted=("Assets/Wide/Inner/W.cs",))
         self.assertEqual((d["deleted"][0]["folder"], d["deleted"][0]["parent_widened"], d["folders"][0]["parent_widened"]),
                          ("Assets/Wide", True, True))
-        self.assertIn("Assets/Wide/Inner", d["folders"][0]["removed"])
+        self.assertEqual(d["folders"][0]["requested_removed"], ["Assets/Wide/Inner", "Assets/Wide/Inner/W.cs"])
         self.assertEqual(self.known("Assets/Wide/Inner/W.cs"), "")
 
     def test_08_the_folder_bounds_and_links(self):

@@ -191,7 +191,7 @@ CODES = {
     "LIVE_PREFAB_CREATE_RECOVERED": (INFO, "an interrupted prefab creation was closed from proven facts before this request"),
     "LIVE_PREFAB_SIDE_EFFECTS": (INFO, "project code changed other objects of the prefab, or loaded Scenes were marked dirty, as a consequence; nothing was saved"),
     "LIVE_SOURCES_SYNCED": (INFO, "the editor imported exactly the named sources (and the folders of deleted ones); compilation and domain reload follow as the editor decides"),
-    "LIVE_SOURCE_SYNC_SIDE_EFFECTS": (INFO, "a recursive folder import also imported or removed other assets, or created, removed or changed .meta files; all are listed"),
+    "LIVE_SOURCE_SYNC_SIDE_EFFECTS": (INFO, "a recursive folder import also imported or removed other assets, or created, removed or changed .meta files; those within the bounded walk of the folder are listed"),
     "LIVE_COMPILATION_FAILED": (INFO, "the settled compilation failed: the editor keeps its previous scripts and refuses play mode and test runs until the errors are fixed"),
     "ENGINE_PROJECT_ORPHAN_LOCK": (INFO, "an unheld leftover engine project lock file existed with no editor process for the project; GPOS did not modify it and the engine applied its own project-lock semantics"),
 }

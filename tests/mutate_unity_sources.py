@@ -133,6 +133,8 @@ MUTATIONS = [
                                                              "                Compilation.EndSync(host.Gen, marks.After, EditorApplication.isCompiling);\n                UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();")]),
     ("Editor: an import runs inside the checks' refusal handler", "sources", [(SYNC, "            try { c = Check(r); }", "            try { c = Check(r); Import(c); }")]),
     ("Editor: an import failure reports no mutation", "sources", [(SYNC, '{ "mutation_started", marks.Began }', '{ "mutation_started", false }')]),
+    ("Editor: the snapshot enumerates the whole project", "sources", [(SYNC, "        static void KnownCheck(Snap s, string rel)\n        {\n            s.Inspected++;",
+                                                                           "        static void KnownCheck(Snap s, string rel)\n        {\n            s.Inspected += AssetDatabase.GetAllAssetPaths().Length > 0 ? 1 : 1;")]),
     ("Editor: the journal reads the Editor log", "sources", [(COMP, "            root = Path.GetDirectoryName(Application.dataPath);\n            if (SessionState",
                                                               "            root = Path.GetDirectoryName(Application.dataPath);\n            var log = System.IO.File.ReadAllText(UnityEditorInternal.InternalEditorUtility.GetEditorAssemblyPath() + \"/Editor.log\");\n            if (SessionState")]),
 ]
@@ -150,6 +152,9 @@ REAL_MUTATIONS = [
                                                                      '                else { d.Root = string.Join("/", parts.Take(missing)); d.Widened = true; }')]),
     ("Editor: the entry bound is not enforced", "real10", [(SYNC, "                    if (++s.Entries > maxEntries)\n", "                    if (++s.Entries < 0)\n")]),
     ("Editor: links inside a folder are imported", "real10", [(SYNC, '                    if (Identity.IsLink(entry)) throw Refused("a link inside "', '                    if (false) throw Refused("a link inside "')]),
+    ("Editor: the walk's entries are not looked up in the database", "real10", [(SYNC, "            if (Known(rel)) s.Known.Add(rel);", "            s.Known.Add(rel);")]),
+    ("Editor: requested deletions are not checked by their exact paths", "real10", [(SYNC, '                    Listed(f, "requested_removed", mine.Where(d => !Known(d.Path)).Select(d => d.Path)',
+                                                                                     '                    Listed(f, "requested_removed", mine.Where(d => false).Select(d => d.Path)')]),
     ("Editor: side effects are not listed", "real10", [(SYNC, '                    Listed(f, "imported_new", a.Known.Where(x => !b.Known.Contains(x)));', '                    Listed(f, "imported_new", new string[0]);')]),
     ("Editor: the baseline is the finish count", "real9", [(SYNC, "            public long CompileStarted { get { return Compilation.Journal.Started; } }",
                                                             "            public long CompileStarted { get { return Compilation.Journal.Finished; } }")]),

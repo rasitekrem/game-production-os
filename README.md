@@ -17,7 +17,7 @@ A model-independent production framework for AI-assisted professional game devel
 ## What it is not
 
 - Not a prompt collection, and not a single giant prompt.
-- Not an engine integration or plugin. It contains no Unity or Blender integration. Its tools are a read-only record validator and agent adapters that render GPOS into Claude Code and Codex project instructions; it never runs an agent.
+- Not a generic engine or DCC automation interface, and not a plugin. GPOS does contain production tool integrations — Git provenance, FFmpeg/ffprobe media evidence, Android ADB device evidence, a Blender DCC adapter and a Unity adapter (a batch test plane, and a live Editor plane with a Human-approved session, Scene, asset and prefab authoring and source/compile facts) — but each exposes only fixed, reviewed capabilities with explicit evidence and safety rules: no caller code, no arbitrary tool command, no generic Unity or Blender control. Its other tools are the read-only record validator and the agent adapters that render GPOS into Claude Code and Codex project instructions; it never runs an agent.
 - Not tied to any one game, engine, genre or model.
 
 Game Production OS does **not** replace Unity, Blender, Claude, Codex, game designers, artists, or human creative direction. It coordinates production responsibility and evidence between them.
@@ -133,18 +133,31 @@ A technically correct but visually or game-feel-inadequate cell fails. See [GOLD
 
 Each game keeps its own authority in a `.game/` directory built from `templates/`: `PROJECT.md`, `PILLARS.md`, `GAME-DESIGN.md`, `ART-BIBLE.md`, `GAME-FEEL.md`, `CAMERA.md`, `ANIMATION.md`, `LEVEL-DESIGN.md`, `UI-UX.md`, `AUDIO.md`, `PERFORMANCE.md`, `DECISIONS.md`, `CURRENT.md`, plus per-review `HUMAN-REVIEW.md` records. These override generic GPOS guidance according to the authority hierarchy. Templates contain placeholders only (`UNDECIDED`, `HUMAN_DECISION_REQUIRED`, `NOT_APPLICABLE`, `PROJECT_SPECIFIC`); missing decisions stay visibly missing. Bootstrapping is not implemented in Phase 1.
 
-## Future phases
+## Roadmap
 
-| Phase | Scope |
+**Current** (implemented; every phase through 2C-6B2B is frozen, 2C-6C is this release):
+
+| Area | Phases |
 |---|---|
-| 1 (frozen, `v1.0.0-alpha.7`) | Core architecture, `DRAFT` contracts, schemas, validation |
-| 2A (frozen, `v1.0.0-alpha.8`) | Production validator: project record validity and routed readiness ([tools/validator/README.md](tools/validator/README.md)) |
-| 2B (this release) | Agent adapter layer: one IR rendered into Claude Code and Codex project instructions and skills ([adapters/README.md](adapters/README.md)) |
-| 2 (remaining) | Pilot specialist pack. Likely first deeply piloted skills: `game-director`, `character-animation`, `camera-composition`, `technical-art`, `game-feel-vfx`, `qa-performance` |
-| 3 | Tool adapters: Claude/Codex, Unity, Blender, FFmpeg, device, Git/GitHub |
-| 4 | Real-project pilot |
-| 5 | Expand remaining specialist maturity |
-| 6 | Bootstrap, distribution, version migration |
+| Core architecture, `DRAFT` contracts, schemas, validation | 1 |
+| Production validator ([tools/validator/README.md](tools/validator/README.md)) | 2A |
+| Agent adapters: one IR rendered into Claude Code and Codex instructions ([adapters/README.md](adapters/README.md)) | 2B |
+| Tool adapter foundation ([tools/adapter-foundation.md](tools/adapter-foundation.md)) | 2C-0 |
+| Git provenance, FFmpeg/ffprobe media, Android ADB device, Blender DCC adapters | 2C-1 to 2C-4 |
+| Unity batch test plane | 2C-5 |
+| Unity live plane: session, Scene authoring, asset authoring, prefab authoring | 2C-6A, 2C-6B1, 2C-6B2A, 2C-6B2B |
+| Unity source synchronization, compilation facts and diagnostics | 2C-6C |
+
+**Next critical path:**
+
+1. Unity Build Core.
+2. Runtime, deploy and capture loop.
+3. Real-project autonomous pilot and vertical-slice qualification.
+4. Pilot-driven hardening and specialist skill maturity (the pilot decides which skills are deeply exercised first).
+
+**Deferred, on demand:** advanced Unity authoring surfaces — prefab apply, revert and unpack, Variants, nested-prefab authoring — are added when a pilot needs them; they do not block game-development readiness.
+
+**Later (stable V1):** project bootstrap, distribution and version migration.
 
 Adapter and tool boundaries: [adapters/README.md](adapters/README.md), [tools/README.md](tools/README.md). Claude Code and Codex instructions are generated from this shared source (`python3 -m gpos.adapters`), never maintained as duplicated hand-written authority; generated agent files are disposable projections.
 

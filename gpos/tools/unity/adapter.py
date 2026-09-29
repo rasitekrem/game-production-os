@@ -345,7 +345,8 @@ _source_note = ("Sources: other programs write source files; GPOS takes exact .c
 SOURCE_SIDE_EFFECTS = {
     sources.SYNC: "imports exactly the named existing sources (Unity may create their .meta files) and, for each deleted "
                   "source, its direct parent folder recursively (one folder up only when that folder is gone too; never "
-                  "Assets itself), which also imports anything else new or changed there — all listed; Unity then "
+                  "Assets itself), which also imports anything else new or changed there — listed within the bounded walk of "
+                  "the folder (stale database entries whose files were already gone may be reconciled unlisted); Unity then "
                   "compiles and may reload the domain as it decides; project code may run as a consequence",
 }
 

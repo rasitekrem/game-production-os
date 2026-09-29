@@ -42,15 +42,17 @@ A deleted path must be absent (no file, folder or link in any spelling) and must
 
 A deleted path Unity no longer knows is reported `ALREADY_SYNCHRONIZED` and imports nothing. Folders are distinct: a folder inside another one is covered by it, and at most 4 separate folder imports are made per sync (`LIVE_SOURCE_SYNC_LIMIT` otherwise).
 
-Before the first import, each folder is snapshotted: every entry (at most 1000, at most 6 folders deep, no link anywhere), the SHA-256 of every `.meta` file, and the assets Unity knows below it. A bound exceeded is `LIVE_SOURCE_SYNC_LIMIT`; a link is `LIVE_SOURCE_SYNC_REFUSED`; nothing is imported. After the imports each folder is snapshotted again and reported:
+Before the first import, each folder is snapshotted by one bounded, link-free walk of its files: every entry (at most 1000, at most 6 folders deep, no link anywhere), the SHA-256 of every `.meta` file, and — asked one path at a time for exactly the files and folders the walk visits — whether the AssetDatabase knows each of them. There is no project-wide asset enumeration. A bound exceeded is `LIVE_SOURCE_SYNC_LIMIT`; a link is `LIVE_SOURCE_SYNC_REFUSED`; nothing is imported. After the imports each folder is walked again the same way (if that is not possible, the result is `LIVE_SOURCE_SYNC_INCOMPLETE` with `mutation_performed` true) and reported:
 
 | Field | Meaning |
 |---|---|
-| `imported_new` | assets Unity knows now and did not before (for example an unrelated new file) |
-| `removed` | assets Unity knew before and no longer does (the deleted source, and any other stale deletion) |
+| `requested_removed` | the requested deleted sources (and the gone folder of a widened one) that Unity no longer knows, each checked by its exact path |
+| `imported_new` | files or folders the walk found that Unity knows now and did not before (for example an unrelated new file) |
+| `removed` | files or folders the walk found that Unity knew before and no longer does |
 | `meta_created`, `meta_removed`, `meta_changed` | `.meta` files Unity created, removed or rewrote in the folder |
+| `known_inspected_before`, `known_inspected_after` | how many AssetDatabase lookups each walk made |
 
-Each list holds at most 100 paths plus a count. Which unchanged files Unity re-read is not exposed. `LIVE_SOURCE_SYNC_SIDE_EFFECTS` summarizes every `.meta` created (including those of named new sources) and every other asset imported or removed.
+What is not listed: a recursive import also removes stale database entries of files that were already gone from disk before the sync (another program deleted them and nobody named them). No bounded walk of the folder's files can see them, so they are not enumerated; Unity may reconcile them, and the result's disclosure says so (measured: such an entry was removed by the import and appeared in no list). Each list holds at most 100 paths plus a count. Which unchanged files Unity re-read is not exposed. `LIVE_SOURCE_SYNC_SIDE_EFFECTS` summarizes every `.meta` created (including those of named new sources) and every other listed asset imported or removed.
 
 ## Mutation semantics
 
@@ -107,7 +109,7 @@ A failed compilation blocks nothing globally: reads keep working, authoring on e
 
 ## Security boundary
 
-A structural test proves the bridge's source code has no `AssetDatabase.Refresh`, `RequestScriptCompilation`, `SaveAssets`, reflection, `executeMethod`, menu, process, network, file-write, delete or move call. `ImportAsset` appears exactly twice: the exact import of a named path, and the one recursive import of a derived folder. The compilation code only subscribes to the three callbacks. GPOS's module writes no file and its wait sends only compilation-status. Source synchronization results, compilation status and diagnostics are operational facts, never evidence.
+A structural test proves the bridge's source code has no `AssetDatabase.Refresh`, `RequestScriptCompilation`, `SaveAssets`, reflection, `executeMethod`, menu, process, network, file-write, delete or move call. `ImportAsset` appears exactly twice: the exact import of a named path, and the one recursive import of a derived folder. The only other AssetDatabase call is the one-path lookup `AssetPathToGUID`; `GetAllAssetPaths`, `FindAssets` and every other project-wide enumeration are banned from the source-sync code. The compilation code only subscribes to the three callbacks. GPOS's module writes no file and its wait sends only compilation-status. Source synchronization results, compilation status and diagnostics are operational facts, never evidence.
 
 ## Diagnostics
 

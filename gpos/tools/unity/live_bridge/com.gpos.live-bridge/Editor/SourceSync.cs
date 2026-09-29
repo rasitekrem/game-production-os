@@ -5,7 +5,10 @@
 //   deleted path   AssetDatabase.ImportAsset(folder, ImportRecursive) of its direct parent folder, or — only when that
 //                  folder is gone too — of exactly one folder above it; never Assets itself, never higher, never a
 //                  global Refresh. A recursive import also imports anything else new or changed in that folder, so
-//                  the folder is snapshotted (bounded, link-free) before and after and every difference is reported.
+//                  the folder is snapshotted before and after — a bounded, link-free walk of its files, and for each
+//                  entry that walk visits (never a project-wide query) whether the AssetDatabase knows it — and every
+//                  difference within that bound is reported. Stale database entries whose files are already gone are
+//                  not enumerable within the bound; Unity may reconcile them too, and the result says so.
 // Everything is validated, and every snapshot taken, before the first import: a request is refused with nothing
 // imported, or it imports. The causal baseline (compile_started_before_sync) is recorded before the first import.
 // Compilation and Domain Reload follow as Unity decides; this command neither requests nor waits for them.
@@ -24,8 +27,10 @@ namespace Gpos.LiveBridge
         public const int MaxListed = 100;
         public const long MaxMetaHashBytes = 1024 * 1024;
         public const string Disclosure =
-            "A recursive folder import also imports anything else new or changed in that folder: every asset it added or removed and " +
-            "every .meta file created, removed or changed there is listed; which unchanged files Unity re-read is not exposed.";
+            "A recursive folder import also imports anything else new or changed in that folder. Listed, within the bounded walk of the " +
+            "folder's files: every file or folder Unity started or stopped knowing, and every .meta file created, removed or changed; the " +
+            "requested deletions are checked by their exact paths. Unity may also remove stale database entries whose files were already " +
+            "gone before the sync; they are not enumerable within the bound and are not listed. Which unchanged files Unity re-read is not exposed.";
 
         enum Kind { Missing, File, Folder, Link, Other }
 
@@ -74,8 +79,8 @@ namespace Gpos.LiveBridge
         sealed class Snap
         {
             public readonly Dictionary<string, string> Metas = new Dictionary<string, string>(StringComparer.Ordinal);
-            public readonly HashSet<string> Known = new HashSet<string>(StringComparer.Ordinal);
-            public int Entries;
+            public readonly HashSet<string> Known = new HashSet<string>(StringComparer.Ordinal);   // walked entries the database knows
+            public int Entries, Inspected;
         }
 
         static string MetaHash(string full)
@@ -84,9 +89,13 @@ namespace Gpos.LiveBridge
             return info.Length > MaxMetaHashBytes ? "size:" + info.Length : Identity.Sha256(File.ReadAllBytes(full));
         }
 
-        static Snap Take(string root, string[] allPaths, int maxEntries)
+        // One bounded, link-free walk of the folder: every entry counts toward the bound, every .meta is hashed, and each
+        // file or folder the walk visits (and the folder itself) is looked up in the AssetDatabase by its own path. Nothing
+        // outside the walk is ever asked for.
+        static Snap Take(string root, int maxEntries)
         {
             var s = new Snap();
+            KnownCheck(s, root);
             var stack = new Stack<KeyValuePair<string, int>>();
             stack.Push(new KeyValuePair<string, int>(Full(root), 0));
             while (stack.Count > 0)
@@ -102,18 +111,19 @@ namespace Gpos.LiveBridge
                         if (at.Value + 1 > MaxDepth)
                             throw new Refusal("SOURCE_SYNC_LIMIT", root + " is more than " + MaxDepth + " folders deep; nothing was imported") { Data = NotStarted() };
                         stack.Push(new KeyValuePair<string, int>(entry, at.Value + 1));
+                        KnownCheck(s, Rel(entry));
                     }
                     else if (entry.EndsWith(".meta", StringComparison.Ordinal)) s.Metas[Rel(entry)] = MetaHash(entry);
+                    else KnownCheck(s, Rel(entry));
                 }
             }
-            foreach (var p in allPaths)
-                if (SourcePaths.Within(p, root))
-                {
-                    s.Known.Add(p);
-                    if (s.Known.Count > maxEntries)
-                        throw new Refusal("SOURCE_SYNC_LIMIT", root + " holds more than " + maxEntries + " known assets; nothing was imported") { Data = NotStarted() };
-                }
             return s;
+        }
+
+        static void KnownCheck(Snap s, string rel)
+        {
+            s.Inspected++;
+            if (Known(rel)) s.Known.Add(rel);
         }
 
         static void Listed(Dictionary<string, object> d, string key, IEnumerable<string> items)
@@ -127,8 +137,8 @@ namespace Gpos.LiveBridge
 
         sealed class Deletion
         {
-            public string Path, Root;
-            public bool Widened, AlreadySynchronized;
+            public string Path, Root, GoneFolder;
+            public bool Widened, AlreadySynchronized, GoneFolderKnown;
         }
 
         sealed class Host : ISyncHost
@@ -199,10 +209,12 @@ namespace Gpos.LiveBridge
                 {
                     d.Root = SourcePaths.Widened(p);
                     d.Widened = true;
+                    d.GoneFolder = SourcePaths.DirectParent(p);
                     if (d.Root == null) throw Refused(p + ": its folder is gone and the folder above it is Assets, which is never imported recursively");
                 }
                 else throw Refused(p + ": more than one folder level above it is gone; only one level is ever widened");
                 d.AlreadySynchronized = !Known(p);
+                d.GoneFolderKnown = d.GoneFolder != null && Known(d.GoneFolder);
                 deletions.Add(d);
             }
             var roots = c.Roots = SourcePaths.Roots(deletions.Where(d => !d.AlreadySynchronized).Select(d => d.Root));
@@ -212,8 +224,7 @@ namespace Gpos.LiveBridge
                 bool spelling;
                 if (Probe(root, out missing, out spelling) != Kind.Folder || spelling) throw Refused(root + " is not a real folder");
             }
-            string[] all = roots.Count > 0 ? AssetDatabase.GetAllAssetPaths() : new string[0];
-            c.Before = roots.ToDictionary(root => root, root => Take(root, all, MaxEntries));
+            c.Before = roots.ToDictionary(root => root, root => Take(root, MaxEntries));
             return c;
         }
 
@@ -250,8 +261,7 @@ namespace Gpos.LiveBridge
             Dictionary<string, Snap> after;
             try
             {
-                string[] now = roots.Count > 0 ? AssetDatabase.GetAllAssetPaths() : new string[0];
-                after = roots.ToDictionary(root => root, root => Take(root, now, 2 * MaxEntries));
+                after = roots.ToDictionary(root => root, root => Take(root, 2 * MaxEntries));
             }
             catch (Exception e)
             {
@@ -284,11 +294,15 @@ namespace Gpos.LiveBridge
             foreach (var root in roots)
             {
                 var f = new Dictionary<string, object> { { "folder", root }, { "parent_widened", deletions.Any(d => !d.AlreadySynchronized && d.Widened && d.Root == root) },
-                                                         { "entries_before", before[root].Entries } };
+                                                         { "entries_before", before[root].Entries }, { "known_inspected_before", before[root].Inspected } };
                 if (after != null)
                 {
                     Snap b = before[root], a = after[root];
                     f["entries_after"] = a.Entries;
+                    f["known_inspected_after"] = a.Inspected;
+                    var mine = deletions.Where(d => !d.AlreadySynchronized && SourcePaths.Within(d.Root, root)).ToList();
+                    Listed(f, "requested_removed", mine.Where(d => !Known(d.Path)).Select(d => d.Path)
+                                                      .Concat(mine.Where(d => d.GoneFolderKnown && !Known(d.GoneFolder)).Select(d => d.GoneFolder)).Distinct());
                     Listed(f, "imported_new", a.Known.Where(x => !b.Known.Contains(x)));
                     Listed(f, "removed", b.Known.Where(x => !a.Known.Contains(x)));
                     Listed(f, "meta_created", a.Metas.Keys.Where(x => !b.Metas.ContainsKey(x)));

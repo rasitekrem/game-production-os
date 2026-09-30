@@ -16,7 +16,7 @@
     "required": true,
     "status": "IN_PROGRESS"
   },
-  "gpos_version": "1.0.0-alpha.20",
+  "gpos_version": "1.0.0-alpha.21",
   "human_review": {
     "reviewers": [
       {

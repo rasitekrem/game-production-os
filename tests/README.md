@@ -269,6 +269,37 @@ The real groups use disposable projects from `unity_fixture_builder.make_prefab_
 
 The same EditorPrefs and Package Manager guards apply. `test_unity_live_bridge_core.py` also runs `unity_live_bridge_core/SourceCoreTests.cs`. `mutate_unity_sources.py` mutates the GPOS side, the lock proof, the adapter, the bridge's source core and its source boundaries against the fast suites and the core tests; with `--real`, it mutates the bridge's Editor-side source and compilation code against R9 and R10 in real lab Editors.
 
+## Unity Build Core tests
+
+```bash
+python3 tests/test_unity_build.py
+python3 tests/mutate_unity_build.py
+python3 tests/mutate_unity_build.py --real
+```
+
+Tests for Phase 2C-7: `unity.inspect-build-configuration` and `unity.build-player` through the batch-only build entry of bridge 1.5.0. The fast groups need no Unity (a stand-in Editor under a temporary Hub root plays the build entry):
+
+- A: the two declarations (47 Unity capabilities) and no caller authority input.
+- B: no `build_id`, a canonical `build_revision` (SHA-1 or SHA-256 form), `MACOS` only, the token, the build request-id grammar, consent and a dry run that creates nothing.
+- C: the exact argv, the one executeMethod constant, and no request value in the command.
+- D: 1.5.0 on protocol `/5`, `history/1.4.0.json` equal to the manifest frozen in `v1.0.0-alpha.20`, the live lifecycle unchanged apart from its header, an exact 1.4.0 package upgraded, and the build entry refused on anything but exactly this release.
+- E: the build entry's allowlist scan (two `BuildPlayer` calls, one `Exit`, one public type and member, no target switch, profile change, settings assignment, reflection, process, network, environment request or Android/iOS code), a Unity-free rules core, no Git and no directory artifact in the Unity adapter, output only in the workspace.
+- F: every outcome against the stand-in: inspection, a published build and its manifest, refusal mapping, pre-entry log classification only without a response, started builds without a trustworthy answer (never retried), timeouts, failed builds, post-build checks, a forged token, observed development and profile mode, payload failures and repeated builds.
+- G: the payload tree digest's golden vector, change sensitivity, link containment, special files and names, and every bound.
+- H: publication order (validate, rename, manifest last), publication failures, no overwrite and revalidation.
+- M: public text — project paths relativized, every other absolute path `<path>`, credentials redacted, clipping after cleaning, no raw BuildReport text and no absolute `outputPath` in a result, diagnostic or manifest.
+- L: a live session, a held project lock (and an unheld orphan), both lock proofs, the exact Editor version and a reused request id.
+
+The real groups use disposable projects in lab-owned batch-mode Editors; a test-only build testkit (`unity_build_testkit/`) plays the Human's configuration changes, and the test performs the authorized external repository workflow (commits with an isolated Git configuration):
+
+- RB1 classic: the qualified build with three Git reads, Development, a stale token, repeated builds, debug-state refusal, no and missing scenes, a non-active target (WebGL, switched by the testkit; never Android) and a killed build with no manifest.
+- RB2 profile: an active macOS Build Profile, its Development, its scripting defines, and the Player Settings override (D-A) and profiler (D-B) refusals.
+- RB3: a project whose tests fail builds successfully, and its tests still fail.
+- RB4: compile errors before the entry.
+- RQ: the alpha.20 composition — a source error, diagnostics, the fix, wait-ready, detach, close, commit, the qualified build — with a live-session conflict and a Human-open Editor's project lock.
+
+No real test builds for Android or touches the user's Gradle or Android state. `test_unity_live_bridge_core.py` also runs `unity_live_bridge_core/BuildCoreTests.cs` (with the canonical-token golden vector shared with Python). `mutate_unity_build.py` mutates the GPOS side, the foundation's request-id guard, the build entry's boundaries and the build rules against the fast suite, the foundation tests and the core tests; with `--real`, it mutates the entry's Editor-side behaviour against RB1 and RB2.
+
 ## Fixtures
 
 **Schema fixtures** — `fixtures/valid/*.json` and `fixtures/invalid/*.json` are patches applied to a valid example:

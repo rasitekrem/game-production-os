@@ -1,0 +1,7 @@
+{
+  "name": "com.gpos.build-testkit",
+  "version": "0.0.0",
+  "displayName": "GPOS Build Testkit (TEST ONLY)",
+  "description": "TEST ONLY. Never installed by GPOS. Stands in for a Human changing build configuration in disposable synthetic projects for tests/test_unity_build.py.",
+  "unity": "6000.5"
+}

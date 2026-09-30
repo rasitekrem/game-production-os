@@ -155,7 +155,7 @@ class A_Registration(unittest.TestCase):
         d = default_registry(FW).get("unity").descriptor
         self.assertEqual((d.adapter_id, d.adapter_kind, d.state_model, d.network), ("unity", "CLI", "STATEFUL",
                                                                                       "TOOL_INHERENT"))
-        self.assertEqual(len(d.capabilities), 45)   # 3 batch + 9 live session + 13 Scene authoring + 7 asset + 9 prefab + 4 source (alpha.20)
+        self.assertEqual(len(d.capabilities), 47)   # 3 batch + 2 build (alpha.21) + 9 live session + 13 Scene authoring + 7 asset + 9 prefab + 4 source
         notes = " ".join(d.compatibility_notes)
         self.assertIn("One adapter, two planes", notes)
         self.assertIn("process-driven", notes)
@@ -245,7 +245,7 @@ class C_Manifest(unittest.TestCase):
         self.assertEqual(gen.main(["--check"]), 0)
         manifest = bi.verify_source()
         self.assertEqual((manifest["package_id"], manifest["bridge_version"], manifest["protocol"]),
-                         ("com.gpos.live-bridge", "1.4.0", "gpos.unity.live/5"))
+                         ("com.gpos.live-bridge", "1.5.0", "gpos.unity.live/5"))   # alpha.21: package only
         paths = {e["path"] for e in manifest["files"]}
         self.assertIn("package.json", paths)
         self.assertTrue(all(p + ".meta" in paths for p in paths if not p.endswith(".meta")))
@@ -835,7 +835,9 @@ class L_OneResource(LiveCase):
 # ---------------------------------------------------------------- M  boundaries
 
 class M_Boundaries(unittest.TestCase):
-    BRIDGE = [p for p in bi.SOURCE.rglob("*.cs")]
+    # alpha.21: the live bridge is every C# file except the separate batch-only build entry (Editor/Build/), which has
+    # its own allowlist scan in tests/test_unity_build.py
+    BRIDGE = [p for p in bi.SOURCE.rglob("*.cs") if "Build" not in p.relative_to(bi.SOURCE / "Editor").parts[:-1]]
 
     def source(self):
         """The bridge's C# without comments, so a comment that names a forbidden mechanism is not a match."""

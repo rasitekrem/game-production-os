@@ -1,5 +1,7 @@
 // GPOS live bridge — lifecycle. Fixed GPOS-owned Editor code with a closed protocol: no caller C#, no reflection
-// entry point, no executeMethod, no menu execution, no input, no listener and no network.
+// entry point, no executeMethod, no menu execution, no input, no listener and no network. (The package's one fixed
+// executeMethod target is the separate, batch-only Build/BuildEntry of bridge 1.5.0; it shares nothing with this
+// lifecycle, which stays dormant in batch mode.)
 //
 // The bridge never runs in an asset import worker and never in a batch-mode Editor (so a GPOS batch invocation can
 // never activate it). In a normal windowed Editor the static constructor only registers callbacks; every file

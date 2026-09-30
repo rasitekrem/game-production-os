@@ -1,7 +1,7 @@
 ---
 name: technical-art
 maturity: DRAFT
-gpos_version: 1.0.0-alpha.20
+gpos_version: 1.0.0-alpha.21
 may_own_gates: [TECHNICAL, PERFORMANCE]
 ---
 

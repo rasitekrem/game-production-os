@@ -4,6 +4,56 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.21] — Phase 2C-7: Unity Build Core
+
+Builds on the frozen Phase-2C-6C tree (`v1.0.0-alpha.20`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The foundation gains a request-id path-safety check and new diagnostic codes. Projects must pin `gpos_version` `1.0.0-alpha.21`.
+
+The `unity` adapter gains a build plane: two batch capabilities that inspect a project's existing build configuration and build exactly it — macOS Standalone Player, Mono, the already active target — through one fixed, audited `executeMethod` entry in bridge 1.5.0 (the live protocol stays `gpos.unity.live/5`). The payload stays in the execution workspace, bound by a build manifest written last. Excluded (deferred):
+
+- Android, AAB, custom signing, IL2CPP and every other target; target switching;
+- creating, activating, deactivating, choosing or editing a Build Profile; Build Profile Player Settings overrides (D-A);
+- debugger, profiler, deep-profiling, managed-debugger and code-coverage builds (D-B); any settings change;
+- a caller-named method, class, argument, target, development flag, scene, option, define, output path or build id;
+- running, installing, deploying or capturing the Player; a directory artifact; Git inside the Unity adapter.
+
+### Added
+
+- **Build capabilities** (`gpos/tools/unity/build.py`, the adapter's build plane; bridge `Editor/Build/BuildEntry.cs`, `Editor/Build/BuildConfiguration.cs` and the Unity-free core `Editor/Core/BuildRules.cs`):
+  - `unity.inspect-build-configuration` (`INSPECT`, `MUTATING`): the existing configuration, its buildability under closed rules and its configuration token;
+  - `unity.build-player` (`BUILD`, `MUTATING`): requires `request.build_revision` and the inspected token; `build_id` is `build-<request id>`; a supplied `build_id` is refused;
+  - both `STATELESS`, `EDITOR`, the `EXECUTION` single-writer lease on `EDITOR_PROJECT`, the read-only project-lock proof twice, the exact Editor version, Package Manager isolation, dry run; no evidence.
+- **The fixed command:** the batch test command's common flags plus `-executeMethod Gpos.LiveBridge.Build.BuildEntry.Run -gposBuildRequest <workspace>/build-request.json`; no `-quit`, `-accept-apiupdate`, `-noUpm` or `-nographics`. The entry is batch-only, has no initializer or callback, trusts only its exact execution workspace and exits the Editor itself.
+- **Profile and classic modes:** the active custom Build Profile of a macOS Player is built with `BuildPlayerWithProfileOptions` exactly (never activated, edited or replaced by classic settings); otherwise the enabled Editor build scenes with `BuildPlayerOptions` and `Development` exactly when the Editor's setting is on. In profile mode the Editor's development state must equal the profile's serialized `m_Development`; after the build the BuildReport's Development bit must match.
+- **The configuration token** (`gpos.unity.build-config/1`, canonical JSON reproduced byte for byte in C#): Unity version, target, subtarget, backend, application identifier, development, mode, the effective scenes with GUIDs and file hashes, `ProjectSettings.asset`, `EditorBuildSettings.asset`, `manifest.json`, `packages-lock.json`, the debug and output states, and the active profile's identity, file hash and facts; recomputed at inspection, before `BuildPlayer` and after it, and by GPOS from every response.
+- **The workspace is the build:** `.game/gpos-runtime/tool-output/unity/<request id>/` holds the request, started marker, response, logs, `staging/Player.app`, `payload/Player.app` and `build-manifest.json`; a non-empty workspace is refused; `staging` becomes `payload` by one rename and the manifest is written last and once.
+- **Payload validation and `gpos.unity.payload-tree/1`:** Info.plist, bundle identifier, executable, `boot.config` build GUID; an lstat-only, sorted, bounded tree digest with link containment, special-file refusal and entry, byte, depth and path bounds; `build.revalidate` for later consumers.
+- **The build manifest** `gpos.unity.build-manifest/1` (the `REPORT` artifact), with `build_revision_source: CALLER_SUPPLIED`, fixed limitations and no `git_verified`.
+- **Public text:** BuildReport step names and messages, problems and refusals are relativized to the Unity project and GPOS root, passed through the redaction boundary, stripped of any other absolute path (`<path>`) and clipped again; the BuildReport's absolute `outputPath` is used only to verify the staging path and never appears in a result, diagnostic or manifest.
+- **The qualified-build workflow:** `git.resolve-provenance` before the inspection, again before the build and again after it, all returning the same clean revision; documented as a workflow-level proof, not an atomic repository lock.
+- `live_bridge/history/1.4.0.json`: the manifest frozen in `v1.0.0-alpha.20`, byte for byte, with its digest pinned in code.
+- Diagnostics:
+  - `BUILD_ENTRY_UNAVAILABLE`, `BUILD_WORKSPACE_NOT_FRESH`, `BUILD_TARGET_NOT_ACTIVE`, `BUILD_CONFIGURATION_UNSUPPORTED` and `BUILD_CONFIGURATION_CHANGED` (conflicts); `BUILD_TARGET_MODULE_MISSING` (unavailable);
+  - `BUILD_COMPILE_FAILED`, `BUILD_ENTRY_FAILED`, `BUILD_FAILED` and `BUILD_PAYLOAD_INVALID` (failed); `BUILD_OUTCOME_UNKNOWN` (outcome unknown);
+  - `BUILD_CONFIGURATION_NOT_BUILDABLE`, `BUILD_QUARANTINED` and `BUILD_PUBLISHED` (informational).
+- [tools/unity-build.md](tools/unity-build.md).
+- Tests:
+  - `tests/test_unity_build.py`: fast groups (declarations, request rules, the fixed command, the release, source scans, the stand-in outcome matrix, tree digest golden vectors and bounds, publication order, conflicts); real RB1 (the three-Git-read qualified classic build, Development, a stale token, repeated builds, debug-state refusal, no and missing scenes, a non-active target, a killed build), RB2 (an active macOS Build Profile, its Development and defines, D-A and D-B refusals), RB3 (failing tests still build), RB4 (compile errors before the entry) and RQ (the alpha.20 source-error → fix → build composition with the live-session and open-Editor conflicts);
+  - `tests/unity_live_bridge_core/BuildCoreTests.cs`, with the canonical-token golden vector shared with Python;
+  - `tests/unity_build_testkit/` (test only: plays the Human's configuration changes in lab Editors);
+  - `tests/mutate_unity_build.py`, with a `--real` mode for the entry's Editor-side behaviour.
+
+### Changed
+
+- **Foundation:** a caller-supplied `request_id` must be one safe path component (`[A-Za-z0-9][A-Za-z0-9._-]{0,127}`) and is checked before any path is derived from it; an invalid one is `INVALID_TOOL_REQUEST` with no workspace or other filesystem change. An empty id is validated (and refused), no longer replaced by a generated one. The generated `req-<16 hex>` form is unchanged.
+- Bridge `com.gpos.live-bridge` 1.5.0 on protocol `gpos.unity.live/5` (request and response schemas unchanged): the package gains the batch-only build entry; the live lifecycle is unchanged apart from its header comment and stays dormant in batch mode. An installed 1.4.0 (or earlier) package is PREVIOUS: live capabilities report it `LIVE_BRIDGE_INCOMPATIBLE` and the build plane `BUILD_ENTRY_UNAVAILABLE` until `unity.live-install-bridge` upgrades it, directly to 1.5.0 with the alpha.17 transaction.
+- The `unity` descriptor has 47 capabilities (3 batch test, 2 build, 9 live session, 13 Scene authoring, 7 asset, 9 prefab, 4 source).
+- The live bridge's forbidden-mechanism scan covers every bridge file except `Editor/Build/`, which has its own allowlist scan.
+
+### Notes
+
+- Measured with Unity 6000.5.8f1 (research): `BuildPlayer` with a non-active target silently switches the active target; Unity merges a build into an existing output directory; a killed build can leave a complete-looking `.app`; the BuildReport GUID identifies a data build, not an invocation, and `boot.config` carries it; macOS builds are not byte-reproducible (the ad-hoc signature and `boot.config`); with a Build Profile active, the Editor's Development setting is the profile's `m_Development`; a normal macOS build leaves Git-tracked project state unchanged.
+- Research side effects disclosed (Android, now deferred): lab Android builds wrote the user's shared Gradle home (`~/.gradle`), downloaded `androidx.games:games-frame-pacing` there from the network, were signed with the user's personal debug keystore and left `.utmp/` and `build/` in the Unity project root. Nothing in alpha.21 builds for Android or touches those locations.
+
 ## [1.0.0-alpha.20] — Phase 2C-6C: Unity source, compile and diagnostics core
 
 Builds on the frozen Phase-2C-6B2B tree (`v1.0.0-alpha.19`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics. The foundation gains new diagnostic codes. Projects must pin `gpos_version` `1.0.0-alpha.20`.

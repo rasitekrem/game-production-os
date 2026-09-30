@@ -66,7 +66,7 @@ EDITOR_SOURCE = bi.SOURCE / "Editor"
 class A_Declarations(unittest.TestCase):
     def test_nine_fixed_prefab_capabilities(self):
         caps = {c.id: c for c in UnityAdapter.descriptor.capabilities}
-        self.assertEqual(len(caps), 45)
+        self.assertEqual(len(caps), 47)   # alpha.21 adds the two build capabilities
         self.assertEqual(len(P.CAPABILITY_IDS), 9)
         self.assertEqual(set(P.CAPABILITY_IDS), {
             "unity.live-prefab-inspect", "unity.live-prefab-instance-inspect", "unity.live-create-prefab",
@@ -385,7 +385,7 @@ class D_Release(LiveCase):
         self.assertEqual(hashlib.sha256(frozen).hexdigest(),
                          "d37ce938c5060262f62b5a008f62700a27ae2e8307aa27944b89069a08141948")
         self.assertEqual(bi.PREVIOUS["1.2.0"], ("gpos.unity.live/3", ta.FROZEN_DIGEST_12))
-        manifest = bi.verify_source()   # the current release (1.4.0, alpha.20) is pinned in tests/test_unity_sources.py
+        manifest = bi.verify_source()   # the current release (1.5.0, alpha.21) is pinned in tests/test_unity_build.py
         names = {e["path"] for e in manifest["files"]}
         self.assertTrue({"Editor/PrefabAuthoring.cs", "Editor/PrefabResolver.cs", "Editor/Core/PrefabRules.cs"} <= names)
 

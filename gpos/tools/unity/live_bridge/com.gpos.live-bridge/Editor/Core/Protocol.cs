@@ -32,7 +32,7 @@ namespace Gpos.LiveBridge
         public const string Name = "gpos.unity.live/5";
         public const string RequestSchema = "gpos.unity.live.request/5";
         public const string ResponseSchema = "gpos.unity.live.response/5";
-        public const string BridgeVersion = "1.4.0";
+        public const string BridgeVersion = "1.5.0";   // 1.5.0 adds the batch-only BuildEntry; the live protocol is unchanged
         public const string PackageId = "com.gpos.live-bridge";
         public const int MaxRequestBytes = 64 * 1024;
         public const int MaxResponseBytes = 256 * 1024;

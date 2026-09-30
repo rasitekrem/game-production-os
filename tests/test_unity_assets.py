@@ -69,7 +69,7 @@ def call(cap, **inputs):
 class A_Declarations(unittest.TestCase):
     def test_seven_fixed_asset_capabilities(self):
         caps = {c.id: c for c in UnityAdapter.descriptor.capabilities}
-        self.assertEqual(len(caps), 45)
+        self.assertEqual(len(caps), 47)   # alpha.21 adds the two build capabilities
         self.assertEqual(len(A.CAPABILITY_IDS), 7)
         self.assertTrue(set(A.CAPABILITY_IDS) <= set(caps))
         self.assertFalse(set(A.CAPABILITY_IDS) & set(au.CAPABILITY_IDS))

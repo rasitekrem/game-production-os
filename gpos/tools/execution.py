@@ -4,7 +4,7 @@ An adapter maps a capability to a real invocation and reports what it did. Every
 whether an execution may happen at all, and what it is allowed to claim afterwards, lives here and
 runs whether the adapter cooperates or not:
 
-    request validation -> project precondition -> adapter readiness -> mutation consent
+    request validation (including a path-safe request id) -> project precondition -> adapter readiness -> mutation consent
     -> single-writer lease -> adapter.execute() -> artifact hashing and path checks
     -> provenance -> evidence-candidate validation -> lease release -> fail-closed status
 
@@ -41,6 +41,13 @@ from .redaction import redact, sanitize_all, sanitize_or_none
 
 # The cross-record identifier shape the frozen evidence and gate schemas use for an actor id.
 ACTOR_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]*$")
+
+# A request id names the default execution workspace (`.game/gpos-runtime/tool-output/<adapter>/<request id>`), so
+# it must be one safe path component before anything derives a path from it (alpha.21): a letter or digit, then
+# letters, digits, `.`, `_` or `-`, at most 128 characters. That excludes `/`, `\`, `..` and every other dot-only
+# name, absolute paths, drive prefixes, NUL and control characters, whitespace and the empty id. The foundation's
+# own `req-<16 lowercase hex>` is inside it; a caller's id is checked, never rewritten.
+REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 
 
 def vocabulary_problems(framework, request, capability):
@@ -418,6 +425,12 @@ def request_problems(registry, request):
                                        f"{adapter_id} declares no capability {cap_id!r}; declared: "
                                        f"{sorted(c.id for c in adapter.descriptor.capabilities)}", adapter_id, cap_id)]
     problems = []
+    if request.request_id is not None and not (isinstance(request.request_id, str)
+                                               and REQUEST_ID.fullmatch(request.request_id)):
+        problems.append(dg.make("INVALID_TOOL_REQUEST",
+                                f"request id {request.request_id!r} is not one safe path component (a letter or digit, "
+                                f"then letters, digits, '.', '_' or '-', at most 128 characters); it names the execution "
+                                f"workspace, so nothing was created", adapter_id, cap_id))
     if request.subject is None:
         problems.append(dg.make("INVALID_TOOL_REQUEST", "a request must name the subject it is about",
                                 adapter_id, cap_id))
@@ -455,7 +468,9 @@ def execute(registry, request, clock=None, now=None):
     and an adapter defect are all structured results.
     """
     clock = clock or Clock()
-    request = request if request.request_id else dataclasses_replace(request, request_id=f"req-{uuid.uuid4().hex[:16]}")
+    # Only an absent id is generated; any supplied one, the empty string included, is validated as given.
+    request = request if request.request_id is not None else \
+        dataclasses_replace(request, request_id=f"req-{uuid.uuid4().hex[:16]}")
     started_at, started = now or clock.now(), clock.monotonic()
     framework = registry.framework
 

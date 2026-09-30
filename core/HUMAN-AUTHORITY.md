@@ -1,6 +1,6 @@
 # Human Authority
 
-Status: normative · GPOS `1.0.0-alpha.20` · Elaborates [P1](PRINCIPLES.md#p1--human-creative-authority)
+Status: normative · GPOS `1.0.0-alpha.21` · Elaborates [P1](PRINCIPLES.md#p1--human-creative-authority)
 
 ---
 

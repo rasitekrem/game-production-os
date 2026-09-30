@@ -85,7 +85,7 @@ def mb(name, body="    public int a;", ns=None):
 class A_Declarations(unittest.TestCase):
     def test_four_fixed_source_capabilities(self):
         caps = {c.id: c for c in UnityAdapter.descriptor.capabilities}
-        self.assertEqual(len(caps), 45)
+        self.assertEqual(len(caps), 47)   # alpha.21 adds the two build capabilities
         self.assertEqual(S.CAPABILITY_IDS, ("unity.live-sync-sources", "unity.live-compilation-status",
                                             "unity.live-compilation-diagnostics", "unity.live-wait-ready"))
         others = set(au.CAPABILITY_IDS) | set(A.CAPABILITY_IDS) | set(P.CAPABILITY_IDS) | set(live.CAPABILITY_IDS)
@@ -512,8 +512,9 @@ class D_Release(LiveCase):
         self.assertEqual((manifest["bridge_version"], manifest["protocol"], manifest["package_digest"], len(manifest["files"])),
                          ("1.3.0", "gpos.unity.live/4", FROZEN_DIGEST_13, 54))
         self.assertEqual(bi.PREVIOUS["1.3.0"], ("gpos.unity.live/4", FROZEN_DIGEST_13))
-        self.assertEqual((bi.BRIDGE_VERSION, bi.PROTOCOL), ("1.4.0", "gpos.unity.live/5"))
-        current = bi.verify_source()
+        # alpha.21: 1.4.0 (this phase's release) is now pinned history; the current package is 1.5.0 on protocol /5
+        self.assertEqual((bi.BRIDGE_VERSION, bi.PROTOCOL), ("1.5.0", "gpos.unity.live/5"))
+        current = json.loads((bi.HISTORY / "1.4.0.json").read_bytes())
         self.assertEqual((current["bridge_version"], current["protocol"], len(current["files"])), ("1.4.0", "gpos.unity.live/5", 60))
         names = {e["path"] for e in current["files"]}
         self.assertTrue({"Editor/SourceSync.cs", "Editor/Compilation.cs", "Editor/Core/SourceRules.cs"} <= names)
@@ -641,11 +642,13 @@ class E_Boundaries(unittest.TestCase):
         for word in ("os.remove", "os.unlink", ".unlink(", "os.rename", "os.replace", ".rename(", ".replace(lock",
                      "os.truncate", "ftruncate", ".truncate(", "rmtree", "flock", "lockf", ".write_bytes(", "O_WRONLY"):
             self.assertNotIn(word, text, word)
-        self.assertEqual(text.count("self._lock_proof(project, context.probe.tool_path)"), 2)
-        run = raw[raw.index("    def _run_tests("):raw.index("    def _classify(")]
-        final = run.index("# fresh, immediately before the launch")
-        self.assertLess(run.index("workspace = Path(context.workspace)"), final)
-        self.assertLess(final, run.index("outcome = context.run(spec)"))
+        self.assertEqual(text.count("self._lock_proof(project, context.probe.tool_path)"), 4)   # tests twice, builds twice (alpha.21)
+        for start, end in (("    def _run_tests(", "    def _classify("), ("    def _run_build(", "    def _classify_build(")):
+            run = raw[raw.index(start):raw.index(end)]
+            self.assertEqual(run.count("self._lock_proof(project, context.probe.tool_path)"), 2, start)
+            final = run.index("immediately before the launch")
+            self.assertLess(run.index("workspace = Path(context.workspace)"), final)
+            self.assertLess(final, run.index("outcome = context.run(spec)"))
         live_text = (ROOT / "gpos/tools/unity/live.py").read_text()      # D3: the installer keeps its closed-project rule
         self.assertIn('    lock = project / "Temp" / "UnityLockfile"\n    if lock.exists() or lock.is_symlink():\n'
                       '        return _refuse(cap, "ENGINE_PROJECT_LOCKED", "the Unity project is open', live_text)

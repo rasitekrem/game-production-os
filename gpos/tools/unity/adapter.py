@@ -8,6 +8,12 @@ Batch plane, process-driven, each capability STATELESS:
     unity.run-editmode-tests   Unity Test Framework, EditMode, in batch mode     results.xml -> TEST_EVIDENCE
     unity.run-playmode-tests   Unity Test Framework, PlayMode, in batch mode     results.xml -> TEST_EVIDENCE
 
+Build plane (Phase 2C-7, alpha.21, build.py), batch-mode and STATELESS as well, through the one fixed GPOS build
+entry of the audited bridge package; no evidence:
+
+    unity.inspect-build-configuration   the existing macOS build configuration, whether it is buildable, its token
+    unity.build-player                  build exactly that configuration into the execution workspace; manifest
+
 Live plane, driven by the fixed GPOS Editor bridge and one Human-approved session per GPOS project (see
 live.py): install-bridge, status, attach, detach, inspect and the four Play Mode transitions, plus thirteen Scene
 authoring capabilities (authoring.py), seven asset capabilities (assets.py), nine prefab capabilities
@@ -19,7 +25,8 @@ STATEFUL because it manages that long-lived session.
 
 This is not a Unity automation interface. The caller never supplies an executable, an Editor version, a
 method, C#, a menu item, a test filter, a graphics mode, a network destination or any Unity argument.
-The only input is `unity_project`, a path inside the GPOS project root.
+The inputs are `unity_project`, a path inside the GPOS project root, and for a build the inspected
+`expected_configuration_token`.
 
 Discovery uses the Unity Hub Editor installation root only (never PATH: a Unity command-line tool that
 is not the Editor may be installed under the name `unity`). Alpha.15 supports exactly one usable
@@ -48,9 +55,14 @@ never read or inherited.
 Opening a Unity project changes Unity-managed project state (for example `.meta` files,
 `Packages/packages-lock.json`, `ProjectSettings/*.asset`) and user-level Unity state outside the
 project; the test capabilities are MUTATING and say so. Nothing is rolled back.
+A build is one fixed batch invocation as well (build.build_argv): the test command's flags without the test
+ones, plus `-executeMethod Gpos.LiveBridge.Build.BuildEntry.Run -gposBuildRequest <workspace>/<request file>`.
+The method is a constant of this adapter and the only executeMethod GPOS ever names; nothing in a request reaches
+the command. It runs only when the installed bridge package is exactly this release's.
 This module never starts a process itself and never imports the subprocess module.
 """
 
+import json
 import os
 import sys
 import tempfile
@@ -67,6 +79,8 @@ from ..evidence import EvidenceCandidate
 from ..execution import AdapterOutcome
 from . import assets
 from . import authoring
+from . import bridge_install as bi
+from . import build as ub
 from . import live
 from . import prefabs
 from . import project as up
@@ -92,7 +106,8 @@ UPM_USER_NAME = "upm-user.toml"
 UPM_GLOBAL_NAME = "upm-global.toml"
 WORKSPACE_FILES = (RESULTS_NAME, LOG_NAME, UPM_LOG_NAME, UPM_USER_NAME, UPM_GLOBAL_NAME)
 UPM_CACHE = ("unity", "upm-cache")          # under the project's non-authoritative runtime area
-NEVER = ("-quit", "-accept-apiupdate", "-noUpm", "-nographics", "-executeMethod")
+NEVER = ("-quit", "-accept-apiupdate", "-noUpm", "-nographics", "-executeMethod")   # never in the test command
+BUILD_NEVER = ("-quit", "-accept-apiupdate", "-noUpm", "-nographics")   # the build entry exits the Editor itself
 
 PLACEHOLDERS = {"project": "<unity-project>", "workspace": "<workspace>"}
 
@@ -122,6 +137,39 @@ SIDE_EFFECTS = ("opens the Unity project in batch mode: Unity writes Library/, T
                 "configuration go to the execution workspace, the package cache to the GPOS runtime area")
 
 _project_note = "Input `unity_project`: a directory inside the GPOS project root (default `.`)."
+_build_note = ("Build plane: a fresh batch-mode Editor runs the one fixed GPOS build entry of the audited bridge package "
+               "(exactly this release's); macOS Standalone Player, Mono, the already active target, the active custom "
+               "Build Profile for exactly that or the classic configuration; never a target switch, profile activation "
+               "or settings change; produces no evidence.")
+BUILD_SIDE_EFFECTS = {
+    ub.INSPECT_BUILD: SIDE_EFFECTS + "; the fixed GPOS build entry only reads the build configuration",
+    ub.BUILD: SIDE_EFFECTS + "; the fixed GPOS build entry builds exactly the existing configuration into this execution's "
+                             "workspace (staging/, then payload/ and build-manifest.json after validation); project build "
+                             "callbacks run; Unity writes Library/LastBuild.buildreport",
+}
+BUILD_CAPABILITIES = (
+    Capability(
+        id=ub.INSPECT_BUILD, category="INSPECT", operation_class="MUTATING", state_model="STATELESS",
+        execution_context="EDITOR", single_writer_required=True, resource_kind="EDITOR_PROJECT", dry_run_supported=True,
+        description="Read the project's existing build configuration in a fresh batch-mode Editor: active target, "
+                    "profile or classic mode, development, scenes, the rules alpha.21 checks, whether it is buildable "
+                    "and its configuration token. Changes no setting; MUTATING only because opening Unity changes "
+                    "Library, user and tool state.",
+        input_kinds=("unity_project",), artifact_kinds=("LOG",),
+        timeout=TimeoutPolicy(default=600.0, maximum=1800.0), side_effect_scope=BUILD_SIDE_EFFECTS[ub.INSPECT_BUILD],
+        notes=(_project_note, _build_note)),
+    Capability(
+        id=ub.BUILD, category="BUILD", operation_class="MUTATING", state_model="STATELESS",
+        execution_context="EDITOR", single_writer_required=True, resource_kind="EDITOR_PROJECT", dry_run_supported=True,
+        description="Build exactly the inspected macOS Standalone Player configuration in a fresh batch-mode Editor, "
+                    "validate the .app payload, commit it inside the execution workspace and write its build manifest "
+                    "last. Requires request.build_revision and the inspected configuration token; build_id is "
+                    "build-<request id>.",
+        input_kinds=("unity_project", "expected_configuration_token"), artifact_kinds=("REPORT", "LOG"),
+        timeout=TimeoutPolicy(default=1800.0, maximum=3600.0), side_effect_scope=BUILD_SIDE_EFFECTS[ub.BUILD],
+        notes=(_project_note, _build_note, "Input `expected_configuration_token`: the token an inspection returned.",
+               "build_revision is caller-supplied provenance; Git is never run by this capability.")),
+)
 _live_note = ("Live plane: acts through the fixed GPOS bridge in an Editor a Human opened; never launches, quits, "
               "focuses or restarts an Editor; produces no evidence.")
 _playmode_note = live.PLAYMODE_LIMITATION
@@ -409,7 +457,7 @@ CAPABILITIES = (
         potential_evidence=(("TEST_EVIDENCE", "AUTOMATED_TEST"),),
         timeout=TimeoutPolicy(default=1800.0, maximum=3600.0), side_effect_scope=SIDE_EFFECTS,
         notes=(_project_note, "The project must require exactly the probed Editor version.")),
-) + LIVE_CAPABILITIES + AUTHORING_CAPABILITIES + ASSET_CAPABILITIES + PREFAB_CAPABILITIES + SOURCE_CAPABILITIES
+) + BUILD_CAPABILITIES + LIVE_CAPABILITIES + AUTHORING_CAPABILITIES + ASSET_CAPABILITIES + PREFAB_CAPABILITIES + SOURCE_CAPABILITIES
 
 DESCRIPTOR = model.AdapterDescriptor(
     adapter_id=ADAPTER_ID, adapter_version=ADAPTER_VERSION, tool_family="ENGINE", target_tool="Unity Editor",
@@ -439,6 +487,9 @@ DESCRIPTOR = model.AdapterDescriptor(
         "facts are Editor-session CompilationPipeline facts, never evidence.",
         "The batch plane proves a project's Unity lock read-only on macOS (kernel process facts and an F_GETLK query); "
         "no other platform inherits that rule without its own measurement and review.",
+        "Build Core (bridge 1.5.0, protocol unchanged) builds macOS Standalone Player / Mono / the active target only, "
+        "from the existing configuration, through one fixed executeMethod; no Android, AAB, custom signing, IL2CPP, "
+        "target switch or profile change. The .app is a workspace payload bound by its build manifest, never an artifact.",
     ))
 
 
@@ -539,7 +590,7 @@ class UnityAdapter(model.ToolAdapter):
             return prefabs.execute(request, context, **self._live_seams)
         if cap in sources.CAPABILITY_IDS:
             return sources.execute(request, context, **self._live_seams)
-        if cap not in (INSPECT, EDITMODE, PLAYMODE):
+        if cap not in (INSPECT, EDITMODE, PLAYMODE) + ub.CAPABILITY_IDS:
             raise AssertionError(f"{cap} is declared but not implemented")
         root = Path(context.project_root)
         try:
@@ -549,6 +600,8 @@ class UnityAdapter(model.ToolAdapter):
                                                                 f"{problem.rule}: {problem.message}", ADAPTER_ID, cap),))
         if cap == INSPECT:
             return AdapterOutcome(ok=True, data=summary)
+        if cap in ub.CAPABILITY_IDS:
+            return self._run_build(cap, request, context, root, project, summary)
         return self._run_tests(cap, request, context, root, project, summary)
 
     def _run_tests(self, cap, request, context, root, project, summary):
@@ -656,6 +709,191 @@ class UnityAdapter(model.ToolAdapter):
                   f"its log")
         return AdapterOutcome(ok=False, exit_code=outcome.exit_code, detail=detail, data=dict(data, cause=cause), **base)
 
+    # ------------------------------------------------------------ the build plane (alpha.21)
+
+    def _run_build(self, cap, request, context, root, project, summary):
+        building = cap == ub.BUILD
+        rid = request.request_id
+        token = (request.inputs or {}).get("expected_configuration_token")
+        if request.build_id is not None:
+            return _refuse(cap, f"{cap} takes no build_id: a build's id is always build-<request id>, so a supplied one is "
+                                f"meaningless for creation")
+        if building:
+            if not ub.BUILD_REQUEST_ID.fullmatch(rid):
+                return _refuse(cap, f"request id {rid!r} cannot name a build: build-<request id> needs lower-case letters, "
+                                    f"digits and inner hyphens only, at most 64 characters")
+            if not (isinstance(request.build_revision, str) and ub.REVISION.fullmatch(request.build_revision)):
+                return _refuse(cap, "a build requires request.build_revision: the exact 40- or 64-hex revision "
+                                    "git.resolve-provenance returned; HEAD is never inferred")
+            if request.target_platform not in (None, "MACOS"):
+                return _refuse(cap, f"this build targets MACOS only, not {request.target_platform!r}")
+            if not (isinstance(token, str) and ub.TOKEN.fullmatch(token)):
+                return _refuse(cap, "expected_configuration_token must be the 64-hex token an inspection returned")
+        required, installed = summary["editor_version"], context.probe.tool_version
+        if required != installed:   # the exact version, as for a test run
+            return AdapterOutcome(ok=True, diagnostics=(dg.make(
+                "ENGINE_EDITOR_VERSION_UNAVAILABLE",
+                f"the project requires Unity {required}; the installed Editor is {installed}; no other version, "
+                f"upgrade or downgrade is used", ADAPTER_ID, cap),))
+        entry, _ = bi.inspect_target(project, bi.load_manifest())
+        if entry != bi.EXACT:
+            return AdapterOutcome(ok=True, data={"build_entry_package": entry}, diagnostics=(dg.make(
+                "BUILD_ENTRY_UNAVAILABLE", f"Packages/{bi.PACKAGE_ID} is {entry}, not exactly {bi.PACKAGE_ID} "
+                                           f"{bi.BRIDGE_VERSION}, so the fixed build entry is not available; install or "
+                                           f"upgrade it with {live.INSTALL} on the closed project", ADAPTER_ID, cap),))
+        workspace = Path(context.workspace)   # the build root
+        proof = self._lock_proof(project, context.probe.tool_path)
+        if proof.state not in pl.PROCEED:   # before the workspace is used
+            return _locked(cap, proof)
+        if context.dry_run:
+            what = f"build {summary['unity_project']!r} as {ub.build_id(rid)}" if building else \
+                f"inspect the build configuration of {summary['unity_project']!r}"
+            return AdapterOutcome(
+                plan=(f"would {what} with Unity {installed} in a fresh batch-mode Editor running the fixed GPOS build "
+                      f"entry {ub.BUILD_ENTRY_METHOD}",
+                      "the configuration, its buildability, the build result and the payload are only established by a "
+                      "real execution",
+                      "no Unity process, workspace, package cache, build output or manifest is created by a dry run"),
+                data=dict(summary, project_lock=proof.state, **({"build_id": ub.build_id(rid)} if building else {})))
+        present = ub.unfresh(workspace)
+        if present:
+            return AdapterOutcome(ok=True, diagnostics=(dg.make(
+                "BUILD_WORKSPACE_NOT_FRESH", f"the execution workspace of request {rid} already holds {present[:6]}; an "
+                                             f"earlier build is never adopted, reused or overwritten", ADAPTER_ID, cap),))
+        cache = tp.runtime_dir(root, *UPM_CACHE)
+        cache.mkdir(parents=True, exist_ok=True)
+        for name in (UPM_USER_NAME, UPM_GLOBAL_NAME):   # GPOS-owned, empty: nothing is inherited from the user
+            with open(workspace / name, mode="x", encoding="utf-8"):
+                pass
+        ub.write_request(workspace, "BUILD" if building else "INSPECT", rid, token if building else None)
+        spec = proc.ToolProcessSpec(executable=context.probe.tool_path, argv=ub.build_argv(project, workspace),
+                                    cwd=str(workspace), timeout=context.timeout, env=upm_environment(workspace, cache),
+                                    capture_bytes=self._capture_bytes)
+        proof = self._lock_proof(project, context.probe.tool_path)   # again, immediately before the launch
+        if proof.state not in pl.PROCEED:   # a writer appeared meanwhile
+            return _locked(cap, proof)
+        outcome = context.run(spec)
+        record = dict(command=_command(spec, project, workspace), environment=spec.env.metadata())
+        result = self._classify_build(cap, request, context, outcome, record, workspace, summary)
+        return _with_lock_state(cap, proof, result)
+
+    def _classify_build(self, cap, request, context, outcome, record, workspace, summary):
+        """What the fixed build entry's one response (never the Editor log, once the entry ran) establishes."""
+        building, rid = cap == ub.BUILD, request.request_id
+        log_path = workspace / ub.LOG_NAME
+        log = tuple(ArtifactSpec("editor-log", "LOG", str(log_path), media_type="text/plain",
+                                 description="Unity Editor log of this run (machine and session identifiers, local paths)")
+                    for _ in (0,) if log_path.is_file())
+        data = dict(unity_project=summary["unity_project"], editor_version=summary["editor_version"],
+                    exit_code=outcome.exit_code, **({"build_id": ub.build_id(rid)} if building else {}))
+
+        def done(*diagnostics, ok=True, artifacts=log, detail=""):
+            return AdapterOutcome(ok=ok, exit_code=outcome.exit_code, data=data, diagnostics=diagnostics, detail=detail,
+                                  artifacts=artifacts, process=outcome, mutation_performed=True, **record)
+
+        def diag(code, message, **details):
+            return dg.make(code, message, ADAPTER_ID, cap, details=details or None)
+
+        def unknown(why):
+            return done(diag("BUILD_OUTCOME_UNKNOWN", f"{why}; nothing was published and nothing is retried"),
+                        *_quarantine(cap, workspace))
+
+        began = building and ub.started(workspace)
+        response, problem = None, "the Editor did not exit normally"
+        if not outcome.timed_out and outcome.exit_code == 0:
+            try:
+                response = ub.read_response(workspace, rid, "BUILD" if building else "INSPECT")
+            except (ub.ResponseProblem, OSError) as exc:
+                problem = str(exc)
+        if response is None:
+            if began:
+                return unknown(f"the build started but no trustworthy final response exists ({problem})")
+            if outcome.timed_out:
+                return done(ok=False, detail=f"{cap} timed out before any build started")
+            cause = ur.classify_log(ur.log_tail(log_path), outcome.stdout)   # pre-entry failures only
+            if cause == ur.COMPILE_ERROR:
+                return done(diag("BUILD_COMPILE_FAILED", "script compilation failed while the batch Editor opened the "
+                                                         "project, before the fixed build entry could run"))
+            if cause == ur.PROJECT_LOCKED:
+                return done(diag("ENGINE_PROJECT_LOCKED", "Unity refused the project because another instance has it open"))
+            if cause == ur.LICENSE_UNAVAILABLE:
+                return done(diag("ENGINE_LICENSE_UNAVAILABLE", "Unity reported that no valid Editor licence was "
+                                                               "available; no licence action is ever taken"))
+            return done(diag("BUILD_ENTRY_FAILED", f"the fixed build entry gave no trustworthy answer (exit "
+                                                   f"{outcome.exit_code}; {problem}) and never started a build"))
+        conf = response["configuration"]
+        profile = conf["profile"]
+        bases = ub.path_bases(Path(context.project_root) / summary["unity_project"], context.project_root)
+        clean = lambda text, bound: ub.clean_message(text, bases, bound)   # every text the entry or Unity wrote
+        problems = [{"rule": p["rule"], "message": clean(p["message"], ub.MAX_PROBLEM_CHARS)} for p in response["problems"]]
+        data.update(buildable=response["buildable"], problems=problems,
+                    configuration_token=response["configuration_token"], configuration=conf,
+                    unity_version=response["unity_version"], active_target=conf["active_target"],
+                    mode=conf["mode"], development=conf["development"])
+        if not building:
+            if response["buildable"]:
+                return done()
+            rules = [p["rule"] for p in response["problems"]]
+            return done(diag("BUILD_CONFIGURATION_NOT_BUILDABLE", f"the configuration is not buildable by this release: "
+                                                                  f"{', '.join(rules)}", rules=rules))
+        if response["outcome"] == "REFUSED":
+            if began:
+                return unknown("the build entry both refused and recorded a started build")
+            rule, message = response["refusal"]["rule"], clean(response["refusal"]["message"], ub.MAX_PROBLEM_CHARS)
+            return done(diag(ub.RULE_CODES.get(rule, "BUILD_CONFIGURATION_UNSUPPORTED"), f"{rule}: {message}", rule=rule))
+        b, post = response["build"], response["post"]
+        if not began or b is None:
+            return unknown("the build entry reported a build without a started marker or without a BuildReport")
+        # outputPath is used below only to verify the exact staging path; it never leaves GPOS
+        data["build"] = {k: b[k] for k in ("result", "guid", "total_errors", "total_warnings", "total_size",
+                                           "development_observed", "error_message_count")}
+        data["build"]["messages"] = [{"step": clean(m["step"], ub.MAX_STEP_CHARS), "type": m["type"],
+                                      "text": clean(m["text"], ub.MAX_MESSAGE_CHARS)} for m in b["messages"]]
+        data["build"]["duration_seconds"] = round(b["duration_ms"] / 1000.0, 3)
+        if b["result"] != "Succeeded" or b["total_errors"] != 0:
+            return done(diag("BUILD_FAILED", f"Unity reported result {b['result']} with {b['total_errors']} error(s)",
+                             result=b["result"]), *_quarantine(cap, workspace))
+        staging_app = workspace / ub.STAGING / ub.APP
+        mismatched = [name for name, holds in (
+            ("the inspected configuration token", response["configuration_token"] == request.inputs[
+                "expected_configuration_token"]),
+            ("the post-build configuration token", post["configuration_token"] == response["configuration_token"]),
+            ("the active target", post["active_target"] == conf["active_target"] == b["platform"] == ub.TARGET),
+            ("the active Build Profile", post["profile_path"] == (profile["path"] if profile else None)),
+            ("the development state", post["development"] is conf["development"] is b["development_observed"]),
+            ("the Unity build GUID", bool(ub.GUID.fullmatch(b["guid"])) and b["guid"] != "0" * 32),
+            ("the output path", os.path.realpath(b["output_path"]) == os.path.realpath(staging_app)),
+        ) if not holds]
+        if mismatched:
+            return unknown(f"the post-build checks failed ({'; '.join(mismatched)})")
+        try:
+            names = sorted(os.listdir(workspace / ub.STAGING))
+            if names != [ub.APP]:
+                raise ub.PayloadProblem(f"staging/ holds {names[:6]}, not exactly {ub.APP}")
+            app = ub.validate_app(staging_app, conf["application_identifier"], b["guid"])
+            tree = ub.payload_tree(staging_app)
+        except (ub.PayloadProblem, OSError) as exc:
+            return done(diag("BUILD_PAYLOAD_INVALID", f"the payload is not published: {exc}"), *_quarantine(cap, workspace))
+        try:
+            ub.publish(workspace)
+        except OSError as exc:
+            return unknown(f"the payload could not be committed ({type(exc).__name__})")
+        started_at = _started_utc(workspace)
+        manifest = build_manifest(request, response, app, tree, started_at, context.clock.now())
+        try:
+            ub.write_manifest(workspace, manifest)
+        except OSError as exc:
+            return unknown(f"the payload was committed but its manifest could not be written ({type(exc).__name__}), so "
+                           f"this is not a completed build")
+        data.update(payload={k: manifest["payload"][k] for k in manifest["payload"]}, manifest=ub.MANIFEST_NAME,
+                    build_revision=request.build_revision, build_revision_source="CALLER_SUPPLIED")
+        artifacts = (ArtifactSpec("build-manifest", "REPORT", str(workspace / ub.MANIFEST_NAME),
+                                  media_type="application/json",
+                                  description="GPOS build manifest: binds the workspace payload by its tree digest"),) + log
+        return done(diag("BUILD_PUBLISHED", f"{manifest['build_id']}: {ub.PAYLOAD}/{ub.APP} ({tree['entries']} entries, "
+                                            f"{tree['bytes']} bytes) committed; {ub.MANIFEST_NAME} written last"),
+                    artifacts=artifacts)
+
 
 # ---------------------------------------------------------------- the fixed command surface
 
@@ -706,3 +944,72 @@ def _command(spec, project, workspace):
             return PLACEHOLDERS["workspace"] + "/" + Path(arg).name
         return arg
     return replace(spec, argv=tuple(swap(a) for a in spec.argv)).command_for_provenance()
+
+
+def _with_lock_state(cap, proof, result):
+    """A build result with the lock state it ran under, and the orphan notice when Unity replaced a leftover lockfile."""
+    if proof.state == pl.ORPHAN_UNHELD:
+        result = replace(result, diagnostics=tuple(result.diagnostics) + (dg.make(
+            "ENGINE_PROJECT_ORPHAN_LOCK", "an unheld leftover Temp/UnityLockfile existed and no Unity process had the "
+                                          "project open; GPOS did not modify it, and Unity was allowed to apply its own "
+                                          "project-lock semantics", ADAPTER_ID, cap, details=proof.details()),))
+    return replace(result, data=dict(result.data or {}, project_lock=proof.state))
+
+
+def _quarantine(cap, workspace):
+    """INFO naming the build-owned partial state left in the workspace (never deleted, never published)."""
+    left = [n for n in (ub.STAGING, ub.PAYLOAD, ub.STARTED_NAME) if os.path.lexists(Path(workspace) / n)]
+    if not left:
+        return ()
+    return (dg.make("BUILD_QUARANTINED", f"left in the execution workspace, not a completed build: {', '.join(left)}",
+                    ADAPTER_ID, cap, details={"left": left}),)
+
+
+def _started_utc(workspace):
+    try:
+        with open(Path(workspace) / ub.STARTED_NAME, "rb") as fh:
+            started = json.loads(fh.read(ub.MAX_STARTED_BYTES).decode("utf-8"))
+        value = started["utc"] if isinstance(started, dict) and "utc" in started else None
+        return value if isinstance(value, str) and len(value) <= 40 else None
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+
+
+def build_manifest(request, response, app, tree, started_at, built_at):
+    """The gpos.unity.build-manifest/1 document: what was built, from which configuration, bound to which payload."""
+    import gpos
+    conf, b = response["configuration"], response["build"]
+    profile = conf["profile"]
+    return {
+        "schema": ub.MANIFEST_SCHEMA,
+        "build_id": ub.build_id(request.request_id),
+        "request_id": request.request_id,
+        "capability": ub.BUILD,
+        "adapter": {"id": ADAPTER_ID, "version": ADAPTER_VERSION},
+        "gpos_version": gpos.__version__,
+        "subject": {"kind": request.subject.kind, "ref": request.subject.ref},
+        "build_revision": request.build_revision,
+        "build_revision_source": "CALLER_SUPPLIED",
+        "configuration_token": response["configuration_token"],
+        "configuration": conf,
+        "unity_version": response["unity_version"],
+        "target": ub.TARGET,
+        "development": conf["development"],
+        "configuration_mode": conf["mode"],
+        "build_profile": None if not profile else {k: profile[k] for k in ("path", "guid", "sha256")},
+        "scenes": conf["scenes"],
+        "unity_build": {"guid": b["guid"], "result": b["result"], "total_errors": b["total_errors"],
+                        "total_warnings": b["total_warnings"], "total_size": b["total_size"],
+                        "development_observed": b["development_observed"],
+                        "duration_seconds": round(b["duration_ms"] / 1000.0, 3)},
+        "build_entry": {"package": bi.PACKAGE_ID, "version": bi.BRIDGE_VERSION, "method": ub.BUILD_ENTRY_METHOD,
+                        "package_digest": bi.load_manifest()["package_digest"]},
+        "payload": {"path": f"{ub.PAYLOAD}/{ub.APP}", "kind": "MACOS_APP_BUNDLE", "tree_algorithm": tree["algorithm"],
+                    "tree_digest": tree["digest"], "entries": tree["entries"], "bytes": tree["bytes"],
+                    "bundle_identifier": app["bundle_identifier"], "executable": app["executable"],
+                    "bundle_version": app["bundle_version"]},
+        "started_at": started_at,
+        "built_at": built_at,
+        "duration_seconds": round(b["duration_ms"] / 1000.0, 3),
+        "limitations": list(ub.LIMITATIONS),
+    }

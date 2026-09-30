@@ -308,12 +308,12 @@ class A_Registration(UnityCase):
         # alpha.16: the adapter manages the live plane's long-lived session; each batch capability stays STATELESS
 
     def test_exactly_three_capabilities(self):
-        from gpos.tools.unity import assets, authoring, live, prefabs, sources
+        from gpos.tools.unity import assets, authoring, build, live, prefabs, sources
         caps = {c.id: c for c in ua.DESCRIPTOR.capabilities
                 if c.id not in live.CAPABILITY_IDS + authoring.CAPABILITY_IDS + assets.CAPABILITY_IDS + prefabs.CAPABILITY_IDS
-                + sources.CAPABILITY_IDS}
+                + sources.CAPABILITY_IDS + build.CAPABILITY_IDS}
         self.assertEqual(sorted(caps), ["unity.inspect-project", "unity.run-editmode-tests", "unity.run-playmode-tests"])
-        self.assertEqual(len(ua.DESCRIPTOR.capabilities), 45)   # plus nine live-session (alpha.16), thirteen authoring, seven asset (alpha.18), nine prefab (alpha.19) and four source (alpha.20)
+        self.assertEqual(len(ua.DESCRIPTOR.capabilities), 47)   # plus nine live-session (alpha.16), thirteen authoring, seven asset (alpha.18), nine prefab (alpha.19), four source (alpha.20) and two build (alpha.21)
         i = caps[ua.INSPECT]
         self.assertEqual((i.category, i.operation_class, i.state_model, i.execution_context, i.requires_tool,
                           i.single_writer_required, i.dry_run_supported, i.input_kinds, i.artifact_kinds,
@@ -1027,8 +1027,10 @@ class Y_CommandSurface(UnityCase):
 
     def test_the_adapter_reads_only_its_declared_input(self):
         text = (ROOT / "gpos/tools/unity/adapter.py").read_text()
-        self.assertEqual(set(re.findall(r'\.get\("(\w+)"\)', text)), {"unity_project"})
-        self.assertEqual(set(re.findall(r"\brequest\.(\w+)", text)), {"capability_id", "inputs", "subject"})
+        # alpha.21: the build plane also reads its one extra input and the request's build provenance fields
+        self.assertEqual(set(re.findall(r'\.get\("(\w+)"\)', text)), {"unity_project", "expected_configuration_token"})
+        self.assertEqual(set(re.findall(r"\brequest\.(\w+)", text)),
+                         {"capability_id", "inputs", "subject", "request_id", "build_id", "build_revision", "target_platform"})
         self.assertNotIn("PATH", re.findall(r'"([A-Z_]+)"', text))
         s = StandIn(self.tmp / "s")
         for name in ("executable", "argv", "method", "testFilter", "graphics", "registry", "url", "editor_version"):
@@ -1053,7 +1055,7 @@ class Z_Cli(UnityCase):
         code, out = cli("list")
         self.assertEqual(code, 0)
         self.assertIn("6 tool adapter", out)
-        self.assertIn("unity 1.0.0 · ENGINE · 45 capabilities", out)
+        self.assertIn("unity 1.0.0 · ENGINE · 47 capabilities", out)
         code, out = cli("describe", "unity")
         self.assertEqual(code, 0)
         self.assertIn("network TOOL_INHERENT", out)

@@ -35,8 +35,12 @@ The adapter answers two questions about one Unity project inside a GPOS project:
 | `unity.inspect-project` | `INSPECT` / `READ_ONLY` | `OFFLINE_ANALYSIS` | none | none | none |
 | `unity.run-editmode-tests` | `RUN` / `MUTATING` | `AUTOMATED_TEST` | single writer, the resolved GPOS project root | `results` (`REPORT`), editor-log (`LOG`) | `TEST_EVIDENCE` in `AUTOMATED_TEST` |
 | `unity.run-playmode-tests` | `RUN` / `MUTATING` | `AUTOMATED_TEST` | as above | as above | as above |
+| `unity.inspect-build-configuration` | `INSPECT` / `MUTATING` | `EDITOR` | as above | editor-log (`LOG`) | none |
+| `unity.build-player` | `BUILD` / `MUTATING` | `EDITOR` | as above | build-manifest (`REPORT`), editor-log (`LOG`) | none |
 
-Input `unity_project` (all three): a path relative to the GPOS project root, default `.`. It is resolved (symbolic links followed) and must stay inside the root: no absolute path, no `..`, no escaping link. The directory must contain `Assets/`, `Packages/`, `ProjectSettings/` and a regular file `ProjectSettings/ProjectVersion.txt`.
+The two build capabilities (Phase 2C-7) are described in [unity-build.md](unity-build.md): the same batch plane, Editor discovery, version rule, package-source preflight, Package Manager isolation and project-lock proof, with one fixed build command instead of the test command.
+
+Input `unity_project` (all five): a path relative to the GPOS project root, default `.`. It is resolved (symbolic links followed) and must stay inside the root: no absolute path, no `..`, no escaping link. The directory must contain `Assets/`, `Packages/`, `ProjectSettings/` and a regular file `ProjectSettings/ProjectVersion.txt`.
 
 **`unity.inspect-project`** starts no process and needs no installed Editor (`requires_tool` is false); it works with zero, one or several Editors installed and never compares the project with an installed Editor. It reports the project path, the exact Editor version the project requires (and its revision when recorded), and a summary of the package sources of `Packages/manifest.json` and `Packages/packages-lock.json`, after running the package-source preflight below.
 

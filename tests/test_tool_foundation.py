@@ -33,6 +33,7 @@ os.environ["HOME"] = _HOME  # any accidental write to a user/global directory la
 from gpos.framework import load_framework  # noqa: E402
 from gpos.tools import artifacts as art  # noqa: E402
 from gpos.tools import diagnostics as tdg  # noqa: E402
+from gpos.tools import execution as texec  # noqa: E402
 from gpos.tools import evidence as ev  # noqa: E402
 from gpos.tools import leases as lease_mod  # noqa: E402
 from gpos.tools import model as tmodel  # noqa: E402
@@ -1308,7 +1309,7 @@ class L01_Boundaries(TmpCase):
                                    "media_common.py", "model.py", "paths.py", "process.py", "provenance.py",
                                    "redaction.py", "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
                                    "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/assets.py", "unity/authoring.py",
-                                   "unity/bridge_install.py",
+                                   "unity/bridge_install.py", "unity/build.py",
                                "unity/identity.py", "unity/live.py", "unity/live_ipc.py", "unity/live_status.py",
                                "unity/prefabs.py", "unity/project.py", "unity/project_lock.py",
                                    "unity/results.py", "unity/sources.py", "validation.py"])
@@ -2731,6 +2732,74 @@ class S01_WholeStringIdentifiers(TmpCase):
                 self.assertEqual([p[0] for p in problems], ["INVALID_ARTIFACT_CLAIM"])
         self.assertEqual(art.declaration_problems((art.ArtifactSpec("report", "TEXT", str(self.tmp / "r")),),
                                                   capability(artifact_kinds=("TEXT",)), REG["tool_artifact_kinds"]), [])
+
+
+class T01_RequestIdPathSafety(TmpCase):
+    """alpha.21: a caller-supplied request id names the default execution workspace, so the foundation refuses one
+    that is not a single safe path component before any path is derived from it and before anything is created."""
+
+    UNSAFE = ("../escape", "..", ".", "a/b", "a\\b", "/absolute", "C:\\x", "C:x", "", " ", "req 1", "a\x00b",
+              "a\nb", "req-1\n", "tab\there", "\x7fdel", "-leading", ".hidden", "_leading", "x" * 129,
+              "req-\u00e9", "a:b", "a*b")
+    SAFE = ("req-0123456789abcdef", "req-fixed-0001", "Req.2026_09-29", "a", "x" * 128)
+
+    def tree(self, p):
+        return sorted(x.relative_to(p).as_posix() for x in p.rglob("*"))
+
+    def test_unsafe_ids_are_refused_before_any_workspace_exists(self):
+        p = self.project()
+        before = self.tree(p)
+        for rid in self.UNSAFE:
+            with self.subTest(rid=rid):
+                r = self.run_cap(syn.TRANSFORM, project=p, allow_mutation=True, inputs={"text": "x"}, request_id=rid)
+                self.assertEqual(r.status, tdg.INVALID_REQUEST)
+                self.assertIn("INVALID_TOOL_REQUEST", self.codes(r))
+                self.assertIn("not one safe path component", " ".join(d.message for d in r.diagnostics))
+                self.assertFalse(r.mutation_performed)
+                self.assertEqual(r.artifacts, ())
+                self.assertEqual(self.tree(p), before)          # no workspace, no runtime area, nothing
+                self.assertFalse((p / tpaths.RUNTIME_DIR).exists())
+                self.assertFalse((self.tmp / "escape").exists())
+        self.assertEqual(sorted(x.name for x in self.tmp.iterdir()), ["p"])   # nothing escaped the project either
+
+    def test_a_non_string_id_is_refused(self):
+        p = self.project()
+        for rid in (7, b"req-1", ["req-1"]):
+            with self.subTest(rid=rid):
+                r = self.run_cap(syn.TRANSFORM, project=p, allow_mutation=True, inputs={"text": "x"}, request_id=rid)
+                self.assertEqual(r.status, tdg.INVALID_REQUEST)
+        self.assertFalse((p / tpaths.RUNTIME_DIR).exists())
+
+    def test_the_check_precedes_workspace_resolution(self):
+        """Even a dry run, which resolves the workspace without creating it, never sees an unsafe id."""
+        import gpos.tools.execution as tex
+        seen, original = [], tex._scopes_and_workspace
+
+        def spy(adapter, capability, request, root):
+            seen.append(request.request_id)
+            return original(adapter, capability, request, root)
+        tex._scopes_and_workspace = spy
+        try:
+            for dry in (True, False):
+                self.run_cap(syn.TRANSFORM, project=self.project(), allow_mutation=not dry, dry_run=dry,
+                             inputs={"text": "x"}, request_id="../escape")
+        finally:
+            tex._scopes_and_workspace = original
+        self.assertEqual(seen, [])
+
+    def test_safe_ids_work_unchanged_and_are_never_rewritten(self):
+        p = self.project()
+        for rid in self.SAFE:
+            with self.subTest(rid=rid):
+                r = self.run_cap(syn.TRANSFORM, project=p, allow_mutation=True, inputs={"text": "x"}, request_id=rid)
+                self.assertEqual(r.status, tdg.SUCCESS, [d.message for d in r.diagnostics])
+                self.assertEqual(r.request_id, rid)
+                self.assertTrue((p / tpaths.RUNTIME_DIR / "tool-output" / "synthetic" / rid).is_dir())
+
+    def test_the_generated_id_keeps_its_form(self):
+        r = self.run_cap(syn.TRANSFORM, project=self.project(), allow_mutation=True, inputs={"text": "x"})
+        self.assertRegex(r.request_id, r"^req-[0-9a-f]{16}$")
+        self.assertTrue(texec.REQUEST_ID.fullmatch(r.request_id))
 
 
 if __name__ == "__main__":

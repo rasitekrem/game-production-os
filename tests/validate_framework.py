@@ -46,7 +46,7 @@ GATES = REGISTRY["gates"]
 SUBJECTIVE_DISCIPLINE_GATES = sorted(g for g, d in GATES.items() if d["subjective"] and g != "HUMAN_REVIEW")
 TRIGGERS = list(REGISTRY["mandatory_human_review_triggers"])
 CONDITIONS = list(REGISTRY["evidence_conditions"])
-VERSION = "1.0.0-alpha.20"
+VERSION = "1.0.0-alpha.21"
 GATE_OWNERS = [s for s in REGISTRY["skills"] if any(s in d["permitted_owners"] for d in GATES.values())] + ["HUMAN"]
 
 
@@ -2664,6 +2664,9 @@ def validator_vocabulary():
     words |= {unity_lock.MATCHING_EDITOR, unity_lock.NO_MATCH_PROVEN, unity_lock.PROCESS_STATE_UNKNOWN, unity_lock.NO_LOCK,
               unity_lock.ACTIVE_EDITOR, unity_lock.ORPHAN_UNHELD, unity_lock.LOCK_STATE_UNKNOWN, unity_lock.HELD,
               unity_lock.UNHELD, unity_lock.ABSENT, unity_lock.UNKNOWN}
+    # Phase 2C-7: the build entry's closed configuration rules and response outcomes
+    from gpos.tools.unity import build as unity_build
+    words |= set(unity_build.RULES) | {o for outcomes in unity_build.OUTCOMES.values() for o in outcomes}
     return words
 
 

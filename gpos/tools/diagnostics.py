@@ -194,6 +194,21 @@ CODES = {
     "LIVE_SOURCE_SYNC_SIDE_EFFECTS": (INFO, "a recursive folder import also imported or removed other assets, or created, removed or changed .meta files; those within the bounded walk of the folder are listed"),
     "LIVE_COMPILATION_FAILED": (INFO, "the settled compilation failed: the editor keeps its previous scripts and refuses play mode and test runs until the errors are fixed"),
     "ENGINE_PROJECT_ORPHAN_LOCK": (INFO, "an unheld leftover engine project lock file existed with no editor process for the project; GPOS did not modify it and the engine applied its own project-lock semantics"),
+    # engine build core (alpha.21): one fixed batch build entry, the existing configuration only, a workspace-owned payload
+    "BUILD_ENTRY_UNAVAILABLE": (CONFLICT, "the project does not hold exactly the audited GPOS package that carries the fixed build entry; install or upgrade it first"),
+    "BUILD_WORKSPACE_NOT_FRESH": (CONFLICT, "the execution workspace of this request id already holds files; an earlier build is never adopted, reused or overwritten"),
+    "BUILD_TARGET_NOT_ACTIVE": (CONFLICT, "the active build target is not the supported target; GPOS never switches it"),
+    "BUILD_TARGET_MODULE_MISSING": (UNAVAILABLE, "the editor's build module for the supported target is not installed or not supported"),
+    "BUILD_CONFIGURATION_UNSUPPORTED": (CONFLICT, "the existing build configuration is outside the supported build contract; the named rule says which part"),
+    "BUILD_CONFIGURATION_CHANGED": (CONFLICT, "the build configuration no longer matches the inspected configuration token; nothing was built"),
+    "BUILD_CONFIGURATION_NOT_BUILDABLE": (INFO, "the inspected build configuration is not buildable by this release; the problems name each rule"),
+    "BUILD_COMPILE_FAILED": (FAILED, "script compilation failed before a build could start; nothing was built"),
+    "BUILD_ENTRY_FAILED": (FAILED, "the fixed build entry gave no trustworthy answer and provably never started a build"),
+    "BUILD_FAILED": (FAILED, "the engine reported that the build did not succeed; its partial output stays quarantined in the workspace and is never published"),
+    "BUILD_PAYLOAD_INVALID": (FAILED, "the built payload failed validation or its bounded tree digest; it stays quarantined in the workspace and is never published"),
+    "BUILD_OUTCOME_UNKNOWN": (OUTCOME_UNKNOWN, "a build started but its final outcome or the configuration it reflects cannot be established; nothing was published and nothing is retried"),
+    "BUILD_QUARANTINED": (INFO, "build-owned partial state was left in this execution workspace; it is not a completed build"),
+    "BUILD_PUBLISHED": (INFO, "the validated payload was committed and its build manifest written last; the build is complete"),
 }
 
 

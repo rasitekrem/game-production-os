@@ -320,7 +320,6 @@ class B_Requests(BuildCase):
 
     def test_macos_only_and_a_token(self):
         fake = self.fake()
-        self.assertStatus(self.run_cap(ub.BUILD, fake, target_platform="ANDROID"), tdg.INVALID_REQUEST, "INVALID_TOOL_REQUEST")
         for token in (None, "", "ab" * 31, ("ab" * 32).upper(), 7):
             inputs = {"unity_project": "Game"}
             if token is not None:
@@ -329,6 +328,51 @@ class B_Requests(BuildCase):
             self.assertEqual(r.status, tdg.INVALID_REQUEST, token)
         self.assertEqual(fake.runs(), [])
         self.assertEqual(self.run_cap(ub.BUILD, target_platform="MACOS").status, tdg.SUCCESS)
+
+    def test_a_caller_output_dir_is_refused_before_anything_runs(self):
+        """alpha.21 pre-freeze M1: the build workspace is foundation-owned; output_dir is refused in request validation."""
+        proofs = []
+
+        def proof(project, editor):
+            proofs.append(project)
+            return pl.assess(project, editor)
+        for cap in ub.CAPABILITY_IDS:
+            self.assertIs(ua.DESCRIPTOR.capability(cap).caller_output_dir_allowed, False)
+            self.assertIs(ua.DESCRIPTOR.capability(cap).to_dict()["caller_output_dir_allowed"], False)
+            for dry in (False, True):
+                with self.subTest(cap=cap, dry_run=dry):
+                    target = self.game / "Assets" / "UnexpectedWorkspace"
+                    fake = self.fake()
+                    registry = ToolRegistry(FW, allow_test_only=False)
+                    registry.register(UnityAdapter(hub_roots=[str(fake.hub)], platform="darwin", lock_proof=proof))
+                    inputs = {"unity_project": "Game"}
+                    if cap == ub.BUILD:
+                        inputs["expected_configuration_token"] = token_of(configuration())
+                    r = execute(registry, ExecutionRequest(
+                        adapter_id="unity", capability_id=cap, subject=Subject("FEATURE", "FEATURE-0001", "rev-1"),
+                        project_root=str(self.p), inputs=inputs, output_dir=str(target), dry_run=dry,
+                        allow_mutation=not dry, build_revision=REV if cap == ub.BUILD else None))
+                    self.assertStatus(r, tdg.INVALID_REQUEST, "INVALID_TOOL_REQUEST")
+                    self.assertIn("takes no output_dir", " ".join(d.message for d in r.diagnostics))
+                    self.assertFalse(target.exists())
+                    self.assertFalse(r.mutation_performed)
+                    self.assertEqual(fake.runs(), [])                 # no Unity process, no build request
+                    self.assertFalse((self.p / ".game" / "gpos-runtime" / "tool-output").exists())
+        self.assertEqual(proofs, [])                                  # no lock proof either
+        # other Unity capabilities keep the frozen default
+        self.assertTrue(all(c.caller_output_dir_allowed for c in ua.DESCRIPTOR.capabilities if c.id not in ub.CAPABILITY_IDS))
+
+    def test_both_capabilities_are_macos_only(self):
+        for cap in ub.CAPABILITY_IDS:
+            for platform in ("ANDROID", "WINDOWS", "LINUX", "IOS", "WEB"):
+                with self.subTest(cap=cap, platform=platform):
+                    fake = self.fake()
+                    r = self.run_cap(cap, fake, target_platform=platform)
+                    self.assertStatus(r, tdg.INVALID_REQUEST, "INVALID_TOOL_REQUEST")
+                    self.assertIn("macOS-only", " ".join(d.message for d in r.diagnostics))
+                    self.assertEqual(fake.runs(), [])
+            for platform in (None, "MACOS"):
+                self.assertEqual(self.run_cap(cap, target_platform=platform).status, tdg.SUCCESS, (cap, platform))
 
     def test_no_caller_authority_input_exists(self):
         fake = self.fake()
@@ -1315,6 +1359,27 @@ class RB1_Classic(RealBuild):
         after = build(self.p, i["configuration_token"], provenance(self.p)[1])
         ok(self, after, "BUILD_PUBLISHED")                   # a new request; the killed one is never adopted or retried
         self.assertTrue((ws / ub.STARTED_NAME).exists() and not (ws / ub.MANIFEST_NAME).exists())
+
+
+    def test_09_a_caller_output_dir_launches_nothing(self):
+        """alpha.21 pre-freeze M1 against the real Editor: refused in request validation; no directory, no Unity."""
+        target = self.p / "Game" / "Assets" / "UnexpectedWorkspace"
+        before = set(tl_unity_pids())
+        for cap, inputs, kw in ((ub.INSPECT_BUILD, {"unity_project": "Game"}, {}),
+                                (ub.BUILD, {"unity_project": "Game", "expected_configuration_token": "ab" * 32},
+                                 {"build_revision": provenance(self.p)[1]})):
+            r = tl.real_request(self.p, cap, inputs=inputs, output_dir=str(target), timeout=600, **kw)
+            ok(self, r, "INVALID_TOOL_REQUEST", status=tdg.INVALID_REQUEST)
+            self.assertFalse(r.mutation_performed)
+            self.assertFalse(target.exists())
+            self.assertEqual(set(tl_unity_pids()) - before, set())
+        self.assertEqual(rgit(self.p, "status", "--porcelain"), "")
+
+
+def tl_unity_pids():
+    out = subprocess.run(["/bin/ps", "-Ao", "pid=,command="], capture_output=True, text=True).stdout
+    return [line.split(None, 1)[0] for line in out.splitlines() if str(REAL.get("work", "/nonexistent")) in line
+            and "Unity.app/Contents/MacOS/Unity" in line]
 
 
 @unittest.skipIf(FAST, "GPOS_UNITY_TEST_FAST: no real Unity process")

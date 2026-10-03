@@ -440,6 +440,10 @@ def request_problems(registry, request):
         problems.append(dg.make("MUTATION_NOT_ALLOWED",
                                 f"{cap_id} is MUTATING ({capability.side_effect_scope}); execution requires explicit "
                                 f"allow_mutation consent in the request", adapter_id, cap_id))
+    if request.output_dir is not None and not capability.caller_output_dir_allowed:
+        problems.append(dg.make("INVALID_TOOL_REQUEST",
+                                f"{cap_id} owns its execution workspace and takes no output_dir; the caller-named "
+                                f"directory was neither used nor created", adapter_id, cap_id))
     if not capability.mutating and request.allow_mutation:
         problems.append(dg.make("INVALID_TOOL_REQUEST",
                                 f"{cap_id} is READ_ONLY; mutation consent does not apply to it", adapter_id, cap_id))

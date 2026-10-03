@@ -280,7 +280,7 @@ python3 tests/mutate_unity_build.py --real
 Tests for Phase 2C-7: `unity.inspect-build-configuration` and `unity.build-player` through the batch-only build entry of bridge 1.5.0. The fast groups need no Unity (a stand-in Editor under a temporary Hub root plays the build entry):
 
 - A: the two declarations (47 Unity capabilities) and no caller authority input.
-- B: no `build_id`, a canonical `build_revision` (SHA-1 or SHA-256 form), `MACOS` only, the token, the build request-id grammar, consent and a dry run that creates nothing.
+- B: no `build_id`, a canonical `build_revision` (SHA-1 or SHA-256 form), `MACOS` only for both capabilities, the token, the build request-id grammar, consent, a dry run that creates nothing, and a caller `output_dir` refused before any directory, lock proof or Unity process exists.
 - C: the exact argv, the one executeMethod constant, and no request value in the command.
 - D: 1.5.0 on protocol `/5`, `history/1.4.0.json` equal to the manifest frozen in `v1.0.0-alpha.20`, the live lifecycle unchanged apart from its header, an exact 1.4.0 package upgraded, and the build entry refused on anything but exactly this release.
 - E: the build entry's allowlist scan (two `BuildPlayer` calls, one `Exit`, one public type and member, no target switch, profile change, settings assignment, reflection, process, network, environment request or Android/iOS code), a Unity-free rules core, no Git and no directory artifact in the Unity adapter, output only in the workspace.

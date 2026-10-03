@@ -126,6 +126,11 @@ def validate_capability(framework, adapter_id, cap):
     if cap.single_writer_required and not cap.resource_kind:
         _problem(problems, adapter_id, f"{cap.id} requires a single writer but names no resource_kind to take the "
                                        f"lease on", cap.id)
+    if not isinstance(cap.caller_output_dir_allowed, bool):
+        _problem(problems, adapter_id, f"{cap.id} caller_output_dir_allowed must be a boolean", cap.id)
+    elif not cap.caller_output_dir_allowed and not cap.requires_project:
+        _problem(problems, adapter_id, f"{cap.id} refuses a caller output_dir but is not project-bound, so it would have "
+                                       f"no workspace at all", cap.id)
     if cap.resource_from_request and not cap.single_writer_required:
         _problem(problems, adapter_id, f"{cap.id} declares resource_from_request but takes no single-writer lease",
                  cap.id)

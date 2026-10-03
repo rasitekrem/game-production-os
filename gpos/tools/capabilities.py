@@ -21,6 +21,11 @@ every earlier capability keeps its frozen behaviour. The SESSION modes use one l
 lease: SESSION_OPEN may take it, SESSION_REQUIRED only verifies it (and so is usable by a READ_ONLY
 capability without pretending to take a writer lease), SESSION_CLOSE releases or recovers it.
 
+`caller_output_dir_allowed` (alpha.21) says whether a request may name the execution workspace with `output_dir`.
+It defaults to True, so every earlier capability keeps its frozen behaviour. A capability that owns its workspace
+(a build plane whose workspace is the build) declares False, and the foundation refuses a request that names one
+before any path is resolved or created.
+
 `execution_context` is the capture context this capability's execution actually observes (an offline
 media pass observes OFFLINE_ANALYSIS, a device capture observes TARGET_RUNTIME). `potential_evidence`
 lists the (evidence type, capture context) pairs it may ever produce; each pair is checked against
@@ -75,6 +80,7 @@ class Capability:
     resource_from_request: bool = False  # the lease target is named by the request, not by the project
     notes: tuple = ()
     lease_mode: str = None               # registry tool_lease_modes; None derives EXECUTION or NONE
+    caller_output_dir_allowed: bool = True   # False: the foundation-owned workspace only; output_dir is refused
 
     @property
     def mutating(self):
@@ -115,4 +121,5 @@ class Capability:
                 "side_effect_scope": self.side_effect_scope, "resource_kind": self.resource_kind,
                 "resource_from_request": self.resource_from_request,
                 "lease_mode": self.effective_lease_mode,
+                "caller_output_dir_allowed": self.caller_output_dir_allowed,
                 "notes": list(self.notes)}

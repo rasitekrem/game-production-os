@@ -86,6 +86,7 @@ A capability is a declaration the foundation reads before it lets anything run:
 | `state_model` | `STATELESS` or `STATEFUL` |
 | `execution_context` | the capture context this execution actually observes |
 | `resource_from_request` | the single-writer target is named by the request, not the project |
+| `caller_output_dir_allowed` | alpha.21; default `true`: whether a request may name the execution workspace with `output_dir`. A capability that owns its workspace declares `false`; a request that names one is then `INVALID_TOOL_REQUEST` in request validation, before any path is resolved or created. Only a project-bound capability may declare `false` |
 | `single_writer_required`, `resource_kind` | the lease it needs, and on what |
 | `dry_run_supported` | whether a plan-only run is possible |
 | `requires_tool`, `requires_project`, `requires_ready_routing` | its preconditions |

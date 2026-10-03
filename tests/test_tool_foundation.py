@@ -2802,6 +2802,107 @@ class T01_RequestIdPathSafety(TmpCase):
         self.assertTrue(texec.REQUEST_ID.fullmatch(r.request_id))
 
 
+class OwnedWorkspace(ToolAdapter):
+    """TEST-ONLY: a project-bound MUTATING capability that owns its workspace (or, with allowed=True, the default)."""
+
+    def __init__(self, allowed=False):
+        self.calls = []
+        self.descriptor = descriptor(capabilities=(capability(
+            id="synthetic.owned", category="TRANSFORM", operation_class="MUTATING", dry_run_supported=True,
+            requires_tool=False, artifact_kinds=("TEXT",), side_effect_scope="one file in its execution workspace",
+            caller_output_dir_allowed=allowed),))
+
+    def probe(self):
+        return ProbeResult("synthetic", tmodel.AVAILABLE)
+
+    def execute(self, request, context):
+        self.calls.append(context.workspace)
+        if context.dry_run:
+            return AdapterOutcome(plan=("would write out.txt into the workspace",))
+        path = Path(context.workspace) / "out.txt"
+        path.write_text("x")
+        return AdapterOutcome(mutation_performed=True, artifacts=(art.ArtifactSpec("out", "TEXT", str(path)),))
+
+
+class T02_CallerOutputDir(TmpCase):
+    """alpha.21: a capability that owns its execution workspace refuses a caller-named output_dir in request
+    validation, before any path is resolved or created; the default keeps every earlier capability's behaviour."""
+
+    def setUp(self):
+        super().setUp()
+        self.p = self.project()
+        for sub in ("Assets", "ProjectSettings"):
+            (self.p / sub).mkdir(exist_ok=True)
+
+    def run_owned(self, adapter, output_dir=None, dry_run=False):
+        reg = ToolRegistry(FW, allow_test_only=True)
+        reg.register(adapter)
+        return execute(reg, ExecutionRequest(adapter_id="synthetic", capability_id="synthetic.owned",
+                                             subject=Subject("TASK", "TASK-1"), project_root=str(self.p),
+                                             output_dir=output_dir, dry_run=dry_run, allow_mutation=not dry_run))
+
+    def tree(self):
+        return sorted(x.relative_to(self.tmp).as_posix() for x in self.tmp.rglob("*"))
+
+    def test_a_named_output_dir_is_refused_before_anything_exists(self):
+        import gpos.tools.execution as tex
+        seen, original = [], tex._scopes_and_workspace
+
+        def spy(adapter, capability, request, root):
+            seen.append(request.output_dir)
+            return original(adapter, capability, request, root)
+        targets = [self.tmp / "nominated" / "deep", self.p / "Assets" / "UnexpectedWorkspace",
+                   self.p / "ProjectSettings" / "UnexpectedWorkspace", self.p / ".game" / "gpos-runtime" / "elsewhere"]
+        before = self.tree()
+        tex._scopes_and_workspace = spy
+        try:
+            for target in targets:
+                for dry in (True, False):
+                    with self.subTest(target=target.relative_to(self.tmp).as_posix(), dry_run=dry):
+                        adapter = OwnedWorkspace()
+                        r = self.run_owned(adapter, output_dir=str(target), dry_run=dry)
+                        self.assertEqual(r.status, tdg.INVALID_REQUEST)
+                        self.assertIn("INVALID_TOOL_REQUEST", self.codes(r))
+                        self.assertIn("owns its execution workspace and takes no output_dir",
+                                      " ".join(d.message for d in r.diagnostics))
+                        self.assertFalse(r.mutation_performed)
+                        self.assertEqual(adapter.calls, [])            # the adapter never ran
+                        self.assertFalse(target.exists())
+        finally:
+            tex._scopes_and_workspace = original
+        self.assertEqual(seen, [])                                     # workspace resolution never ran
+        self.assertEqual(self.tree(), before)                          # nothing anywhere was created
+
+    def test_without_an_output_dir_the_foundation_workspace_is_used(self):
+        adapter = OwnedWorkspace()
+        r = self.run_owned(adapter)
+        self.assertEqual(r.status, tdg.SUCCESS, [d.message for d in r.diagnostics])
+        self.assertEqual(adapter.calls, [str(tpaths.runtime_dir(self.p, "tool-output", "synthetic", r.request_id))])
+        dry = OwnedWorkspace()
+        self.assertEqual(self.run_owned(dry, dry_run=True).status, tdg.SUCCESS)
+
+    def test_the_default_keeps_the_frozen_output_dir_semantics(self):
+        target = self.p / "Assets" / "ChosenWorkspace"
+        adapter = OwnedWorkspace(allowed=True)
+        r = self.run_owned(adapter, output_dir=str(target))
+        self.assertEqual(r.status, tdg.SUCCESS, [d.message for d in r.diagnostics])
+        self.assertEqual(adapter.calls, [str(target)])
+        self.assertTrue((target / "out.txt").is_file())
+        self.assertTrue(capability().caller_output_dir_allowed)                 # the default
+        for cap in SyntheticAdapter().capabilities():
+            self.assertTrue(cap.caller_output_dir_allowed, cap.id)
+
+    def test_the_rule_is_declared_and_inspectable(self):
+        owned = OwnedWorkspace().descriptor.capabilities[0]
+        self.assertIs(owned.to_dict()["caller_output_dir_allowed"], False)
+        self.assertIs(capability().to_dict()["caller_output_dir_allowed"], True)
+        self.assertEqual(tval.validate_capability(FW, "synthetic", owned), [])
+        unbound = capability(id="synthetic.unbound", requires_project=False, caller_output_dir_allowed=False)
+        self.assertIn("refuses a caller output_dir but is not project-bound",
+                      " ".join(d.message for d in tval.validate_capability(FW, "synthetic", unbound)))
+        self.assertIn("must be a boolean", " ".join(d.message for d in tval.validate_capability(
+            FW, "synthetic", capability(id="synthetic.odd", caller_output_dir_allowed="no"))))
+
 if __name__ == "__main__":
     result = unittest.main(verbosity=1, exit=False).result
     shutil.rmtree(_HOME, ignore_errors=True)

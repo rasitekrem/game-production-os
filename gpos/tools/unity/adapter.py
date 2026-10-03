@@ -151,6 +151,7 @@ BUILD_CAPABILITIES = (
     Capability(
         id=ub.INSPECT_BUILD, category="INSPECT", operation_class="MUTATING", state_model="STATELESS",
         execution_context="EDITOR", single_writer_required=True, resource_kind="EDITOR_PROJECT", dry_run_supported=True,
+        caller_output_dir_allowed=False,
         description="Read the project's existing build configuration in a fresh batch-mode Editor: active target, "
                     "profile or classic mode, development, scenes, the rules alpha.21 checks, whether it is buildable "
                     "and its configuration token. Changes no setting; MUTATING only because opening Unity changes "
@@ -161,6 +162,7 @@ BUILD_CAPABILITIES = (
     Capability(
         id=ub.BUILD, category="BUILD", operation_class="MUTATING", state_model="STATELESS",
         execution_context="EDITOR", single_writer_required=True, resource_kind="EDITOR_PROJECT", dry_run_supported=True,
+        caller_output_dir_allowed=False,
         description="Build exactly the inspected macOS Standalone Player configuration in a fresh batch-mode Editor, "
                     "validate the .app payload, commit it inside the execution workspace and write its build manifest "
                     "last. Requires request.build_revision and the inspected configuration token; build_id is "
@@ -718,6 +720,9 @@ class UnityAdapter(model.ToolAdapter):
         if request.build_id is not None:
             return _refuse(cap, f"{cap} takes no build_id: a build's id is always build-<request id>, so a supplied one is "
                                 f"meaningless for creation")
+        if request.target_platform not in (None, "MACOS"):   # provenance only, never a build input: macOS or absent
+            return _refuse(cap, f"{cap} is macOS-only; target_platform must be absent or MACOS, not "
+                                f"{request.target_platform!r}")
         if building:
             if not ub.BUILD_REQUEST_ID.fullmatch(rid):
                 return _refuse(cap, f"request id {rid!r} cannot name a build: build-<request id> needs lower-case letters, "
@@ -725,8 +730,6 @@ class UnityAdapter(model.ToolAdapter):
             if not (isinstance(request.build_revision, str) and ub.REVISION.fullmatch(request.build_revision)):
                 return _refuse(cap, "a build requires request.build_revision: the exact 40- or 64-hex revision "
                                     "git.resolve-provenance returned; HEAD is never inferred")
-            if request.target_platform not in (None, "MACOS"):
-                return _refuse(cap, f"this build targets MACOS only, not {request.target_platform!r}")
             if not (isinstance(token, str) and ub.TOKEN.fullmatch(token)):
                 return _refuse(cap, "expected_configuration_token must be the 64-hex token an inspection returned")
         required, installed = summary["editor_version"], context.probe.tool_version

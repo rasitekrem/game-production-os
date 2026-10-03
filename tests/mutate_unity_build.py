@@ -48,7 +48,11 @@ MUTATIONS = [
     ("the build request-id grammar is not enforced", "build", [(AD, "            if not ub.BUILD_REQUEST_ID.fullmatch(rid):", "            if False:")]),
     ("a build without build_revision", "build", [(AD, "            if not (isinstance(request.build_revision, str) and ub.REVISION.fullmatch(request.build_revision)):",
                                                    "            if False:")]),
-    ("a non-macOS target platform is accepted", "build", [(AD, '            if request.target_platform not in (None, "MACOS"):', "            if False:")]),
+    ("a non-macOS target platform is accepted", "build", [(AD, '        if request.target_platform not in (None, "MACOS"):   # provenance only', "        if False:   # provenance only")]),
+    ("the inspection may run in a caller output_dir", "build", [(AD, '        id=ub.INSPECT_BUILD, category="INSPECT", operation_class="MUTATING", state_model="STATELESS",\n        execution_context="EDITOR", single_writer_required=True, resource_kind="EDITOR_PROJECT", dry_run_supported=True,\n        caller_output_dir_allowed=False,',
+                                                                    '        id=ub.INSPECT_BUILD, category="INSPECT", operation_class="MUTATING", state_model="STATELESS",\n        execution_context="EDITOR", single_writer_required=True, resource_kind="EDITOR_PROJECT", dry_run_supported=True,')]),
+    ("the build may run in a caller output_dir", "build", [(AD, '        id=ub.BUILD, category="BUILD", operation_class="MUTATING", state_model="STATELESS",\n        execution_context="EDITOR", single_writer_required=True, resource_kind="EDITOR_PROJECT", dry_run_supported=True,\n        caller_output_dir_allowed=False,',
+                                                               '        id=ub.BUILD, category="BUILD", operation_class="MUTATING", state_model="STATELESS",\n        execution_context="EDITOR", single_writer_required=True, resource_kind="EDITOR_PROJECT", dry_run_supported=True,')]),
     # --- configuration token and post-checks (GPOS side)
     ("omitted config pre-check", "build", [(AD, '''            ("the inspected configuration token", response["configuration_token"] == request.inputs[
                 "expected_configuration_token"]),\n''', "")]),

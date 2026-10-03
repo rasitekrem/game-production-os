@@ -358,6 +358,19 @@ MUTATIONS = [
      'not ID.fullmatch(cap.id or "")', 'not ID.match(cap.id or "")'),
     ('an artifact id may end in a newline', 'gpos/tools/artifacts.py',
      'not ARTIFACT_ID.fullmatch(aid or "")', 'not ARTIFACT_ID.match(aid or "")'),
+    # --- alpha.21: request-id path safety and capability-owned workspaces
+    ('an unsafe request id reaches workspace resolution', 'gpos/tools/execution.py',
+     '    if request.request_id is not None and not (isinstance(request.request_id, str)',
+     '    if False and not (isinstance(request.request_id, str)'),
+    ('a capability-owned workspace accepts a caller output_dir', 'gpos/tools/execution.py',
+     '    if request.output_dir is not None and not capability.caller_output_dir_allowed:',
+     '    if False:'),
+    ('the output_dir rule is not inspectable', 'gpos/tools/capabilities.py',
+     '                "caller_output_dir_allowed": self.caller_output_dir_allowed,\n', ''),
+    ('a non-project capability may refuse every output_dir', 'gpos/tools/validation.py',
+     '    elif not cap.caller_output_dir_allowed and not cap.requires_project:', '    elif False:'),
+    ('the output_dir default is narrowed', 'gpos/tools/capabilities.py',
+     '    caller_output_dir_allowed: bool = True', '    caller_output_dir_allowed: bool = False'),
 ]
 
 

@@ -17,7 +17,7 @@ Both are batch-plane capabilities: `STATELESS`, `EDITOR`, the `EXECUTION` single
 - `expected_configuration_token` (build only) — the 64-hex token an inspection returned.
 - `request.build_revision` (build only, required) — the exact 40- or 64-hex revision `git.resolve-provenance` returned. HEAD is never inferred.
 
-There is no target, development flag, scene, option, define, architecture, output path, method or build id input. A supplied `request.build_id` is refused (`INVALID_TOOL_REQUEST`): a build's id is always `build-<request id>`, and a build's request id must be lower-case letters, digits and inner hyphens, at most 64 characters (the foundation's own `req-<16 hex>` is one). `request.target_platform`, when given, must be `MACOS`.
+There is no target, development flag, scene, option, define, architecture, output path, method or build id input. A supplied `request.build_id` is refused (`INVALID_TOOL_REQUEST`): a build's id is always `build-<request id>`, and a build's request id must be lower-case letters, digits and inner hyphens, at most 64 characters (the foundation's own `req-<16 hex>` is one). For both capabilities, `request.target_platform` is provenance only and, when given, must be `MACOS`; any other platform is refused. Both capabilities declare `caller_output_dir_allowed: false`: a request that names an `output_dir` is refused by the foundation (`INVALID_TOOL_REQUEST`) before any directory is resolved or created, before the lock proof and before Unity starts — the workspace is always the foundation's own.
 
 ## The fixed command
 
@@ -78,6 +78,8 @@ build-manifest.json  written last
 ```
 
 The commit sequence: the entry writes `build-started.json` immediately before `BuildPlayer`; Unity exits normally; the response says `BUILT`, `Succeeded`, zero errors; the post-build token, target, profile, development, BuildReport GUID and output path checks pass; `staging/` holds exactly `Player.app`; the `.app` validates; its tree digest is computed within its bounds; `staging` is renamed to `payload` (never over an existing one); `build-manifest.json` is written once (a temporary file, fsync, a hard link that never replaces a file) — last. **A payload without its manifest is not a completed build.**
+
+**Single `.app` payload only.** alpha.21 publishes exactly one `Player.app`. A build that writes anything else beside it in `staging/` — for example a Burst debug-information or other debug-symbol sidecar folder — is `BUILD_PAYLOAD_INVALID` and is not published; the sidecar is never ignored, deleted, packaged or absorbed into the payload. Burst and debug-symbol sidecar output is deferred until it is deliberately researched.
 
 The `.app` is never a foundation artifact. The build's artifacts are the build-manifest (`REPORT`, `application/json`) and the editor-log (`LOG`) under the batch contract.
 

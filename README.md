@@ -1,6 +1,6 @@
 # Game Production OS
 
-Version `1.0.0-alpha.21` · Phase 2C-7 (Unity Build Core: macOS Standalone Player) on the frozen Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation, Phase-2C-1 Git provenance adapter, Phase-2C-2 media evidence adapters, Phase-2C-3 Android ADB adapter, Phase-2C-4 Blender DCC adapter, Phase-2C-5 Unity batch plane, Phase-2C-6A Unity live session foundation, Phase-2C-6B1 Unity live Scene authoring core, Phase-2C-6B2A Unity live asset authoring core, Phase-2C-6B2B Unity live prefab authoring core and Phase-2C-6C Unity source, compile and diagnostics core · all skills `DRAFT`
+Version `1.0.0-alpha.22` · Phase 2C-8 (Runtime / Deploy / Capture Core: the macOS player runtime adapter) on the frozen Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation, Phase-2C-1 Git provenance adapter, Phase-2C-2 media evidence adapters, Phase-2C-3 Android ADB adapter, Phase-2C-4 Blender DCC adapter, Phase-2C-5 Unity batch plane, Phase-2C-6A Unity live session foundation, Phase-2C-6B1 Unity live Scene authoring core, Phase-2C-6B2A Unity live asset authoring core, Phase-2C-6B2B Unity live prefab authoring core, Phase-2C-6C Unity source, compile and diagnostics core and Phase-2C-7 Unity Build Core · all skills `DRAFT`
 
 A model-independent production framework for AI-assisted professional game development. It makes AI agents work like a disciplined, multidisciplinary game studio — with clear creative authority, specialist ownership, independent quality gates and typed evidence — instead of like a generic software agent that calls a feature done once the tests pass.
 
@@ -39,7 +39,7 @@ schemas/       JSON Schemas for project config, task routing, gate, evidence and
 examples/      One minimal valid instance per schema (generic)
 adapters/      Agent adapter documentation (Claude Code, Codex) and later-phase boundaries
 tools/         Tool documentation (production validator, tool adapter foundation, Git, media, ADB, Blender and Unity adapters, Unity live plane, Scene, asset and prefab authoring, source synchronization, Unity Build Core)
-gpos/          Validator (2A), agent adapters (2B), tool adapter foundation (2C-0), Git adapter (2C-1), media adapters (2C-2), ADB adapter (2C-3), Blender adapter (2C-4), Unity adapter (2C-5 batch plane, 2C-6A live plane, 2C-6B1 Scene authoring, 2C-6B2A asset authoring, 2C-6B2B prefab authoring, 2C-6C source and compilation facts, 2C-7 build core)
+gpos/          Validator (2A), agent adapters (2B), tool adapter foundation (2C-0), Git adapter (2C-1), media adapters (2C-2), ADB adapter (2C-3), Blender adapter (2C-4), Unity adapter (2C-5 batch plane, 2C-6A live plane, 2C-6B1 Scene authoring, 2C-6B2A asset authoring, 2C-6B2B prefab authoring, 2C-6C source and compilation facts, 2C-7 build core), player runtime adapter (2C-8)
 tests/         Framework validation, production-validator tests, fixtures and synthetic bundles
 ```
 
@@ -135,7 +135,7 @@ Each game keeps its own authority in a `.game/` directory built from `templates/
 
 ## Roadmap
 
-**Current** (implemented; every phase through 2C-6C is frozen, 2C-7 is this release):
+**Current** (implemented; every phase through 2C-7 is frozen, 2C-8 is this release):
 
 | Area | Phases |
 |---|---|
@@ -148,12 +148,13 @@ Each game keeps its own authority in a `.game/` directory built from `templates/
 | Unity live plane: session, Scene authoring, asset authoring, prefab authoring | 2C-6A, 2C-6B1, 2C-6B2A, 2C-6B2B |
 | Unity source synchronization, compilation facts and diagnostics | 2C-6C |
 | Unity Build Core: macOS Standalone Player (Mono) from the existing configuration, workspace payload and build manifest ([tools/unity-build.md](tools/unity-build.md)) | 2C-7 |
+| Player runtime: launch one revalidated build under a native supervisor, status, exact-window screenshot and silent video capture, stop; macOS, `DIAGNOSTIC_RUNTIME` evidence ([tools/player-adapter.md](tools/player-adapter.md)) | 2C-8 |
 
 **Next critical path:**
 
-1. Runtime, deploy and capture loop.
-2. Real-project autonomous pilot and vertical-slice qualification.
-3. Pilot-driven hardening and specialist skill maturity (the pilot decides which skills are deeply exercised first).
+1. Real-project autonomous pilot and vertical-slice qualification.
+2. Pilot-driven hardening and specialist skill maturity (the pilot decides which skills are deeply exercised first).
+3. Windows production-host qualification of the player runtime (its own backend; `TARGET_RUNTIME` reconsidered there).
 
 **Deferred, on demand:** advanced Unity authoring surfaces — prefab apply, revert and unpack, Variants, nested-prefab authoring — are added when a pilot needs them; they do not block game-development readiness. Android builds (Gradle and network isolation, signing) need their own researched phase.
 
@@ -163,7 +164,7 @@ Adapter and tool boundaries: [adapters/README.md](adapters/README.md), [tools/RE
 
 ## Versioning
 
-Semantic Versioning, currently `1.0.0-alpha.21` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
+Semantic Versioning, currently `1.0.0-alpha.22` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
 
 | Bump | When |
 |---|---|

@@ -25,6 +25,14 @@ Guarantees:
 * the process runs in its own session, so a timeout terminates the whole process tree (SIGTERM,
   then SIGKILL after a short grace) instead of leaving orphans behind;
 * duration is measured with a monotonic clock, never by subtracting wall-clock timestamps.
+
+A detached process (alpha.22) is the one exception to "the boundary waits for the process": a
+`DetachedProcessSpec` is validated by exactly the same rules (absolute existing executable, no shell or
+interpreter program string, an argument vector, an explicit working directory inside the scopes, an explicit
+environment policy), started in its own session with stdin, stdout and stderr on /dev/null, and not waited
+for. A daemon thread reaps it, so a long-lived host never keeps a zombie. Only an execution whose capability
+is allowlisted for it can reach `spawn_detached` (see `ExecutionContext.spawn_detached`); no request field
+names an executable, an argument, a directory or an environment for it.
 """
 
 import os
@@ -251,6 +259,47 @@ def run_process(spec, scopes, clock=time.monotonic):
         timed_out=timed_out, terminated=terminated,
         duration_seconds=round(duration, 6), redactions=out_n + err_n,
         raw_stdout=raw_out, raw_stderr=raw_err)
+
+
+@dataclass(frozen=True)
+class DetachedProcessSpec:
+    """An already-authorized process that outlives the execution which starts it. No timeout and no output
+    capture: the boundary does not wait for it, and its standard streams are /dev/null."""
+    executable: str
+    argv: tuple = ()
+    cwd: str = None
+    env: EnvironmentPolicy = field(default_factory=EnvironmentPolicy)
+
+    def command_for_provenance(self):
+        argv, _ = redact_all([str(a) for a in self.argv])
+        return {"executable": redact(str(self.executable))[0], "argv": argv}
+
+
+@dataclass(frozen=True)
+class DetachedHandle:
+    pid: int
+
+
+def spawn_detached(spec, scopes):
+    """Start an authorized detached process and return its pid without waiting. Raises ProcessSpecError for a
+    spec the boundary refuses, or when the process cannot be started."""
+    if not isinstance(spec, DetachedProcessSpec):
+        raise ProcessSpecError("UNSAFE_PROCESS_SPEC", "a DetachedProcessSpec is required")
+    if not isinstance(spec.env, EnvironmentPolicy):
+        raise ProcessSpecError("UNSAFE_PROCESS_SPEC", "an explicit EnvironmentPolicy is required")
+    validate_spec(ToolProcessSpec(executable=spec.executable, argv=tuple(spec.argv), cwd=spec.cwd, env=spec.env),
+                  scopes)
+    try:
+        child = subprocess.Popen([spec.executable] + list(spec.argv), cwd=spec.cwd, env=spec.env.build(),
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 close_fds=True, start_new_session=True)
+    except (PermissionError, FileNotFoundError, IsADirectoryError, NotADirectoryError) as exc:
+        raise ProcessSpecError("TOOL_NOT_FOUND", f"{spec.executable}: {type(exc).__name__}: {exc}") from exc
+    except OSError as exc:
+        raise ProcessSpecError("EXECUTION_FAILED", f"{spec.executable}: the process could not be started "
+                                                   f"({type(exc).__name__}: {exc})") from exc
+    threading.Thread(target=child.wait, daemon=True).start()   # reap it whenever it ends; never wait here
+    return DetachedHandle(child.pid)
 
 
 def interpreter_path():

@@ -293,9 +293,9 @@ def real_run(case, kind, cap):
 # ---------------------------------------------------------------- A  registration
 
 class A_Registration(UnityCase):
-    def test_production_registry_is_exactly_the_six_adapters(self):
+    def test_production_registry_is_exactly_the_seven_adapters(self):
         registry = default_registry(FW)
-        self.assertEqual(registry.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "unity"])
+        self.assertEqual(registry.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "player", "unity"])
         with self.assertRaises(Exception):
             registry.register(SyntheticAdapter())
 
@@ -344,7 +344,7 @@ class B_NetworkSemantic(UnityCase):
         for phrase in ("originates no network operation", "Licensing Client", "default package service",
                        "project or test code", "PlayerConnection", "No operating-system network confinement"):
             self.assertIn(phrase, text)
-        self.assertEqual(REG["tool_adapter_policy"]["network_semantic_adapters"], {"TOOL_INHERENT": ["unity"]})
+        self.assertEqual(REG["tool_adapter_policy"]["network_semantic_adapters"], {"TOOL_INHERENT": ["unity", "player"]})
 
     def test_the_semantic_cannot_move_to_another_adapter(self):
         other = dataclasses.replace(ua.DESCRIPTOR, adapter_id="unity-live")
@@ -1054,7 +1054,7 @@ class Z_Cli(UnityCase):
     def test_list_and_describe(self):
         code, out = cli("list")
         self.assertEqual(code, 0)
-        self.assertIn("6 tool adapter", out)
+        self.assertIn("7 tool adapter", out)
         self.assertIn("unity 1.0.0 · ENGINE · 47 capabilities", out)
         code, out = cli("describe", "unity")
         self.assertEqual(code, 0)

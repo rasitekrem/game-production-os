@@ -1,0 +1,88 @@
+{
+ "bundle_digest": "317cfebe3fa64ea9b40b3904b364fbb9d4e21eae42ee1d9c2df76c4c536dac63",
+ "bundle_digest_algorithm": "gpos.player-helper.bundle/1",
+ "bundle_identifier": "com.gpos.player-helper",
+ "bundle_name": "GposPlayerHelper.app",
+ "directories": [
+  "Contents",
+  "Contents/MacOS",
+  "Contents/_CodeSignature"
+ ],
+ "executable": "Contents/MacOS/GposPlayerHelper",
+ "files": [
+  {
+   "mode": "0644",
+   "path": "Contents/Info.plist",
+   "sha256": "d99babe54b5a9f10c65828008eb1d0cb47988f05104a210872ccfe30aea6a309",
+   "size": 766
+  },
+  {
+   "mode": "0755",
+   "path": "Contents/MacOS/GposPlayerHelper",
+   "sha256": "bf8fa79f29c667f4b1785397ec6589a0ba388538df35309e30fa77bd5bc09310",
+   "size": 516048
+  },
+  {
+   "mode": "0644",
+   "path": "Contents/_CodeSignature/CodeResources",
+   "sha256": "6686de10a28a2fe11b36cbb86dcbacc827cfc4ea116b4dabf1845e5aee629e9b",
+   "size": 2200
+  }
+ ],
+ "helper_version": "1.0.0",
+ "modes": [
+  "supervise",
+  "shot",
+  "video"
+ ],
+ "schema": "gpos.player.helper-release/1",
+ "signature": {
+  "cdhashes": {
+   "arm64": "ec8633079488bd3989873a88a7de5a3325303679",
+   "x86_64": "16ad6a7c1fc166c3976763d7b7181488504c5c03"
+  },
+  "identifier": "com.gpos.player-helper",
+  "kind": "ADHOC"
+ },
+ "source": {
+  "digest": "5f8c5f28ccec2abf9d41f85aee4d453ffa9546a0bf58ae81f1d9565014d56398",
+  "digest_algorithm": "gpos.player-helper.source/1",
+  "files": [
+   {
+    "path": "helper_src/main.swift",
+    "sha256": "b2f891865d329667cf7537ab8da475aadebdabc330f7859762addaf136a671fe"
+   },
+   {
+    "path": "helper_src/Common.swift",
+    "sha256": "ab4a6bb16803974f53eb6550cbacc3eb29797f9882b131da1e603032725c6b76"
+   },
+   {
+    "path": "helper_src/Supervise.swift",
+    "sha256": "d2310cbebea9a055e9b644591625af2a687d047e94eaf3b1ae39d03f04a20d41"
+   },
+   {
+    "path": "helper_src/Capture.swift",
+    "sha256": "afa548feb4863b5adf101a5f061cb91a7a2cbb2d218b60440d4a52da302d4278"
+   },
+   {
+    "path": "helper_src/Info.plist",
+    "sha256": "d99babe54b5a9f10c65828008eb1d0cb47988f05104a210872ccfe30aea6a309"
+   }
+  ]
+ },
+ "toolchain": {
+  "commands": [
+   "swiftc -O -wmo -c -target <arch>-apple-macos14.0 -module-name GposPlayerHelper -o <arch>.o main.swift Common.swift Supervise.swift Capture.swift",
+   "ZERO_AR_DATE=1 swiftc -target <arch>-apple-macos14.0 -Xlinker -S -o <arch> <arch>.o",
+   "lipo -create arm64 x86_64 -output GposPlayerHelper",
+   "codesign -s - --force -i com.gpos.player-helper GposPlayerHelper.app"
+  ],
+  "minimum_macos": "14.0",
+  "sdk": "14.4",
+  "swiftc": "Apple Swift version 5.10 (swiftlang-5.10.0.13 clang-1500.3.9.4)",
+  "targets": [
+   "arm64-apple-macos14.0",
+   "x86_64-apple-macos14.0"
+  ]
+ }
+}

@@ -94,6 +94,8 @@ A capability is a declaration the foundation reads before it lets anything run:
 | `potential_evidence` | the `(evidence type, capture context)` pairs it may ever offer |
 | `timeout` | default and maximum |
 | `side_effect_scope` | what a `MUTATING` capability touches |
+| `detached_spawn` | alpha.22; default `false`: the execution may start one process that outlives it (below). Only capability ids the registry lists in `tool_adapter_policy.detached_spawn_capabilities` may declare it (alpha.22: `player.launch`), and only as a project-bound, single-writer `SESSION_OPEN` capability that requires its tool |
+| `host_location` | alpha.22; default none: one fixed location outside the project, named by a registry `tool_host_locations` key, that the foundation resolves and adds to this execution's scopes only. Only capability ids `tool_adapter_policy.host_location_capabilities` lists for that key may declare it (alpha.22: `USER_APPLICATIONS_GPOS` → `player.install-capture-helper`), and only as a project-bound `MUTATING` `DEPLOY` capability |
 
 ### Read-only vs mutating
 
@@ -159,6 +161,27 @@ Nothing collapses into one failure code, and the library status is independent o
 The raw bytes use exactly the same capture bound, so no second buffer exists. They are excluded from `repr`, and no `ToolResult`, provenance, diagnostic, CLI output or evidence ever carries them. An adapter that copies them into its own data still passes the redaction boundary below, and raw bytes offered as result data are refused.
 
 There is no generic shell execution tool exposed to agents, and the CLI has no `--command` option. The adapter owns what may be executed; the runner only executes a spec that is already authorized.
+
+### Detached processes (alpha.22)
+
+`ExecutionContext.run` waits for its process. `ExecutionContext.spawn_detached(DetachedProcessSpec)` is the one reviewed
+exception, for a process that must outlive the execution that starts it (the player adapter's supervisor):
+
+- the spec is validated by exactly the same rules as `run` — an absolute existing executable that is not a shell, no
+  program-string flag, an argument vector, an explicit working directory inside the scopes, an explicit environment
+  policy — and is started in its own session with stdin, stdout and stderr on `/dev/null`; the boundary does not wait for
+  it, and a daemon thread reaps it so a long-lived host never keeps a zombie;
+- it is reachable only from a capability that declares `detached_spawn` and that the registry allowlists, never in a dry
+  run, and at most once per execution (a failed start is not retried either);
+- no `ExecutionRequest` field names its executable, arguments, working directory or environment: the adapter builds the
+  spec from its own verified tool and its own workspace, and records it as the execution's command.
+
+### Host locations (alpha.22)
+
+A host location is a fixed directory outside every project. The foundation resolves `USER_APPLICATIONS_GPOS` to
+`<home>/Applications/GPOS`, the home directory taken from the account database (`pwd`), never from the `HOME` environment variable or a request,
+and adds it to the scopes of the one allowlisted capability's execution only (`ExecutionContext.host_location`). No other
+capability's scopes contain it.
 
 ### Environment policy
 
@@ -285,7 +308,7 @@ Every descriptor declares a network semantic from the registry's closed set (`to
 | Semantic | Meaning | Who may declare it | Disclosure |
 |---|---|---|---|
 | `FORBIDDEN` | the default: GPOS provides no networking capability and the adapter's tool performs no network activity the adapter enables | every adapter | none allowed |
-| `TOOL_INHERENT` | GPOS still provides no networking capability, takes no URL, host, endpoint, registry, proxy or credential and originates no network operation; the external tool's own process tree may use the network as a consequence of running (the tool, its vendor services, supported package resolution, project and test code it loads). No operating-system confinement is claimed | only the adapter ids `network_semantic_adapters` lists (Phase 2C-5: `unity`) | required: `AdapterDescriptor.network_disclosure`, non-empty statements |
+| `TOOL_INHERENT` | GPOS still provides no networking capability, takes no URL, host, endpoint, registry, proxy or credential and originates no network operation; the external tool's own process tree may use the network as a consequence of running (the tool, its vendor services, supported package resolution, project and test code it loads). No operating-system confinement is claimed | only the adapter ids `network_semantic_adapters` lists (Phase 2C-5: `unity`; alpha.22: `player`, whose launched game build may use the network as its own code decides) | required: `AdapterDescriptor.network_disclosure`, non-empty statements |
 
 Nothing else changed: the process boundary gained no socket, HTTP or URL facility, no execution request field or input names a network destination, and git, ffmpeg, ffprobe, adb and blender stay `FORBIDDEN` with no disclosure (tests pin each of them).
 

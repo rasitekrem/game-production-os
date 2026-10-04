@@ -101,3 +101,20 @@ def in_records(root, path):
 def runtime_dir(root, *parts):
     """A path inside the project's non-authoritative runtime area."""
     return Path(root).resolve().joinpath(*RUNTIME_DIR.split("/"), *parts)
+
+
+# alpha.22: fixed host locations outside any project (registry `tool_host_locations`). A capability names one by key
+# and only the capabilities the registry allowlists for it receive it; the location is resolved here from the
+# account database, never from the HOME environment variable or from a request.
+HOST_LOCATIONS = {"USER_APPLICATIONS_GPOS": ("Applications", "GPOS")}
+
+
+def account_home():
+    """The current user's home directory from the account database (pwd), not from the environment."""
+    import pwd
+    return Path(pwd.getpwuid(os.getuid()).pw_dir)
+
+
+def host_location(name):
+    """The absolute path of a registry host location, created by nothing here."""
+    return account_home().joinpath(*HOST_LOCATIONS[name])

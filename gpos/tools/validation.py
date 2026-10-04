@@ -18,7 +18,9 @@ The contradictions that matter most:
   registered into a production registry;
 * a lease mode that contradicts the declaration (Phase 2C-6A): a session mode on a STATELESS
   capability, a READ_ONLY capability claiming a writer lease to require a session, a session
-  capability with no project resource or with a dry run.
+  capability with no project resource or with a dry run;
+* a detached process or a host location (alpha.22) declared by a capability the registry does not
+  allowlist for it, or declared on a capability whose shape cannot carry it.
 """
 
 import re
@@ -137,6 +139,8 @@ def validate_capability(framework, adapter_id, cap):
     if cap.single_writer_required and cap.operation_class == "READ_ONLY":
         _problem(problems, adapter_id, f"{cap.id} is READ_ONLY and must not take a writer lease", cap.id)
     problems += lease_mode_problems(reg, adapter_id, cap)
+    problems += detached_spawn_problems(pol, adapter_id, cap)
+    problems += host_location_problems(reg, pol, adapter_id, cap)
     if cap.mutating and cap.side_effect_scope in (None, "", "NONE"):
         _problem(problems, adapter_id, f"{cap.id} is MUTATING and must state its side_effect_scope", cap.id)
     if not cap.mutating and cap.side_effect_scope not in (None, "", "NONE"):
@@ -198,4 +202,41 @@ def lease_mode_problems(reg, adapter_id, cap):
     if mode == "SESSION_REQUIRED" and cap.mutating != cap.single_writer_required:
         _problem(out, adapter_id, f"{cap.id} requires a session: a MUTATING one declares the single writer the "
                                   f"session lease provides, a READ_ONLY one declares none", cap.id)
+    return out
+
+
+def detached_spawn_problems(pol, adapter_id, cap):
+    """A capability may start a detached process (alpha.22) only when the registry allowlists its id, and only as a
+    session-opening, single-writer, project-bound execution of its adapter's verified tool."""
+    out = []
+    if not isinstance(cap.detached_spawn, bool):
+        _problem(out, adapter_id, f"{cap.id} detached_spawn must be a boolean", cap.id)
+        return out
+    if not cap.detached_spawn:
+        return out
+    if cap.id not in pol["detached_spawn_capabilities"]:
+        _problem(out, adapter_id, f"{cap.id} declares a detached process, which only {pol['detached_spawn_capabilities']} "
+                                  f"may start (registry tool_adapter_policy detached_spawn_capabilities)", cap.id)
+    if not (cap.effective_lease_mode == "SESSION_OPEN" and cap.single_writer_required and cap.requires_project
+            and cap.requires_tool):
+        _problem(out, adapter_id, f"{cap.id} declares a detached process, so it must open a session with a single "
+                                  f"writer, be project-bound and require its adapter's tool", cap.id)
+    return out
+
+
+def host_location_problems(reg, pol, adapter_id, cap):
+    """A host location (alpha.22) is one registry location outside the project, usable only by the capability ids the
+    registry allowlists for it, and only by a project-bound DEPLOY capability that declares itself MUTATING."""
+    out, name = [], cap.host_location
+    if name is None:
+        return out
+    if name not in reg["tool_host_locations"]:
+        _problem(out, adapter_id, f"host_location {name!r} is not in registry tool_host_locations", cap.id)
+        return out
+    if cap.id not in pol["host_location_capabilities"].get(name, []):
+        _problem(out, adapter_id, f"host_location {name!r} is allowlisted only for "
+                                  f"{pol['host_location_capabilities'].get(name, [])}", cap.id)
+    if not (cap.category == "DEPLOY" and cap.mutating and cap.requires_project):
+        _problem(out, adapter_id, f"{cap.id} names a host location, so it must be a project-bound MUTATING DEPLOY "
+                                  f"capability", cap.id)
     return out

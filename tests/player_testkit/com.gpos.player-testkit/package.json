@@ -1,0 +1,7 @@
+{
+  "name": "com.gpos.player-testkit",
+  "version": "0.0.0",
+  "displayName": "GPOS Player Testkit (TEST ONLY)",
+  "description": "TEST ONLY. Never installed by GPOS. Plays the Human who sets up the synthetic QualGame scene and player settings in disposable projects for tests/test_player.py.",
+  "unity": "6000.5"
+}

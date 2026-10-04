@@ -26,6 +26,12 @@ It defaults to True, so every earlier capability keeps its frozen behaviour. A c
 (a build plane whose workspace is the build) declares False, and the foundation refuses a request that names one
 before any path is resolved or created.
 
+`detached_spawn` and `host_location` (alpha.22) default to False and None, so every earlier capability keeps its
+frozen behaviour. `detached_spawn` lets one execution start exactly one process that outlives it, through
+`ExecutionContext.spawn_detached`; `host_location` names one fixed location outside the project (registry
+`tool_host_locations`) that the foundation resolves and adds to that execution's scopes. Each is usable only by the
+capability ids the registry `tool_adapter_policy` allowlists for it, and neither is reachable from a request.
+
 `execution_context` is the capture context this capability's execution actually observes (an offline
 media pass observes OFFLINE_ANALYSIS, a device capture observes TARGET_RUNTIME). `potential_evidence`
 lists the (evidence type, capture context) pairs it may ever produce; each pair is checked against
@@ -81,6 +87,8 @@ class Capability:
     notes: tuple = ()
     lease_mode: str = None               # registry tool_lease_modes; None derives EXECUTION or NONE
     caller_output_dir_allowed: bool = True   # False: the foundation-owned workspace only; output_dir is refused
+    detached_spawn: bool = False         # alpha.22: may start one detached process (registry-allowlisted capabilities only)
+    host_location: str = None            # alpha.22: one registry host location added to this execution's scopes
 
     @property
     def mutating(self):
@@ -122,4 +130,5 @@ class Capability:
                 "resource_from_request": self.resource_from_request,
                 "lease_mode": self.effective_lease_mode,
                 "caller_output_dir_allowed": self.caller_output_dir_allowed,
+                "detached_spawn": self.detached_spawn, "host_location": self.host_location,
                 "notes": list(self.notes)}

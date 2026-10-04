@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -199,12 +200,12 @@ class A01_Registry(TmpCase):
         """Phase 2C-4 boundary: the production adapters are ADB, Blender, FFmpeg, ffprobe and Git; TEST_ONLY never
         enters."""
         r = default_registry(FW)
-        self.assertEqual(r.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "unity"])
+        self.assertEqual(r.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "player", "unity"])
         self.assertFalse(r.allow_test_only)
         with self.assertRaises(AdapterRegistrationError) as cm:
             r.register(SyntheticAdapter())
         self.assertIn("TEST_ONLY", str(cm.exception))
-        self.assertEqual(r.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "unity"])
+        self.assertEqual(r.adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "player", "unity"])
 
     def test_register_valid_adapter(self):
         r = registry()
@@ -1294,9 +1295,10 @@ class K01_Determinism(TmpCase):
 
 class L01_Boundaries(TmpCase):
     def test_only_the_declared_production_adapters_exist(self):
-        """Phase 2C-5 boundary: exactly six production adapter packages (adb/, blender/, ffmpeg/, ffprobe/, git/,
-        unity/) and one shared media-constants module beside the foundation."""
-        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "unity"])
+        """Phase 2C-8 boundary: exactly seven production adapter packages (adb/, blender/, ffmpeg/, ffprobe/, git/,
+        player/, unity/) and one shared media-constants module beside the foundation."""
+        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "player",
+                                                              "unity"])
         modules = sorted(p.relative_to(ROOT / "gpos" / "tools").as_posix()
                          for p in (ROOT / "gpos" / "tools").rglob("*.py"))
         self.assertEqual(modules, ["__init__.py", "__main__.py", "adb/__init__.py", "adb/adapter.py", "adb/parsers.py",
@@ -1306,7 +1308,10 @@ class L01_Boundaries(TmpCase):
                                    "ffmpeg/__init__.py", "ffmpeg/adapter.py",
                                    "ffprobe/__init__.py", "ffprobe/adapter.py", "ffprobe/parser.py",
                                    "git/__init__.py", "git/adapter.py", "git/status.py", "leases.py",
-                                   "media_common.py", "model.py", "paths.py", "process.py", "provenance.py",
+                                   "media_common.py", "model.py", "paths.py", "player/__init__.py", "player/adapter.py",
+                                   "player/appkit.py", "player/capture.py", "player/contract.py", "player/helper.py",
+                                   "player/invocation.py", "player/logs.py", "player/macos.py", "player/resolver.py",
+                                   "player/runtime.py", "process.py", "provenance.py",
                                    "redaction.py", "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
                                    "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/assets.py", "unity/authoring.py",
                                    "unity/bridge_install.py", "unity/build.py",
@@ -1402,8 +1407,8 @@ class M01_Cli(TmpCase):
     def test_list_shows_only_production_adapters_without_test_adapters(self):
         code, out = self.cli("list")
         self.assertEqual(code, 0)
-        self.assertIn("6 tool adapter", out)
-        for name in ("adb ", "blender ", "ffmpeg ", "ffprobe ", "git "):
+        self.assertIn("7 tool adapter", out)
+        for name in ("adb ", "blender ", "ffmpeg ", "ffprobe ", "git ", "player "):
             self.assertIn(name, out)
         self.assertNotIn("synthetic", out)
         self.assertNotIn("TEST_ONLY", out)
@@ -2062,7 +2067,8 @@ class N09_AcceptedArchitectureUnchanged(TmpCase):
         for name in ("adb", "blender", "ffmpeg", "ffprobe", "git", "unity"):
             self.assertNotIn(name, BACKENDS)
             self.assertNotIn(name, REG["adapter_ids"])
-        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "unity"])
+        self.assertEqual(default_registry(FW).adapter_ids(), ["adb", "blender", "ffmpeg", "ffprobe", "git", "player",
+                                                              "unity"])
 
     def test_the_frozen_prohibitions_hold(self):
         self.assertEqual(POLICY["forbidden_evidence_types"], ["HUMAN_EVIDENCE"])
@@ -2323,7 +2329,8 @@ class P01_RawCapture(TmpCase):
 # ---------------------------------------------------------------- Q  network semantics (Phase 2C-5)
 
 class Q01_NetworkSemantics(unittest.TestCase):
-    """FORBIDDEN stays the default; TOOL_INHERENT is a closed, allowlisted, disclosed exception (Unity only)."""
+    """FORBIDDEN stays the default; TOOL_INHERENT is a closed, allowlisted, disclosed exception (Unity, and the player
+    adapter since alpha.22)."""
 
     def unity_descriptor(self, **changes):
         from gpos.tools.unity import DESCRIPTOR
@@ -2335,14 +2342,14 @@ class Q01_NetworkSemantics(unittest.TestCase):
     def test_the_registry_vocabulary(self):
         self.assertEqual(POLICY["network"], "FORBIDDEN")
         self.assertEqual(POLICY["network_semantics"], ["FORBIDDEN", "TOOL_INHERENT"])
-        self.assertEqual(POLICY["network_semantic_adapters"], {"TOOL_INHERENT": ["unity"]})
+        self.assertEqual(POLICY["network_semantic_adapters"], {"TOOL_INHERENT": ["unity", "player"]})
 
     def test_every_other_production_adapter_is_forbidden_with_no_disclosure(self):
         reg = default_registry(FW)
         for adapter in (reg.get(a) for a in reg.adapter_ids()):
             d = adapter.descriptor
             with self.subTest(adapter=d.adapter_id):
-                if d.adapter_id == "unity":
+                if d.adapter_id in ("unity", "player"):
                     self.assertEqual(d.network, "TOOL_INHERENT")
                     self.assertTrue(d.network_disclosure)
                 else:
@@ -2356,8 +2363,8 @@ class Q01_NetworkSemantics(unittest.TestCase):
     def test_tool_inherent_is_refused_for_any_other_adapter(self):
         for aid in ("git", "blender", "adb", "ffmpeg", "ffprobe", "unity-2", "synthetic"):
             with self.subTest(adapter=aid):
-                self.assertIn("allowlisted only for ['unity']", self.problems(self.unity_descriptor(adapter_id=aid),
-                                                                             allow_test_only=True))
+                self.assertIn("allowlisted only for ['unity', 'player']",
+                              self.problems(self.unity_descriptor(adapter_id=aid), allow_test_only=True))
 
     def test_disclosure_rules_fail_closed(self):
         self.assertIn("requires a network_disclosure", self.problems(self.unity_descriptor(network_disclosure=())))
@@ -2902,6 +2909,108 @@ class T02_CallerOutputDir(TmpCase):
                       " ".join(d.message for d in tval.validate_capability(FW, "synthetic", unbound)))
         self.assertIn("must be a boolean", " ".join(d.message for d in tval.validate_capability(
             FW, "synthetic", capability(id="synthetic.odd", caller_output_dir_allowed="no"))))
+
+class U01_DetachedSpawnAndHostLocation(TmpCase):
+    """alpha.22: one gated detached process per allowlisted execution, and one allowlisted host location; neither is
+    reachable from a request and neither changes any earlier capability."""
+
+    def ctx(self, cap, allowed=True, dry_run=False, scopes=None):
+        return texec.ExecutionContext(request=None, capability=cap, project_root=str(self.tmp), workspace=str(self.tmp),
+                                      scopes=tuple(scopes or (str(self.tmp.resolve()),)), clock=texec.Clock(),
+                                      probe=None, dry_run=dry_run, timeout=10.0, detached_allowed=allowed)
+
+    def spec(self, **kw):
+        base = dict(executable="/bin/sleep", argv=("0.3",), cwd=str(self.tmp.resolve()),
+                    env=tproc.EnvironmentPolicy(inherit=()))
+        base.update(kw)
+        return tproc.DetachedProcessSpec(**base)
+
+    def test_the_boundary_rules_apply(self):
+        scopes = [str(self.tmp.resolve())]
+        bad = {"relative": self.spec(executable="sleep"), "shell": self.spec(executable="/bin/sh", argv=("x",)),
+               "program string": self.spec(executable="/usr/bin/env", argv=("-c", "x")),
+               "outside": self.spec(cwd="/"), "missing": self.spec(executable="/nonexistent/x"),
+               "no policy": self.spec(env=None)}
+        for name, spec in bad.items():
+            with self.subTest(case=name):
+                with self.assertRaises(tproc.ProcessSpecError):
+                    tproc.spawn_detached(spec, scopes)
+        with self.assertRaises(tproc.ProcessSpecError):
+            tproc.spawn_detached(tproc.ToolProcessSpec("/bin/sleep", ("1",), str(self.tmp)), scopes)
+
+    def test_a_detached_process_is_not_waited_for_is_its_own_session_and_is_reaped(self):
+        import time as _t
+        started = _t.monotonic()
+        handle = tproc.spawn_detached(self.spec(), [str(self.tmp.resolve())])
+        self.assertLess(_t.monotonic() - started, 0.25)
+        self.assertNotEqual(os.getsid(handle.pid), os.getsid(0))
+        _t.sleep(1.0)
+        with self.assertRaises(ProcessLookupError):   # a zombie would still answer signal 0
+            os.kill(handle.pid, 0)
+
+    def test_the_context_gate(self):
+        allowed = capability(id="synthetic.spawn", detached_spawn=True, requires_tool=False)
+        with self.assertRaises(AssertionError):
+            self.ctx(capability(), allowed=True).spawn_detached(self.spec())
+        with self.assertRaises(AssertionError):
+            self.ctx(allowed, allowed=False).spawn_detached(self.spec())
+        with self.assertRaises(AssertionError):
+            self.ctx(allowed, dry_run=True).spawn_detached(self.spec())
+        context = self.ctx(allowed)
+        context.spawn_detached(self.spec(argv=("0.1",)))
+        with self.assertRaises(AssertionError):
+            context.spawn_detached(self.spec(argv=("0.1",)))   # at most one per execution
+        failing = self.ctx(allowed)
+        with self.assertRaises(tproc.ProcessSpecError):
+            failing.spawn_detached(self.spec(executable="/nonexistent/x"))
+        with self.assertRaises(AssertionError):
+            failing.spawn_detached(self.spec())                # a failed start is not retried either
+
+    def test_no_request_field_names_a_process(self):
+        fields = set(texec.ExecutionRequest.__dataclass_fields__)
+        for name in ("executable", "argv", "args", "command", "cwd", "env", "environment", "detached"):
+            self.assertNotIn(name, fields)
+
+    def test_registration_rules(self):
+        problems = lambda cap: " ".join(d.message for d in tval.validate_capability(FW, "synthetic", cap))
+        self.assertIn("only ['player.launch'] may start", problems(capability(id="synthetic.spawn", detached_spawn=True)))
+        self.assertIn("must be a boolean", problems(capability(id="synthetic.spawn", detached_spawn="yes")))
+        shaped = capability(id="player.launch", detached_spawn=True, requires_tool=True)
+        self.assertIn("must open a session", problems(shaped))
+        self.assertIn("not in registry tool_host_locations", problems(capability(host_location="ELSEWHERE")))
+        self.assertIn("allowlisted only for", problems(capability(id="synthetic.inst", host_location="USER_APPLICATIONS_GPOS")))
+        wrong = capability(id="player.install-capture-helper", host_location="USER_APPLICATIONS_GPOS")
+        self.assertIn("project-bound MUTATING DEPLOY", problems(wrong))
+        for cap in SyntheticAdapter().capabilities():
+            self.assertEqual((cap.detached_spawn, cap.host_location), (False, None), cap.id)
+            self.assertEqual((cap.to_dict()["detached_spawn"], cap.to_dict()["host_location"]), (False, None))
+
+    def test_the_host_location_comes_from_the_account_database(self):
+        import pwd
+        expected = Path(pwd.getpwuid(os.getuid()).pw_dir) / "Applications" / "GPOS"
+        with mock.patch.dict(os.environ, {"HOME": str(self.tmp / "fake-home")}):
+            self.assertEqual(tpaths.host_location("USER_APPLICATIONS_GPOS"), expected)
+        from gpos.tools.player import adapter as player_adapter
+        install = next(cap for cap in player_adapter.CAPABILITIES if cap.host_location)
+        self.assertEqual(texec._host_location(FW, install), str(expected))
+        self.assertIsNone(texec._host_location(FW, capability()))
+        forged = capability(id="synthetic.inst", host_location="USER_APPLICATIONS_GPOS")
+        with self.assertRaises(AssertionError):
+            texec._host_location(FW, forged)
+
+    def test_only_the_install_execution_gets_the_location_in_scope(self):
+        from gpos.tools.player import adapter as player_adapter
+        reg = default_registry(FW)
+        player = reg.get("player")
+        p = self.project()
+        for cap in player_adapter.CAPABILITIES:
+            request = ExecutionRequest(adapter_id="player", capability_id=cap.id, subject=Subject("TASK", "TASK-1"),
+                                       project_root=str(p), dry_run=True, request_id="req-scope")
+            scopes, _, _ = texec._scopes_and_workspace(player, cap, request, p.resolve(), texec._host_location(FW, cap))
+            located = [s for s in scopes if str(s).endswith("Applications/GPOS")]
+            with self.subTest(cap=cap.id):
+                self.assertEqual(len(located), 1 if cap.id == "player.install-capture-helper" else 0)
+
 
 if __name__ == "__main__":
     result = unittest.main(verbosity=1, exit=False).result

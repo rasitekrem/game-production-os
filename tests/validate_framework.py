@@ -46,7 +46,7 @@ GATES = REGISTRY["gates"]
 SUBJECTIVE_DISCIPLINE_GATES = sorted(g for g, d in GATES.items() if d["subjective"] and g != "HUMAN_REVIEW")
 TRIGGERS = list(REGISTRY["mandatory_human_review_triggers"])
 CONDITIONS = list(REGISTRY["evidence_conditions"])
-VERSION = "1.0.0-alpha.21"
+VERSION = "1.0.0-alpha.22"
 GATE_OWNERS = [s for s in REGISTRY["skills"] if any(s in d["permitted_owners"] for d in GATES.values())] + ["HUMAN"]
 
 
@@ -2667,6 +2667,15 @@ def validator_vocabulary():
     # Phase 2C-7: the build entry's closed configuration rules and response outcomes
     from gpos.tools.unity import build as unity_build
     words |= set(unity_build.RULES) | {o for outcomes in unity_build.OUTCOMES.values() for o in outcomes}
+    # Phase 2C-8: the player runtime contract's classes, phase, resource and invocation kinds, the helper's capture
+    # rules and the names of the helper's fixed environment
+    from gpos.tools.player import adapter as player_adapter
+    from gpos.tools.player import contract as player_contract
+    from gpos.tools.player import invocation as player_invocation
+    words |= {v for k, v in vars(player_contract).items()
+              if k.isupper() and isinstance(v, str) and re.fullmatch(r"[A-Z][A-Z0-9_]*", v)}
+    words |= set(player_adapter.CAPTURE_RULES) | set(player_invocation.ENVIRONMENT.inherit)
+    words |= {name for name, _ in player_invocation.ENVIRONMENT.overrides}
     return words
 
 

@@ -300,6 +300,41 @@ The real groups use disposable projects in lab-owned batch-mode Editors; a test-
 
 No real test builds for Android or touches the user's Gradle or Android state. `test_unity_live_bridge_core.py` also runs `unity_live_bridge_core/BuildCoreTests.cs` (with the canonical-token golden vector shared with Python). `mutate_unity_build.py` mutates the GPOS side, the foundation's request-id guard, the build entry's boundaries and the build rules against the fast suite, the foundation tests and the core tests; with `--real`, it mutates the entry's Editor-side behaviour against RB1 and RB2.
 
+## Player runtime tests
+
+```bash
+python3 tests/test_player.py
+python3 tests/test_player_helper.py
+python3 tests/test_player_real.py
+GPOS_PLAYER_CAPTURE_DENIED=1 python3 tests/test_player_real.py RC8_PermissionDenied   # once, before the Human grant
+GPOS_REAL_CAPTURE=1 python3 tests/test_player_real.py                               # after the Human grant
+python3 tests/build_player_helper.py --check
+python3 tests/mutate_player.py
+python3 tests/mutate_player_helper.py
+```
+
+Tests for Phase 2C-8, the `player` adapter. `test_player.py` needs no Unity and no privacy permission: `player_fakes.py` stands in for libproc, AppKit, the helper's supervise mode (speaking the exact runtime-file protocol) and its capture modes, through the real foundation:
+
+- A: the descriptor, the six declarations, the production registry, the registry allowlists and the permanent external-invocation table; the single-invocation guard.
+- B: structural pins — only `invocation.py` starts a process, no other process mechanism, the ctypes library allowlist, exactly three helper modes, no permission request or other privilege anywhere, the preflight before ScreenCaptureKit, a portable contract.
+- C: the release manifest, its source digest and the EXACT / ABSENT / UNTRUSTED classification.
+- D: the install — the account-database home, EXACT no-op, UNTRUSTED never touched (an empty directory included), raced-in destinations, `renamex_np(RENAME_EXCL)` against every existing kind, a staged copy that does not verify, staging leftovers, dry run, no caller destination.
+- E: write-once runtime files, links, bounds and strict shapes; the runtime binding bound to its session.
+- F: build resolution, tampering, a re-serialised manifest, a linked workspace.
+- G: the launch sequence and every refusal, abandoned and unresolved launches, a foreign instance before and during the launch, drift during the launch.
+- H: status with zero processes and no writes; helper facts, gone, reused, moved, drift, unresolved; owners.
+- I: screenshot and video through exactly one `/usr/bin/open` with the exact arguments; duration rules; no caller target; the restated build; the permission refusal inside the one invocation; the helper's identity before and after; every helper failure; media rules; trust preconditions.
+- J: stop through the supervisor, the fallback (with the helper install gone), the proven kill, unproven and moved executables, drift, log evidence rules, owners and recovery, unresolved launches, the classification table.
+- K: the player log sanitizer, including the measured `Application Support` fragment and its control.
+- L: the PNG and MP4 validators.
+- N: the network semantic.
+
+`test_player_helper.py` runs the real native helper (a fresh copy of the release; the granted install is never touched) without Unity or privacy permission: RH0 the reproducible release, RH1 supervise against a compiled stub Player (argv, environment, working directory, process group, commit, stop intents, abort, the commit deadline, exit codes, the kill of its own child), RH2 every request refusal, RH3 the three-mode table and capture modes that refuse outside LaunchServices, RH4 a 16-way concurrent install on the real filesystem, RH5 the in-process macOS backend against real processes.
+
+`test_player_real.py` builds one QualGame project (`player_testkit/`) with the alpha.21 qualified workflow and runs RP1–RP9 (lifecycle, hang, exits and crash, foreign instances, drift, crash points, the fallback, the helper moved or deleted after launch, persistence) against a scratch helper install; with `GPOS_REAL_CAPTURE=1` and the Human-granted helper, RC1–RC7 (screenshots and downscaling, videos, interrupted videos, a hidden window, privacy controls, the visual persistence proof, the FFprobe/FFmpeg composition); RC8 is the one permission-denied qualification before the grant. The game's own side-effect files are listed at the end of a run, never deleted.
+
+`mutate_player.py` mutates the adapter, the backends, the install, the sanitizer, the validators and (statically) the helper source against the fast suite and RH4/RH5; `mutate_player_helper.py` mutates the helper's supervise and request-validation code, rebuilds the helper in the copy and runs RH1–RH3. The foundation's detached-process and host-location guarantees are mutated by `mutate_tools.py`.
+
 ## Fixtures
 
 **Schema fixtures** — `fixtures/valid/*.json` and `fixtures/invalid/*.json` are patches applied to a valid example:

@@ -1,7 +1,7 @@
 ---
 name: game-engineering
 maturity: DRAFT
-gpos_version: 1.0.0-alpha.21
+gpos_version: 1.0.0-alpha.22
 may_own_gates: []
 ---
 

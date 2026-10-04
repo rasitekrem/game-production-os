@@ -194,10 +194,30 @@ class ExecutionContext:
     lease: lease_mod.Lease = None
     session: dict = None              # SESSION_REQUIRED / SESSION_CLOSE: the verified SESSION lease record
     sessions: object = None           # a SessionControl for a session-mode capability
+    host_location: str = None         # alpha.22: the resolved registry host location this capability may use
+    detached_allowed: bool = False    # alpha.22: the registry allowlists this capability for one detached process
+    _detached: list = field(default_factory=list, repr=False, compare=False)
 
     def run(self, spec):
         """Execute an authorized process spec under the foundation's boundary rules."""
         return proc.run_process(spec, self.scopes, self.clock.monotonic)
+
+    def spawn_detached(self, spec):
+        """Start at most one authorized detached process for this execution (alpha.22) and return its handle.
+
+        Only a capability that declares `detached_spawn` and that the registry allowlists reaches this, never in a dry
+        run, and at most once per execution. The spec is validated by the same boundary rules as `run`; nothing in a
+        request can name its executable, arguments, directory or environment."""
+        if not (self.capability.detached_spawn and self.detached_allowed):
+            raise AssertionError(f"{self.capability.id} is not allowlisted for a detached process")
+        if self.dry_run:
+            raise AssertionError("a dry run starts no process")
+        if self._detached:
+            raise AssertionError("an execution starts at most one detached process")
+        self._detached.append(None)   # reserved before the attempt: a failed start is not retried either
+        handle = proc.spawn_detached(spec, self.scopes)
+        self._detached[0] = handle
+        return handle
 
     def artifact_path(self, *parts):
         """A path inside this execution's workspace. Nothing else is a legal artifact location."""
@@ -509,7 +529,8 @@ def execute(registry, request, clock=None, now=None):
         probe = registry.state(request.adapter_id).probe
 
     root = Path(request.project_root).resolve() if request.project_root else None
-    scopes, workspace, problems = _scopes_and_workspace(adapter, capability, request, root)
+    scopes, workspace, problems = _scopes_and_workspace(adapter, capability, request, root,
+                                                        _host_location(framework, capability))
     if problems:
         return finish(dg.INVALID_REQUEST, problems)
 
@@ -533,10 +554,13 @@ def execute(registry, request, clock=None, now=None):
             return finish(dg.CONFLICT, problems)
 
     timeout, _ = capability.timeout.resolve(request.timeout)
+    policy = framework.registry["tool_adapter_policy"]
     context = ExecutionContext(request=request, capability=capability, project_root=str(root) if root else None,
                                workspace=str(workspace), scopes=tuple(str(s) for s in scopes), clock=clock,
                                probe=probe, dry_run=bool(request.dry_run), timeout=timeout,
-                               input_artifacts=tuple(inputs), lease=lease, session=session, sessions=sessions)
+                               input_artifacts=tuple(inputs), lease=lease, session=session, sessions=sessions,
+                               host_location=_host_location(framework, capability),
+                               detached_allowed=capability.id in policy["detached_spawn_capabilities"])
     try:
         outcome = adapter.execute(request, context)
         if not isinstance(outcome, AdapterOutcome):
@@ -671,7 +695,20 @@ def _release_and_finish(root, lease, finish, status, diagnostics, adapter_id=Non
     return finish(status, list(diagnostics) + _release(root, lease, adapter_id, capability_id))
 
 
-def _scopes_and_workspace(adapter, capability, request, root):
+def _host_location(framework, capability):
+    """The resolved host location (alpha.22) a capability may use, or None. Only a capability the registry allowlists
+    for exactly that location receives it; registration already refuses anything else, and this re-checks."""
+    name = capability.host_location
+    if name is None:
+        return None
+    reg = framework.registry
+    allowed = reg["tool_adapter_policy"]["host_location_capabilities"].get(name, [])
+    if name not in reg["tool_host_locations"] or capability.id not in allowed:
+        raise AssertionError(f"{capability.id} is not allowlisted for host location {name!r}")
+    return str(tp.host_location(name))
+
+
+def _scopes_and_workspace(adapter, capability, request, root, host_location=None):
     """The permitted filesystem scopes and the directory artifacts may be written into.
 
     The default is project-root bounded: a project-bound capability may only touch the project tree,
@@ -688,6 +725,8 @@ def _scopes_and_workspace(adapter, capability, request, root):
     """
     adapter_id, cap_id = request.adapter_id, request.capability_id
     scopes = [Path(s).resolve() for s in adapter.descriptor.filesystem_scopes]
+    if host_location is not None:   # alpha.22: one allowlisted location outside the project, for this execution only
+        scopes.append(tp.resolve_without_creating(host_location))
     if root is not None:
         scopes.insert(0, root)
     if request.output_dir is not None:

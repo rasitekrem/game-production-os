@@ -1369,20 +1369,21 @@ class E01_NoReferenceImport(unittest.TestCase):
         # Claude Code and Codex. Phase 2C-2: the two production media tool adapters, their shared constants and
         # the production registry that registers them legitimately name FFmpeg. Phase 2C-3: the ADB adapter and
         # the registry legitimately name adb. Phase 2C-4: the Blender DCC adapter and the registry legitimately
-        # name Blender. Phase 2C-5: the Unity engine adapter and the registry legitimately name Unity. Nothing
-        # else in gpos/ names any of them.)
+        # name Blender. Phase 2C-5: the Unity engine adapter and the registry legitimately name Unity. Phase 2C-8:
+        # the player adapter resolves alpha.21 Unity builds and states that FFprobe and FFmpeg never run inside it,
+        # so gpos/tools/player/ legitimately names Unity and FFmpeg. Nothing else in gpos/ names any of them.)
         media = {"gpos/tools/media_common.py", "gpos/tools/registry.py"}
         for p in (ROOT / "gpos").rglob("*.py"):
             text = p.read_text().lower()
             rel = p.relative_to(ROOT).as_posix()
             words = ("github",)
-            if not (rel == "gpos/tools/registry.py" or rel.startswith("gpos/tools/unity/")):
+            if not (rel == "gpos/tools/registry.py" or rel.startswith(("gpos/tools/unity/", "gpos/tools/player/"))):
                 words += ("unity",)
             if not (rel == "gpos/tools/registry.py" or rel.startswith("gpos/tools/blender/")):
                 words += ("blender",)
             if not (rel == "gpos/tools/registry.py" or rel.startswith("gpos/tools/adb/")):
                 words += ("adb ",)
-            if not (rel in media or rel.startswith(("gpos/tools/ffmpeg/", "gpos/tools/ffprobe/"))):
+            if not (rel in media or rel.startswith(("gpos/tools/ffmpeg/", "gpos/tools/ffprobe/", "gpos/tools/player/"))):
                 words += ("ffmpeg",)
             if "adapters" not in p.relative_to(ROOT).parts:
                 words += ("anthropic", "openai", "codex")

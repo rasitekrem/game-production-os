@@ -52,7 +52,7 @@ MUTATIONS = [
     ("unity declares FORBIDDEN (undisclosed vendor traffic)", [
         (ADAPTER, 'network="TOOL_INHERENT", network_disclosure=NETWORK_DISCLOSURE,', 'network="FORBIDDEN",')]),
     ("TOOL_INHERENT allowlist widened", [
-        (POLICY, '"TOOL_INHERENT": [\n        "unity"\n      ]', '"TOOL_INHERENT": [\n        "unity",\n        "unity-live"\n      ]')]),
+        (POLICY, '"TOOL_INHERENT": [\n        "unity",\n        "player"\n      ]', '"TOOL_INHERENT": [\n        "unity",\n        "player",\n        "unity-live"\n      ]')]),
     ("validation ignores the TOOL_INHERENT allowlist", [
         (VALIDATION, '    elif aid not in pol["network_semantic_adapters"].get(net, []):\n', "    elif False:\n")]),
     ("validation no longer requires a network disclosure", [

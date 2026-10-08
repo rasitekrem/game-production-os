@@ -84,6 +84,21 @@ def write_tool(path, body):
     return exe
 
 
+def remove_tree(path):
+    """Remove a test directory on every host. On Windows Git writes its object files read-only, and
+    `shutil.rmtree(path, ignore_errors=True)` silently leaves such files (and their directories) behind; here a
+    read-only entry is made writable and removed again. Best effort, like the call it replaces."""
+    def writable_then_retry(function, entry, _):
+        try:
+            os.chmod(entry, 0o700)
+            function(entry)
+        except OSError:
+            pass
+
+    if os.path.lexists(path):
+        shutil.rmtree(path, **{"onexc" if sys.version_info >= (3, 12) else "onerror": writable_then_retry})
+
+
 def rewrite(tool, body):
     """Replace the body of a tool write_tool made, keeping the executable."""
     tool = Path(tool)

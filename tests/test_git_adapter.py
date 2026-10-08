@@ -130,7 +130,7 @@ class Recorder:
 class GitCase(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="gpos-git-")).resolve()
-        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(windows_standin.remove_tree, self.tmp)
 
     # ------------------------------------------------------------ fixtures
 
@@ -1203,7 +1203,7 @@ if __name__ == "__main__":
         print("GIT_RUNTIME_UNAVAILABLE_FOR_PHASE2C1: these are real integration tests and require Git")
         sys.exit(1)
     result = unittest.main(verbosity=1, exit=False).result
-    shutil.rmtree(_HOME, ignore_errors=True)
+    windows_standin.remove_tree(_HOME)
     version = subprocess.run([GIT, "--version"], capture_output=True, text=True).stdout.strip()
     print(f"GPOS Git provenance adapter tests (real {version})")
     sys.exit(0 if result.wasSuccessful() else 1)

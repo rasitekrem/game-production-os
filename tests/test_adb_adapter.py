@@ -254,11 +254,13 @@ def setUpModule():
 
 
 def tearDownModule():
-    if SERVER_CONTACTS:
-        raise AssertionError(f"an offline run attempted real adb server commands: {SERVER_CONTACTS}")
-    if MATRIX.project is not None:
-        shutil.rmtree(MATRIX.project.parent, ignore_errors=True)
-    shutil.rmtree(_HOME, ignore_errors=True)
+    try:
+        if SERVER_CONTACTS:
+            raise AssertionError(f"an offline run attempted real adb server commands: {SERVER_CONTACTS}")
+    finally:   # the fixtures are removed whatever the verdict
+        if MATRIX.project is not None:
+            windows_standin.remove_tree(MATRIX.project.parent)
+        windows_standin.remove_tree(_HOME)
 
 
 def _new_project(target):
@@ -387,7 +389,7 @@ class AdbCase(unittest.TestCase):
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="gpos-adb-")).resolve()
-        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(windows_standin.remove_tree, self.tmp)
 
     def project(self, name="p"):
         target, n = self.tmp / name, 1

@@ -120,7 +120,7 @@ def tearDownModule():
         if fingerprint(REAL_PROFILE) != _STATE.get("profile"):
             raise AssertionError("the real Blender user profile changed during the test run")
     finally:
-        shutil.rmtree(_STATE.get("work", "/nonexistent"), ignore_errors=True)
+        windows_standin.remove_tree(_STATE.get("work", "/nonexistent"))
 
 
 def markers():
@@ -168,7 +168,7 @@ class BlenderCase(unittest.TestCase):
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="gpos-blender-")).resolve()
-        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(windows_standin.remove_tree, self.tmp)
         clear_markers()
 
     def project(self, *fixtures, name="p"):
@@ -819,7 +819,7 @@ class J_ExternalDependencies(BlenderCase):
             # Windows: a relative path cannot cross drives, so this project is made on the installation's drive,
             # in a disposable directory removed again
             self.tmp = Path(tempfile.mkdtemp(prefix="gpos-blender-", dir=drive + os.sep)).resolve()
-            self.addCleanup(shutil.rmtree, self.tmp, True)
+            self.addCleanup(windows_standin.remove_tree, self.tmp)
         p = self.project()
         in_place = self.factory_file(p, "assets/factory.blend")
         artifacts = (InputArtifact("blend", str(in_place)),)

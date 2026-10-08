@@ -22,6 +22,7 @@ Qualified on Windows 11 Enterprise 10.0.26200 with CPython 3.14.8 x64 only. **Qu
 - **ADB server failures (every host):** a failed `get-state` whose output names a host ADB server failure is a tool failure (`FAILED`), never `TARGET_DEVICE_UNAVAILABLE` or `TARGET_DEVICE_NOT_READY`.
 - **Git and ADB no longer declare `WINDOWS` (D-W1):** the registry refuses them on Windows with `PLATFORM_UNSUPPORTED` before any process starts; their macOS and Linux declarations are unchanged. The media and ADB Git handoffs therefore cannot run on Windows.
 - `tests/mutation_gate.py`: `qualify` can name why a mutation is `NOT_RUN` (an offline ADB run).
+- The Git, media, ADB and Blender suites remove their fixtures on Windows too (`windows_standin.remove_tree`): Git writes its object files read-only, and `shutil.rmtree(..., ignore_errors=True)` had silently left every fixture repository in the temporary directory. A Windows foundation timing test now proves at process creation that a deadline spent in setup creates nothing, instead of depending on how fast a child starts.
 
 ### Notes
 

@@ -130,7 +130,7 @@ def setUpModule():
 
 def tearDownModule():
     if _MEDIA_DIR is not None:
-        shutil.rmtree(_MEDIA_DIR, ignore_errors=True)
+        windows_standin.remove_tree(_MEDIA_DIR)
 
 
 def sha256(path):
@@ -232,7 +232,7 @@ class MediaCase(unittest.TestCase):
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="gpos-media-")).resolve()
-        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.addCleanup(windows_standin.remove_tree, self.tmp)
 
     # ------------------------------------------------------------ fixtures
 
@@ -1895,7 +1895,7 @@ if __name__ == "__main__":
               "ffprobe on PATH")
         sys.exit(1)
     result = unittest.main(verbosity=1, exit=False).result
-    shutil.rmtree(_HOME, ignore_errors=True)
+    windows_standin.remove_tree(_HOME)
     versions = [subprocess.run([exe, "-version"], capture_output=True, text=True).stdout.splitlines()[0].split(" Copyright")[0]
                 for exe in (FFMPEG, FFPROBE)]
     print(f"GPOS media adapter tests (real {versions[0]}; {versions[1]})")

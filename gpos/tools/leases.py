@@ -30,12 +30,20 @@ through the attributable, explicitly authorized `break_lease`. The process that 
 exits long before the session ends, so a SESSION lease is never judged stale from its process id;
 what "stale" means for a live session belongs to the adapter that runs it. A lease file written
 before scopes existed carries no `scope` field and is an EXECUTION lease.
+
+Windows (alpha.23) keeps every rule above and works through handles (paths_win32): the lease directory chain is
+proven and pinned, a lease is created with CREATE_NEW without following a reparse point, read without following
+one, and released, session-released or broken by opening it for delete with FILE_SHARE_READ only, verifying the
+content read through that same handle and deleting through it. A sharing violation is a structured failure, never
+retried. Liveness comes from a process handle, never a signal. NTFS permissions are inherited from the project
+directory: no `0o600`-style privacy is claimed on Windows.
 """
 
 import hashlib
 import json
 import os
 import re
+import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -112,11 +120,125 @@ class LeaseHeld(Exception):
 
 
 def _read(path):
+    if sys.platform == "win32":
+        return _win_read(path)
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else None
     except (OSError, ValueError):
         return None
+
+
+# ---------------------------------------------------------------- Windows (alpha.23): handle-based lease files
+
+def _win_read(path):
+    from . import paths_win32 as pw
+    try:
+        data = json.loads(pw.read_file(path).decode("utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError, pw.PathRefused):
+        return None
+
+
+def _win_acquire(root, path, adapter_id, resource_id, owner_id, now, request_id, metadata, scope, session):
+    from . import paths_win32 as pw
+    try:
+        pw.make_directories(path.parent)
+    except (OSError, pw.PathRefused) as exc:
+        raise LeaseHeld("LEASE_INVALID", f"{path.parent}: the lease directory is not usable "
+                                         f"({getattr(exc, 'reason', exc)})", None, str(path)) from None
+    lease = Lease(adapter_id=adapter_id, resource_id=resource_id, owner_id=owner_id,
+                  token=uuid.uuid4().hex, acquired_at=now, pid=os.getpid(),
+                  request_id=request_id, metadata=metadata or {}, path=str(path), scope=scope,
+                  session=dict(session) if session is not None else None)
+    payload = json.dumps(lease.to_dict(), sort_keys=True, indent=2).encode("utf-8")
+    try:
+        pw.create_new_file(path, payload)
+    except FileExistsError:
+        holder = _read(path)
+        if holder is None:
+            raise LeaseHeld("LEASE_INVALID", f"{path}: a lease file exists but cannot be read; it is not broken "
+                                             f"automatically", None, str(path)) from None
+        raise LeaseHeld("LEASE_CONFLICT", f"{adapter_id}:{resource_id} is held by owner {holder.get('owner_id')!r} "
+                                          f"(pid {holder.get('pid')}, since {holder.get('acquired_at')})",
+                        holder, str(path)) from None
+    except (OSError, pw.PathRefused) as exc:
+        raise LeaseHeld("LEASE_INVALID", f"{path}: {getattr(exc, 'reason', exc)}", None, str(path)) from None
+    return lease
+
+
+def _win_delete(path, approve):
+    """Delete the lease file only when `approve(record)` holds for the content read through the delete handle.
+    (deleted, record) — record is None when the file is unreadable. Raises OSError / PathRefused when it cannot be
+    opened for delete (a sharing violation included)."""
+    from . import paths_win32 as pw
+
+    def decide(content):
+        try:
+            record = json.loads(content.decode("utf-8"))
+        except ValueError:
+            return False, (False, None)
+        record = record if isinstance(record, dict) else None
+        ok = record is not None and approve(record)
+        return ok, (ok, record)
+
+    return pw.delete_if(path, decide)
+
+
+def _win_release(root, lease):
+    from . import paths_win32 as pw
+    path = Path(lease.path or lease_path(root, lease.adapter_id, lease.resource_id))
+    try:
+        deleted, _ = _win_delete(path, lambda r: r.get("owner_id") == lease.owner_id and r.get("token") == lease.token)
+        return deleted
+    except (OSError, pw.PathRefused):
+        return False
+
+
+def _win_release_session(path, record):
+    from . import paths_win32 as pw
+    try:
+        deleted, current = _win_delete(path, lambda r: r == record)
+    except (OSError, pw.PathRefused) as exc:
+        raise LeaseHeld("LEASE_RELEASE_FAILED", f"{path}: {getattr(exc, 'reason', exc)}", record, str(path)) from None
+    if not deleted:  # changed since it was verified: leave it alone
+        raise LeaseHeld("LIVE_SESSION_MISMATCH", f"{path}: the SESSION lease changed while it was being released",
+                        None, str(path))
+    return record
+
+
+def _win_break(root, adapter_id, resource_id, broken_by, reason, now, path, record):
+    from . import paths_win32 as pw
+    log = tp.runtime_dir(root, LEASES, "broken.log")
+    entry = {"broken_at": now, "broken_by": broken_by, "reason": reason,
+             "adapter_id": adapter_id, "resource_id": resource_id, "previous_holder": record}
+    try:
+        pw.make_directories(log.parent)
+        pw.append_file(log, (json.dumps(entry, sort_keys=True) + "\n").encode("utf-8"))
+    except (OSError, pw.PathRefused) as exc:
+        raise LeaseHeld("LEASE_INVALID", f"{log}: the recovery log is not usable ({getattr(exc, 'reason', exc)}); "
+                                         f"nothing was broken", record, str(path)) from None
+
+    def same(content):
+        try:
+            current = json.loads(content.decode("utf-8"))
+        except ValueError:
+            current = None
+        ok = record is None or current == record   # exactly the inspected lease (or the unreadable one inspected)
+        return ok, ok
+
+    try:
+        broken = pw.delete_if(path, same)
+    except FileNotFoundError:
+        return entry
+    except (OSError, pw.PathRefused) as exc:
+        raise LeaseHeld("LEASE_RELEASE_FAILED", f"{path}: the lease could not be removed "
+                                                f"({getattr(exc, 'reason', exc)}); it is still held", record,
+                        str(path)) from None
+    if not broken:
+        raise LeaseHeld("LEASE_CONFLICT", f"{path}: the lease changed after it was inspected; it is not broken",
+                        record, str(path))
+    return entry
 
 
 def acquire(root, adapter_id, resource_id, owner_id, now, request_id=None, metadata=None, scope=EXECUTION,
@@ -140,6 +262,8 @@ def acquire(root, adapter_id, resource_id, owner_id, now, request_id=None, metad
     reason = tp.unsafe_reason([Path(root).resolve()], str(path))
     if reason:  # the runtime area must stay inside the project, even if it was tampered with
         raise LeaseHeld("LEASE_INVALID", reason, None, str(path))
+    if sys.platform == "win32":
+        return _win_acquire(root, path, adapter_id, resource_id, owner_id, now, request_id, metadata, scope, session)
     path.parent.mkdir(parents=True, exist_ok=True)
     lease = Lease(adapter_id=adapter_id, resource_id=resource_id, owner_id=owner_id,
                   token=uuid.uuid4().hex, acquired_at=now, pid=os.getpid(),
@@ -169,6 +293,8 @@ def release(root, lease):
     A lease whose recorded owner or token differs is left alone: this function never breaks a lease
     belonging to another owner, and never removes anything it did not verify first.
     """
+    if sys.platform == "win32":
+        return _win_release(root, lease)
     path = Path(lease.path or lease_path(root, lease.adapter_id, lease.resource_id))
     holder = _read(path)
     if holder is None:
@@ -206,6 +332,9 @@ def looks_stale(record, live_pid):
 
 
 def pid_alive(pid):
+    if sys.platform == "win32":   # os.kill(pid, 0) is a console control event on Windows, never a probe
+        from . import process
+        return process.host_pid_alive(pid)
     try:
         os.kill(int(pid), 0)
         return True
@@ -244,6 +373,8 @@ def release_session(root, adapter_id, resource_id, session_id, owner_id):
     released record; raises LeaseHeld when verification fails or the file cannot be removed."""
     record = verify_session(root, adapter_id, resource_id, session_id, owner_id)
     path = lease_path(root, adapter_id, resource_id)
+    if sys.platform == "win32":
+        return _win_release_session(path, record)
     if _read(path) != record:  # changed since it was verified: leave it alone
         raise LeaseHeld("LIVE_SESSION_MISMATCH", f"{path}: the SESSION lease changed while it was being released",
                         None, str(path))
@@ -271,6 +402,8 @@ def break_lease(root, adapter_id, resource_id, broken_by, reason, now, expected_
                         record, str(path))
     if record is None and not path.exists():
         return None
+    if sys.platform == "win32":
+        return _win_break(root, adapter_id, resource_id, broken_by, reason, now, path, record)
     log = tp.runtime_dir(root, LEASES, "broken.log")
     log.parent.mkdir(parents=True, exist_ok=True)
     entry = {"broken_at": now, "broken_by": broken_by, "reason": reason,

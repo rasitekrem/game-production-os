@@ -25,6 +25,9 @@ import time
 import unittest
 from pathlib import Path
 
+if sys.platform == "win32" and not sys.flags.utf8_mode:   # alpha.23: the Windows locale is not UTF-8
+    sys.exit("WINDOWS_UTF8_MODE_REQUIRED: run this suite as `python -X utf8 tests/test_adapters.py`")
+
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))

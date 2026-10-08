@@ -21,6 +21,9 @@ import sys
 import unittest
 from pathlib import Path
 
+if sys.platform == "win32" and not sys.flags.utf8_mode:   # alpha.23: the Windows locale is not UTF-8
+    sys.exit("WINDOWS_UTF8_MODE_REQUIRED: run this suite as `python -X utf8 tests/validate_framework.py`")
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -46,7 +49,7 @@ GATES = REGISTRY["gates"]
 SUBJECTIVE_DISCIPLINE_GATES = sorted(g for g, d in GATES.items() if d["subjective"] and g != "HUMAN_REVIEW")
 TRIGGERS = list(REGISTRY["mandatory_human_review_triggers"])
 CONDITIONS = list(REGISTRY["evidence_conditions"])
-VERSION = "1.0.0-alpha.22"
+VERSION = "1.0.0-alpha.23"
 GATE_OWNERS = [s for s in REGISTRY["skills"] if any(s in d["permitted_owners"] for d in GATES.values())] + ["HUMAN"]
 
 
@@ -851,6 +854,100 @@ def phase_boundary_problems():
         spawning = _imports(p) & PROCESS_EXECUTION_IMPORTS
         if spawning and rel != PROCESS_BOUNDARY:
             problems.append(f"{rel} imports {sorted(spawning)}: only {PROCESS_BOUNDARY} may start a process")
+    return problems + windows_boundary_problems()
+
+
+# alpha.23: the Windows backend is a private part of the one process boundary, not a second facility. It is the
+# only module that may name CreateProcessW, only process.py may import it, and each Windows module binds exactly
+# its reviewed kernel32 functions. Nothing in gpos/ may start a process any other way.
+PROCESS_BACKEND = "gpos/tools/process_win32.py"
+WIN32_FS = "gpos/tools/paths_win32.py"
+WIN32_ALLOWED = {
+    PROCESS_BACKEND: {"CreateProcessW", "InitializeProcThreadAttributeList", "UpdateProcThreadAttribute",
+                      "DeleteProcThreadAttributeList", "CreateJobObjectW", "SetInformationJobObject",
+                      "QueryInformationJobObject", "TerminateJobObject", "IsProcessInJob", "ResumeThread",
+                      "TerminateProcess", "QueryFullProcessImageNameW", "WaitForSingleObject", "GetExitCodeProcess",
+                      "OpenProcess", "CloseHandle"},
+    WIN32_FS: {"CreateFileW", "GetFileInformationByHandle", "GetFinalPathNameByHandleW",
+               "GetVolumeInformationByHandleW", "GetDriveTypeW", "SetFileInformationByHandle", "CloseHandle"},
+}
+WIN32_IMPORTERS = {PROCESS_BACKEND: {"gpos/tools/process.py"},
+                   WIN32_FS: {"gpos/tools/paths.py", "gpos/tools/artifacts.py", "gpos/tools/leases.py",
+                              "gpos/tools/execution.py", PROCESS_BACKEND}}
+WIN32_FORBIDDEN_NAMES = {"CreateProcessA", "CreateProcessAsUserW", "CreateProcessAsUserA", "CreateProcessWithLogonW",
+                         "CreateProcessWithTokenW", "ShellExecuteW", "ShellExecuteA", "ShellExecuteExW",
+                         "ShellExecuteExA", "WinExec", "CreateRemoteThread", "startfile", "GenerateConsoleCtrlEvent",
+                         "NtCreateProcess", "NtCreateUserProcess", "RtlCreateUserProcess"}
+# Foundation modules whose text I/O must name its encoding (the Windows locale is not UTF-8). The three frozen
+# Player/Unity sites that do not are macOS-only and are fixed with their own Windows phases.
+FOUNDATION_TEXT_IO = ("gpos/tools/process.py", PROCESS_BACKEND, "gpos/tools/paths.py", WIN32_FS, "gpos/tools/leases.py",
+                      "gpos/tools/execution.py", "gpos/tools/artifacts.py", "gpos/tools/registry.py",
+                      "gpos/tools/cli.py", "gpos/tools/evidence.py", "gpos/tools/provenance.py",
+                      "gpos/tools/synthetic/helper.py", "gpos/tools/synthetic/adapter.py")
+
+
+def _win32_bindings(tree):
+    """Names a module binds or calls on its kernel32 handle (`_k32.Name`, `_bind("Name", ...)`)."""
+    import ast
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "_k32":
+            names.add(node.attr)
+        elif isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_bind" and node.args \
+                and isinstance(node.args[0], ast.Constant):
+            names.add(node.args[0].value)
+    return names
+
+
+def windows_boundary_problems():
+    import ast
+    problems = []
+    for p in sorted((ROOT / "gpos").rglob("*.py")):
+        rel = p.relative_to(ROOT).as_posix()
+        tree = ast.parse(p.read_bytes().decode("utf-8"))
+        text = ast.unparse(tree)
+        if "_winapi" in _imports(p):
+            problems.append(f"{rel} imports _winapi (CPython-internal); the foundation binds documented kernel32 only")
+        for backend, importers in WIN32_IMPORTERS.items():
+            module = backend.rsplit("/", 1)[1][:-3]
+            imported = any(isinstance(n, ast.ImportFrom) and n.level >= 1 and (n.module == module or any(
+                a.name == module for a in n.names)) for n in ast.walk(tree))
+            if imported and rel not in importers:
+                problems.append(f"{rel} imports {module}: only {sorted(importers)} may")
+        if rel not in WIN32_ALLOWED and any(n in text for n in ("WinDLL", "windll", "oledll")):
+            problems.append(f"{rel} loads a Windows DLL; only {sorted(WIN32_ALLOWED)} may")
+        constants = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+        attributes = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+        for name in sorted((constants | attributes) & WIN32_FORBIDDEN_NAMES):
+            problems.append(f"{rel} names {name}: no Windows process API other than the reviewed one is used")
+        if rel != PROCESS_BACKEND and "CreateProcessW" in constants | attributes:
+            problems.append(f"{rel} names CreateProcessW: only {PROCESS_BACKEND} may")
+        if rel in WIN32_ALLOWED:
+            extra = sorted(_win32_bindings(tree) - WIN32_ALLOWED[rel])
+            if extra:
+                problems.append(f"{rel} binds kernel32 {extra} outside its reviewed allowlist")
+            for name in ("os.kill", "os.killpg", "signal.", "subprocess", "Popen", "os.system", "os.spawn",
+                         "os.exec", "posix_spawn"):
+                if name in text:
+                    problems.append(f"{rel} uses {name}; the Windows modules never signal or spawn another way")
+        if rel == PROCESS_BACKEND:
+            calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                     and n.func.attr == "TerminateProcess"]
+            if len(calls) != 1:
+                problems.append(f"{rel}: TerminateProcess must have exactly one call site (a suspended, unproven "
+                                f"child), found {len(calls)}")
+        if rel in FOUNDATION_TEXT_IO:
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+                keywords = {k.arg for k in node.keywords}
+                mode = node.args[1] if len(node.args) > 1 else next((k.value for k in node.keywords if k.arg == "mode"),
+                                                                  None)
+                text_mode = isinstance(getattr(mode, "value", "r"), str) and "b" not in getattr(mode, "value", "r")
+                if (name in ("read_text", "write_text") or (name == "open" and isinstance(node.func, ast.Name)
+                                                             and text_mode)) and "encoding" not in keywords:
+                    problems.append(f"{rel}:{node.lineno} {name}() without an explicit encoding")
     return problems
 
 
@@ -2676,6 +2773,17 @@ def validator_vocabulary():
               if k.isupper() and isinstance(v, str) and re.fullmatch(r"[A-Z][A-Z0-9_]*", v)}
     words |= set(player_adapter.CAPTURE_RULES) | set(player_invocation.ENVIRONMENT.inherit)
     words |= {name for name, _ in player_invocation.ENVIRONMENT.overrides}
+    # Phase 2C-9.1 (alpha.23): the documented Win32 constants the Windows modules name (read from their source, since
+    # they import only on Windows), the Windows environment additions and the suites' UTF-8 Mode marker
+    import ast
+    from gpos.tools import process as tool_process
+    for rel in ("gpos/tools/process_win32.py", "gpos/tools/paths_win32.py"):
+        for node in ast.parse((ROOT / rel).read_bytes().decode("utf-8")).body:
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    names = target.elts if isinstance(target, ast.Tuple) else [target]
+                    words |= {n.id for n in names if isinstance(n, ast.Name) and n.id.isupper()}
+    words |= set(tool_process.WINDOWS_ENV_DEFAULTS) | {"WINDOWS_UTF8_MODE_REQUIRED"}
     return words
 
 

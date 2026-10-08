@@ -14,7 +14,9 @@ An artifact from an execution that did not finish (a timeout, a failure) is reco
 """
 
 import hashlib
+import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,6 +38,40 @@ def hash_file(path):
                 break
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _measure(path):
+    """(sha256, size) of an artifact the foundation has already path-checked.
+
+    On Windows (alpha.23) the file is opened once, without following a reparse point, inside a pinned directory
+    chain and with FILE_SHARE_READ only: an artifact some process still has open for writing is refused (a sharing
+    violation), it cannot change, move or be deleted while it is hashed, a file with more than one hard link is
+    refused as an alias, and the hash and the size come from that one handle."""
+    if sys.platform == "win32":
+        return _win_measure(path)
+    return hash_file(path), path.stat().st_size
+
+
+def _win_measure(path):
+    from . import paths_win32 as pw
+    try:
+        fd, size, pins = pw.open_file_for_read(path)
+    except pw.PathRefused as exc:
+        raise OSError(None, exc.reason, str(path)) from None
+    try:
+        digest, total = hashlib.sha256(), 0
+        while True:
+            chunk = os.read(fd, CHUNK)
+            if not chunk:
+                break
+            digest.update(chunk)
+            total += len(chunk)
+        if total != size:
+            raise OSError(None, f"read {total} bytes of a {size}-byte file", str(path))
+        return digest.hexdigest(), size
+    finally:
+        os.close(fd)
+        pw.close_all(pins)
 
 
 @dataclass(frozen=True)
@@ -99,7 +135,7 @@ def collect_inputs(inputs, scopes, root, capture_contexts):
             continue
         path = Path(item.path)
         try:
-            digest, size = hash_file(path), path.stat().st_size
+            digest, size = _measure(path)
         except OSError as exc:
             problems.append(("ARTIFACT_HASH_FAILED", item.artifact_id, f"{item.path}: {type(exc).__name__}: {exc}"))
             continue
@@ -167,7 +203,7 @@ def collect(specs, scopes, root, request_id, execution_context, complete=True, k
             problems.append(("ARTIFACT_MISSING", spec.artifact_id, f"{spec.path}: declared artifact does not exist"))
             continue
         try:  # the foundation hashes the file; an adapter never supplies its own digest
-            digest, size = hash_file(path), path.stat().st_size
+            digest, size = _measure(path)
         except OSError as exc:
             problems.append(("ARTIFACT_HASH_FAILED", spec.artifact_id, f"{spec.path}: {type(exc).__name__}: {exc}"))
             continue
@@ -199,4 +235,4 @@ def _relative(root, path):
     try:
         return path.resolve().relative_to(Path(root).resolve()).as_posix()
     except ValueError:
-        return str(path)
+        return path.as_posix()   # alpha.23: a portable spelling on every host (str() on POSIX)

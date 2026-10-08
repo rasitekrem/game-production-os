@@ -16,6 +16,7 @@ allow test-only adapters.
 
 from . import diagnostics as dg
 from . import model
+from . import process as proc
 from .redaction import redact, sanitize_all
 from .errors import AdapterRegistrationError
 from .validation import validate_descriptor
@@ -92,19 +93,34 @@ class ToolRegistry:
             return model.ProbeResult(adapter_id, model.UNAVAILABLE, detail="not registered",
                                      diagnostics=(dg.make("ADAPTER_NOT_FOUND",
                                                           f"no tool adapter {adapter_id!r} is registered", adapter_id),))
-        try:
-            result = adapter.probe()
-        except Exception as exc:  # an adapter defect must not escape as a subprocess traceback
-            result = model.ProbeResult(adapter_id, model.UNAVAILABLE,
-                                       detail=f"probe raised {type(exc).__name__}",
-                                       diagnostics=(dg.make("ADAPTER_INTERNAL_ERROR",
-                                                            f"{adapter_id}.probe() raised {type(exc).__name__}: "
-                                                            f"{redact(str(exc))[0]}", adapter_id),))
+        platform = model.current_platform()
+        if platform is None or platform not in adapter.descriptor.supported_platforms:
+            # alpha.23 (D12): an adapter is never invoked on a host it does not declare, and an unknown host is none
+            result = model.ProbeResult(adapter_id, model.UNAVAILABLE, platform=platform,
+                                       detail=f"{adapter_id} supports {list(adapter.descriptor.supported_platforms)}, "
+                                              f"not {platform or 'this unrecognised host'}",
+                                       diagnostics=(dg.make("PLATFORM_UNSUPPORTED",
+                                                            f"{adapter_id} was not probed on "
+                                                            f"{platform or 'this unrecognised host'}", adapter_id),))
+            return self._record(adapter_id, result, now)
+        with proc.observe() as observed:   # alpha.23: every process the probe starts is judged here too
+            try:
+                result = adapter.probe()
+            except Exception as exc:  # an adapter defect must not escape as a subprocess traceback
+                result = model.ProbeResult(adapter_id, model.UNAVAILABLE,
+                                           detail=f"probe raised {type(exc).__name__}",
+                                           diagnostics=(dg.make("ADAPTER_INTERNAL_ERROR",
+                                                                f"{adapter_id}.probe() raised {type(exc).__name__}: "
+                                                                f"{redact(str(exc))[0]}", adapter_id),))
         if not isinstance(result, model.ProbeResult) or result.status not in model.PROBE_STATUSES:
             result = model.ProbeResult(adapter_id, model.UNAVAILABLE, detail="probe returned no ProbeResult",
                                        diagnostics=(dg.make("ADAPTER_INTERNAL_ERROR",
                                                             f"{adapter_id}.probe() must return a ProbeResult with a "
                                                             f"status in {list(model.PROBE_STATUSES)}", adapter_id),))
+        result = _with_integrity(adapter_id, result, observed)
+        return self._record(adapter_id, result, now)
+
+    def _record(self, adapter_id, result, now):
         result = _sanitized_probe(result)
         previous = self._states[adapter_id]
         self._states[adapter_id] = model.AdapterState(
@@ -131,6 +147,27 @@ class ToolRegistry:
         return {"adapters": [d.to_dict() for d in self.list_adapters()],
                 "states": {a: self._states[a].state for a in self.adapter_ids()},
                 "allow_test_only": self.allow_test_only}
+
+
+def _with_integrity(adapter_id, result, observed):
+    """A probe whose own processes were not proven contained, or whose output was not captured completely, never
+    reports a usable tool, whatever the adapter concluded from that output (alpha.23)."""
+    import dataclasses
+    problems = []
+    for outcome in observed:
+        if not outcome.tree_contained:
+            problems.append(dg.make("PROCESS_TREE_NOT_CONTAINED", f"{adapter_id}: a probe process was not observed to "
+                                                                  f"end with its whole process tree", adapter_id))
+        if not outcome.capture_complete:
+            problems.append(dg.make("PROCESS_CAPTURE_INCOMPLETE", f"{adapter_id}: a probe process's output was not "
+                                                                  f"read to its end", adapter_id))
+    if not problems:
+        return result
+    return dataclasses.replace(result, status=model.UNAVAILABLE,
+                               detail="the probe's own process integrity was not proven; the tool is not reported usable",
+                               capability_availability=tuple((c, False, "probe process integrity not proven")
+                                                             for c, _, _ in result.capability_availability),
+                               diagnostics=tuple(result.diagnostics) + tuple(problems))
 
 
 def _sanitized_probe(result):

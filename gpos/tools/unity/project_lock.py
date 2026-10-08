@@ -31,12 +31,16 @@ Between the final proof and the launch there is an unavoidable race; Unity arbit
 
 import ctypes
 import errno
-import fcntl
 import os
 import stat
 import struct
 import sys
 from dataclasses import dataclass, field
+
+try:
+    import fcntl
+except ImportError:  # alpha.23: Windows has no fcntl; the macOS-only proofs below never run there (Darwin.supported)
+    fcntl = None
 
 MATCHING_EDITOR, NO_MATCH_PROVEN, PROCESS_STATE_UNKNOWN = "MATCHING_EDITOR", "NO_MATCH_PROVEN", "PROCESS_STATE_UNKNOWN"
 NO_LOCK, ACTIVE_EDITOR, ORPHAN_UNHELD, LOCK_STATE_UNKNOWN = "NO_LOCK", "ACTIVE_EDITOR", "ORPHAN_UNHELD", "LOCK_STATE_UNKNOWN"
@@ -56,7 +60,9 @@ UNITY_COMMAND = "Unity"            # the kernel's command name of the Editor and
 PROJECT_FLAG = "-projectpath"
 LOCKFILE = ("Temp", "UnityLockfile")
 FLOCK = "qqihh"                    # struct flock (macOS): off_t l_start, off_t l_len, pid_t l_pid, short l_type, l_whence
-OPEN_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC | os.O_NOCTTY
+# alpha.23: getattr, so the module imports on Windows, which lacks the POSIX-only flags; on macOS every flag exists
+OPEN_FLAGS = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
+              | getattr(os, "O_NOCTTY", 0))
 
 
 @dataclass

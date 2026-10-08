@@ -23,6 +23,7 @@ code, because not every adapter drives a command-line process.
 import datetime
 import os
 import re
+import sys
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -468,10 +469,12 @@ def request_problems(registry, request):
         problems.append(dg.make("INVALID_TOOL_REQUEST",
                                 f"{cap_id} is READ_ONLY; mutation consent does not apply to it", adapter_id, cap_id))
     platform = model.current_platform()
-    if platform is not None and platform not in adapter.descriptor.supported_platforms:
+    if platform is None or platform not in adapter.descriptor.supported_platforms:   # alpha.23 (D12): fail closed
         problems.append(dg.make("PLATFORM_UNSUPPORTED",
-                                f"{adapter_id} supports {list(adapter.descriptor.supported_platforms)}, not {platform}",
-                                adapter_id, cap_id))
+                                f"{adapter_id} supports {list(adapter.descriptor.supported_platforms)}, not "
+                                f"{platform or 'this unrecognised host'}", adapter_id, cap_id))
+    if sys.platform == "win32":
+        problems += _windows_request_problems(request, adapter_id, cap_id)
     unknown = sorted(set(request.inputs or {}) - set(capability.input_kinds))
     if unknown:
         problems.append(dg.make("INVALID_TOOL_REQUEST",
@@ -481,6 +484,19 @@ def request_problems(registry, request):
     if error:
         problems.append(dg.make("TIMEOUT_NOT_PERMITTED", f"{cap_id}: {error}", adapter_id, cap_id))
     return adapter, capability, problems
+
+
+def _windows_request_problems(request, adapter_id, cap_id):
+    """alpha.23 (D4): a request id that names a workspace Windows would read as a device or strip silently."""
+    from . import paths_win32
+    rid = request.request_id
+    if not isinstance(rid, str) or not REQUEST_ID.fullmatch(rid):
+        return []
+    problem = paths_win32.name_problem(rid)
+    if problem is None:
+        return []
+    return [dg.make("INVALID_TOOL_REQUEST", f"request id {rid!r} is not usable as a Windows directory name "
+                                            f"({problem}); nothing was created", adapter_id, cap_id)]
 
 
 # ---------------------------------------------------------------- execution
@@ -528,6 +544,13 @@ def execute(registry, request, clock=None, now=None):
     elif registry.state(request.adapter_id) is not None:
         probe = registry.state(request.adapter_id).probe
 
+    if sys.platform == "win32":
+        if capability.host_location is not None:
+            return finish(dg.INCOMPATIBLE, [dg.make("PLATFORM_UNSUPPORTED",
+                                                    f"{request.capability_id} uses a host location, and none exists "
+                                                    f"on Windows in this release", request.adapter_id,
+                                                    request.capability_id)])
+
     root = Path(request.project_root).resolve() if request.project_root else None
     scopes, workspace, problems = _scopes_and_workspace(adapter, capability, request, root,
                                                         _host_location(framework, capability))
@@ -561,21 +584,36 @@ def execute(registry, request, clock=None, now=None):
                                input_artifacts=tuple(inputs), lease=lease, session=session, sessions=sessions,
                                host_location=_host_location(framework, capability),
                                detached_allowed=capability.id in policy["detached_spawn_capabilities"])
-    try:
-        outcome = adapter.execute(request, context)
-        if not isinstance(outcome, AdapterOutcome):
-            raise TypeError(f"{request.adapter_id}.execute() must return an AdapterOutcome, not {type(outcome).__name__}")
-    except proc.ProcessSpecError as exc:
-        code = exc.code if exc.code in dg.CODES else "UNSAFE_PROCESS_SPEC"
-        return _release_and_finish(root, lease, finish, dg.CODES[code][0], diagnostics + _abandon(sessions) + [
-            dg.make(code, redact(str(exc))[0], request.adapter_id, request.capability_id)],
-            request.adapter_id, request.capability_id)
-    except Exception as exc:
-        return _release_and_finish(root, lease, finish, dg.INTERNAL_ERROR, diagnostics + _abandon(sessions) + [
-            dg.make("ADAPTER_INTERNAL_ERROR",
-                    f"{request.adapter_id}.execute() raised {type(exc).__name__}: {redact(str(exc))[0]}",
-                    request.adapter_id, request.capability_id)], request.adapter_id, request.capability_id)
+    # alpha.23: every process this execution starts, through context.run or directly, is observed by the
+    # foundation itself, so an adapter can neither hide nor replace a process whose integrity was not proven.
+    with proc.observe() as observed:
+        try:
+            outcome = adapter.execute(request, context)
+            if not isinstance(outcome, AdapterOutcome):
+                raise TypeError(f"{request.adapter_id}.execute() must return an AdapterOutcome, not "
+                                f"{type(outcome).__name__}")
+        except proc.ProcessSpecError as exc:
+            code = exc.code if exc.code in dg.CODES else "UNSAFE_PROCESS_SPEC"
+            return _release_and_finish(root, lease, finish, dg.CODES[code][0], diagnostics + _abandon(sessions) + [
+                dg.make(code, redact(str(exc))[0], request.adapter_id, request.capability_id)]
+                + _integrity(observed, request.adapter_id, request.capability_id)[0],
+                request.adapter_id, request.capability_id)
+        except Exception as exc:
+            return _release_and_finish(root, lease, finish, dg.INTERNAL_ERROR, diagnostics + _abandon(sessions) + [
+                dg.make("ADAPTER_INTERNAL_ERROR",
+                        f"{request.adapter_id}.execute() raised {type(exc).__name__}: {redact(str(exc))[0]}",
+                        request.adapter_id, request.capability_id)]
+                + _integrity(observed, request.adapter_id, request.capability_id)[0],
+                request.adapter_id, request.capability_id)
     diagnostics += _abandon(sessions)  # a session opened but never confirmed does not outlive the execution
+    problems, unsafe = _integrity(observed, request.adapter_id, request.capability_id)
+    diagnostics += problems
+    if unsafe is not None:
+        # An unproven process makes the whole execution unfinished, whatever the adapter reported: no success, no
+        # exit code, artifacts incomplete and no evidence (the unchanged _assemble rules for an unfinished run).
+        outcome = dataclasses_replace(outcome, ok=False, exit_code=None, process=unsafe,
+                                      detail="a process this execution started was not proven contained, or its "
+                                             "output was not captured completely")
 
     try:
         result = _assemble(framework, registry, request, adapter, capability, context, outcome,
@@ -596,6 +634,29 @@ def execute(registry, request, clock=None, now=None):
 
 def _abandon(sessions):
     return sessions.abandon_unconfirmed() if sessions is not None else []
+
+
+def _integrity(observed, adapter_id, cap_id):
+    """([ToolDiagnostic], first unproven ProcessOutcome or None) for every process outcome the foundation
+    observed. A tree not proven terminated is OUTCOME_UNKNOWN (a descendant may still be running); an incomplete
+    capture is FAILED; descendants GPOS terminated after the root ended are recorded (INFO, D9)."""
+    out, unsafe = [], None
+    for outcome in observed:
+        if not outcome.tree_contained:
+            out.append(dg.make("PROCESS_TREE_NOT_CONTAINED",
+                               f"{cap_id}: a process this execution started was not observed to end together with its "
+                               f"whole process tree; something it started may still be running", adapter_id, cap_id))
+        if not outcome.capture_complete:
+            out.append(dg.make("PROCESS_CAPTURE_INCOMPLETE",
+                               f"{cap_id}: the output of a process this execution started was not read to its end; "
+                               f"nothing it printed is trusted as complete", adapter_id, cap_id))
+        if outcome.descendants_terminated:
+            out.append(dg.make("PROCESS_DESCENDANTS_TERMINATED",
+                               f"{cap_id}: {outcome.descendants_terminated} process(es) the tool left running when it "
+                               f"exited were terminated with its job", adapter_id, cap_id))
+        if not outcome.integrity_ok and unsafe is None:
+            unsafe = outcome
+    return out, unsafe
 
 
 def _session(root, capability, request, clock):
@@ -773,6 +834,8 @@ def _create_workspace(workspace, adapter_id, cap_id):
     A path that exists but is not a directory, a permission failure or any other filesystem error is
     a structured refusal; none of them escapes as an exception.
     """
+    if sys.platform == "win32":
+        return _win_create_workspace(workspace, adapter_id, cap_id)
     if workspace.exists() and not workspace.is_dir():
         return [dg.make("WORKSPACE_NOT_USABLE",
                         f"{workspace}: the output directory already exists and is not a directory",
@@ -780,6 +843,25 @@ def _create_workspace(workspace, adapter_id, cap_id):
     try:
         workspace.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
+        return [dg.make("WORKSPACE_NOT_USABLE",
+                        f"{workspace}: the execution workspace could not be created "
+                        f"({type(exc).__name__}: {exc})", adapter_id, cap_id)]
+    return []
+
+
+def _win_create_workspace(workspace, adapter_id, cap_id):
+    """alpha.23: create the workspace inside a proven, pinned directory chain (no reparse point, canonical spelling,
+    local NTFS); a letter-case variant of an existing workspace is refused, never shared (D4)."""
+    from . import paths_win32
+    if os.path.lexists(workspace) and not os.path.isdir(workspace):
+        return [dg.make("WORKSPACE_NOT_USABLE",
+                        f"{workspace}: the output directory already exists and is not a directory",
+                        adapter_id, cap_id)]
+    try:
+        paths_win32.make_directories(workspace)
+    except paths_win32.PathRefused as exc:
+        return [dg.make("WORKSPACE_NOT_USABLE", f"{workspace}: {exc.reason}", adapter_id, cap_id)]
+    except OSError as exc:   # any other refusal of the file system is a structured result too
         return [dg.make("WORKSPACE_NOT_USABLE",
                         f"{workspace}: the execution workspace could not be created "
                         f"({type(exc).__name__}: {exc})", adapter_id, cap_id)]

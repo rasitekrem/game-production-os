@@ -22,6 +22,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import mutation_gate as gate
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # (name, file, anchor, replacement)
@@ -130,7 +132,7 @@ MUTATIONS = [
     ('the record area becomes a write target', 'gpos/tools/artifacts.py',
      '        if tp.in_records(root, spec.path):', '        if False:'),
     ('artifact hash ignored', 'gpos/tools/artifacts.py',
-     '        try:  # the foundation hashes the file; an adapter never supplies its own digest\n            digest, size = hash_file(path), path.stat().st_size',
+     '        try:  # the foundation hashes the file; an adapter never supplies its own digest\n            digest, size = _measure(path)',
      '        try:  # the foundation hashes the file; an adapter never supplies its own digest\n            digest, size = "0" * 64, path.stat().st_size'),
     ('a missing artifact is recorded anyway', 'gpos/tools/artifacts.py',
      '        if not path.is_file():', '        if False and not path.is_file():'),
@@ -405,7 +407,162 @@ MUTATIONS = [
      '    return Path(pwd.getpwuid(os.getuid()).pw_dir)', '    return Path(os.environ["HOME"])'),
     ('the new capability fields are not inspectable', 'gpos/tools/capabilities.py',
      '                "detached_spawn": self.detached_spawn, "host_location": self.host_location,\n', ''),
+    # --- alpha.23: process integrity at every boundary (host-neutral; tests V01, V02)
+    ('an unproven outcome keeps a trustworthy exit code', 'gpos/tools/process.py',
+     '    if not outcome.integrity_ok and outcome.exit_code is not None:', '    if False:'),
+    ('the observer records nothing', 'gpos/tools/process.py', '        seen.append(outcome)\n', '        pass\n'),
+    ('run_process bypasses the observer', 'gpos/tools/process.py',
+     '    return _observed(backend(spec, scopes, clock))', '    return backend(spec, scopes, clock)'),
+    ('integrity is always proven', 'gpos/tools/process.py',
+     '        return self.tree_contained and self.capture_complete', '        return True'),
+    ('the execution ignores an unproven process', 'gpos/tools/execution.py',
+     '    if unsafe is not None:\n        # An unproven process', '    if False:\n        # An unproven process'),
+    ('an uncontained tree is not diagnosed', 'gpos/tools/execution.py',
+     '        if not outcome.tree_contained:\n            out.append(dg.make("PROCESS_TREE_NOT_CONTAINED",\n',
+     '        if False:\n            out.append(dg.make("PROCESS_TREE_NOT_CONTAINED",\n'),
+    ('an incomplete capture is not diagnosed', 'gpos/tools/execution.py',
+     '        if not outcome.capture_complete:\n            out.append(dg.make("PROCESS_CAPTURE_INCOMPLETE",\n',
+     '        if False:\n            out.append(dg.make("PROCESS_CAPTURE_INCOMPLETE",\n'),
+    ('the execution is not observed', 'gpos/tools/execution.py',
+     '    with proc.observe() as observed:\n        try:\n            outcome = adapter.execute(request, context)',
+     '    observed = []\n    with proc.observe():\n        try:\n            outcome = adapter.execute(request, context)'),
+    ('a probe ignores its own unproven processes', 'gpos/tools/registry.py',
+     '        result = _with_integrity(adapter_id, result, observed)\n', ''),
+    ('a probe reports a usable tool after an unproven process', 'gpos/tools/registry.py',
+     '    return dataclasses.replace(result, status=model.UNAVAILABLE,', '    return dataclasses.replace(result,'),
+    ('an adapter is probed on a platform it does not declare', 'gpos/tools/registry.py',
+     '        if platform is None or platform not in adapter.descriptor.supported_platforms:\n            # alpha.23 (D12)',
+     '        if False:\n            # alpha.23 (D12)'),
+    ('an unrecognised host passes the platform gate again', 'gpos/tools/execution.py',
+     '    if platform is None or platform not in adapter.descriptor.supported_platforms:   # alpha.23 (D12): fail closed',
+     '    if platform is not None and platform not in adapter.descriptor.supported_platforms:'),
+    ('a second Windows process facility appears', 'gpos/tools/paths_win32.py',
+     'import ctypes\nimport msvcrt\n', 'import ctypes\nimport msvcrt\nimport subprocess\n'),
+    ('a kernel32 function outside the allowlist is bound', 'gpos/tools/process_win32.py',
+     '_bind("CloseHandle", wintypes.BOOL, wintypes.HANDLE)\n',
+     '_bind("CloseHandle", wintypes.BOOL, wintypes.HANDLE)\n_bind("CreateRemoteThread", wintypes.HANDLE)\n'),
+    ('foundation text I/O without an encoding', 'gpos/tools/leases.py',
+     '        data = json.loads(Path(path).read_text(encoding="utf-8"))', '        data = json.loads(Path(path).read_text())'),
 ]
+
+# --- alpha.23: the Windows mechanisms (tests/test_windows_foundation.py); NOT_RUN on any other host
+P32, F32, L = 'gpos/tools/process_win32.py', 'gpos/tools/paths_win32.py', 'gpos/tools/leases.py'
+WINDOWS_MUTATIONS = [
+    ('the child is not created suspended', P32,
+     'CREATION_FLAGS = (EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED\n',
+     'CREATION_FLAGS = (EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT\n'),
+    ('the child is resumed before it is proven', P32, '        _hook("after_create", info, job)\n',
+     '        _k32.ResumeThread(info.hThread)\n        _hook("after_create", info, job)\n'),
+    ('job membership is not proven', P32,
+     '        in_job = _in_job(info.hProcess, job) and not _hook("deny_membership")', '        in_job = True'),
+    ('the image identity is not proven', P32, '        if not (in_job and pw.same_path(image, exe_final)):',
+     '        if not in_job:'),
+    ('the readers start after the child runs', P32,
+     '            for reader in readers:\n                reader.start()\n            # Φ3 run\n            _hook("before_resume", info, readers)\n',
+     '            # Φ3 run\n            _hook("before_resume", info, readers)\n'),
+    ('descendants are left running when the root exits', P32,
+     '            _k32.TerminateJobObject(job, TERMINATED_EXIT)\n            end = now() + CLEANUP_SECONDS\n',
+     '            end = now() + CLEANUP_SECONDS\n'),
+    ('containment is assumed, not observed', P32, '        result.tree_contained = active == 0',
+     '        result.tree_contained = True'),
+    ('an incomplete capture is reported complete', P32,
+     '        result.capture_complete = not any(reader.is_alive() for reader in readers)',
+     '        result.capture_complete = True'),
+    ('the deadline restarts after creation', P32, '        _hook("after_create", info, job)\n',
+     '        _hook("after_create", info, job)\n        deadline = now() + spec.timeout\n'),
+    ('setup is not counted against the deadline', P32, '        _hook("setup_done")\n        if now() >= deadline:',
+     '        _hook("setup_done")\n        deadline = now() + spec.timeout\n        if now() >= deadline:'),
+    ('descendants may break away from the job', P32,
+     'JOB_LIMITS = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION',
+     'JOB_LIMITS = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION | 0x800'),
+    ('every inheritable handle reaches the child', P32,
+     '    for attribute, value in ((PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles), (PROC_THREAD_ATTRIBUTE_JOB_LIST, jobs)):',
+     '    for attribute, value in ((PROC_THREAD_ATTRIBUTE_JOB_LIST, jobs),):'),
+    ('the child is created outside the job', P32,
+     '    for attribute, value in ((PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles), (PROC_THREAD_ATTRIBUTE_JOB_LIST, jobs)):',
+     '    for attribute, value in ((PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles),):'),
+    ('liveness signals the process again', L,
+     '    if sys.platform == "win32":   # os.kill(pid, 0) is a console control event on Windows, never a probe\n'
+     '        from . import process\n        return process.host_pid_alive(pid)\n', ''),
+    ('a directory is opened through its reparse point', F32,
+     '                 OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)',
+     '                 OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS)'),
+    ('a pinned directory may be renamed', F32,
+     '    return _open(path, FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE,',
+     '    return _open(path, FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,'),
+    ('the canonical spelling is not proven', F32, '    if not same_path(actual, str(lexical)):', '    if False:'),
+    ("another owner's lease is released on Windows", L,
+     'lambda r: r.get("owner_id") == lease.owner_id and r.get("token") == lease.token', 'lambda r: True'),
+    ('the Windows deadline is not enforced', P32,
+     '                state = _k32.WaitForSingleObject(info.hProcess, min(int(remaining * 1000) + 1, MAX_WAIT_MS))',
+     '                state = _k32.WaitForSingleObject(info.hProcess, 0xFFFFFFFF)'),
+    ('Windows environment values are copied into provenance', 'gpos/tools/process.py',
+     '"set_names": sorted({name for name, _ in self.overrides} | set(self.recorded))}',
+     '"set_names": sorted(self.build())}'),
+    ('Windows containment is not checked', F32, '    if not any(within(r, target) for r in roots):', '    if False:'),
+    ('a Windows process-start failure is an opaque defect again', P32,
+     '    if err in (ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_ACCESS_DENIED, ERROR_BAD_EXE_FORMAT,',
+     '    if False and err in (ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_ACCESS_DENIED, ERROR_BAD_EXE_FORMAT,'),
+    ('Windows public stdout is no longer redacted', 'gpos/tools/process.py',
+     '    out, out_n = redact(raw.raw_stdout.decode("utf-8", errors="replace"))',
+     '    out, out_n = raw.raw_stdout.decode("utf-8", errors="replace"), 0'),
+    ('the Windows raw buffer bypasses the capture limit', [
+        ('gpos/tools/process.py', '            sink["total"] += len(chunk)\n',
+         '            sink["total"] += len(chunk)\n            sink.setdefault("all", bytearray()).extend(chunk)\n'),
+        (P32, '        result.raw_stdout, result.raw_stderr = bytes(sinks[0]["data"]), bytes(sinks[1]["data"])',
+         '        result.raw_stdout, result.raw_stderr = bytes(sinks[0].get("all", sinks[0]["data"])), '
+         'bytes(sinks[1].get("all", sinks[1]["data"]))')]),
+    ('a hard-linked alias is hashed', F32, '            if problem is None and data.nNumberOfLinks != 1:',
+     '            if False:'),
+    ('an artifact is hashed while a writer has it open', F32,
+     '        share = FILE_SHARE_READ if deny_writers else', '        share = FILE_SHARE_READ | FILE_SHARE_WRITE if deny_writers else'),
+    ('a lease can be replaced between its check and its delete', F32,
+     '        handle = _open(lexical, GENERIC_READ | DELETE, FILE_SHARE_READ, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT)',
+     '        handle = _open(lexical, GENERIC_READ | DELETE, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT)'),
+    ('a lease is created over an existing entry', F32,
+     '            handle = _open(lexical, GENERIC_WRITE | FILE_READ_ATTRIBUTES, FILE_SHARE_READ, CREATE_NEW,',
+     '            handle = _open(lexical, GENERIC_WRITE | FILE_READ_ATTRIBUTES, FILE_SHARE_READ, OPEN_ALWAYS,'),
+    ('a network or mapped drive is accepted', F32, '    if _k32.GetDriveTypeW(str(root)) not in LOCAL_DRIVES:',
+     '    if False:'),
+    ('an alternate data stream is accepted', F32, '    if ":" in part:', '    if False:'),
+    ('a reserved device name is accepted', F32, '    if part.split(".", 1)[0].rstrip(" ").upper() in RESERVED:',
+     '    if False:'),
+    ('a letter-case variant shares a workspace', F32, '        if exact_last:', '        if False:'),
+    ('a batch file or script is started', 'gpos/tools/process.py',
+     '    if exe.suffix.lower() != WINDOWS_EXECUTABLE_SUFFIX:', '    if False:'),
+    ('a Windows shell or script host is started', 'gpos/tools/process.py',
+     '    if exe.name.lower() in WINDOWS_SHELL_EXECUTABLES:', '    if False:'),
+    ('a detached process is started on Windows', 'gpos/tools/process.py',
+     '    if sys.platform == "win32":   # D3: a Windows supervisor is designed with the Windows Player Runtime, not mapped\n',
+     '    if False:\n'),
+    ('a Windows-unsafe request id names a workspace', 'gpos/tools/execution.py',
+     '        problems += _windows_request_problems(request, adapter_id, cap_id)\n', '        pass\n'),
+    ('a Windows workspace creation failure escapes as an exception', 'gpos/tools/execution.py',
+     '    except OSError as exc:   # any other refusal of the file system is a structured result too',
+     '    except UnicodeError as exc:'),
+    ('a Windows output path that is a regular file is not refused', 'gpos/tools/execution.py',
+     '    if os.path.lexists(workspace) and not os.path.isdir(workspace):', '    if False:'),
+    ('the CLI writes in the ANSI code page', 'gpos/tools/cli.py',
+     '    if sys.platform == "win32":\n        _utf8_streams()\n', ''),
+    ('the synthetic artifact is written with CRLF', 'gpos/tools/synthetic/helper.py',
+     'with open(path, "w", encoding="utf-8", newline="\\n") as fh:', 'with open(path, "w", encoding="utf-8") as fh:'),
+]
+# Mutations whose tests exercise POSIX-only behaviour (permission bits, sessions, detached processes, the account
+# database, killpg): they run on POSIX and are NOT_RUN on Windows, where those tests are explicitly skipped.
+POSIX_ONLY = {'the host location follows HOME', 'lease conflict ignored', "another owner's lease is released",
+              'timeout ignored', 'environment values copied into provenance', 'symlink escape allowed',
+              'path traversal allowed', 'a process-start failure is an opaque defect again',
+              'workspace creation failure escapes as an exception', 'public stdout no longer redacted',
+              'an output path that is a regular file is not refused',
+              'raw buffer bypasses the capture limit', 'the detached-spawn gate is removed',
+              'more than one detached process per execution', 'a dry run may start a detached process',
+              'a detached spawn skips the boundary rules', 'a detached process shares the caller session',
+              'a detached process is never reaped', 'the execution does not re-check the host-location allowlist'}
+# Each POSIX-only mutation above edits a POSIX implementation that Windows does not run (alpha.23 guards it); its
+# Windows counterpart is a WINDOWS_MUTATIONS entry (the lease, timeout, environment, containment, start-failure,
+# redaction and capture-bound twins; the detached-process and host-location refusals). On Windows they are NOT_RUN.
+ONLY_ON = {**{m[0]: "WINDOWS" for m in WINDOWS_MUTATIONS}, **{n: "POSIX" for n in POSIX_ONLY}}
+SUITES = ("test_tool_foundation.py", "test_windows_foundation.py")
 
 
 def run(mutation):
@@ -419,14 +576,19 @@ def run(mutation):
         shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "__pycache__", ".DS_Store"))
         for rel, anchor, replacement in edits:
             path = copy / rel
-            text = path.read_text()
+            text = gate.read(path)
             if text.count(anchor) != 1:
                 return name, f"NOT APPLIED ({rel}: anchor found {text.count(anchor)} times)"
-            path.write_text(text.replace(anchor, replacement))
-        out = subprocess.run([sys.executable, "-B", str(copy / "tests" / "test_tool_foundation.py")],
-                             capture_output=True, text=True,
-                             env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"), timeout=900)
-        return name, "CAUGHT" if out.returncode != 0 else "MISSED"
+            gate.write(path, text.replace(anchor, replacement))
+        for suite in SUITES:   # the foundation suite, then the Windows mechanisms (all skipped on other hosts)
+            try:
+                out = subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / suite)], capture_output=True, text=True,
+                                     env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"), timeout=900, **gate.ISOLATED)
+            except subprocess.TimeoutExpired:
+                return name, "CAUGHT"   # a hang is a failure of the suite
+            if out.returncode != 0:
+                return name, "CAUGHT"
+        return name, "MISSED"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -436,14 +598,9 @@ def main():
     parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--only", help="run only mutations whose name contains this text")
     args = parser.parse_args()
-    selected = [m for m in MUTATIONS if not args.only or args.only in m[0]]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(run, selected))
-    for name, verdict in results:
-        print(f"{verdict:<12} {name}")
-    caught = sum(v == "CAUGHT" for _, v in results)
-    print(f"caught {caught} of {len(results)}")
-    return 0 if caught == len(results) else 1
+    selected = [m for m in MUTATIONS + WINDOWS_MUTATIONS if not args.only or args.only in m[0]]
+    here, elsewhere = gate.for_host(selected, ONLY_ON)
+    return gate.qualify(run, here, args.jobs, not_run=elsewhere)
 
 
 if __name__ == "__main__":

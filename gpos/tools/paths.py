@@ -11,6 +11,7 @@ never grants arbitrary filesystem authority implicitly.
 """
 
 import os
+import sys
 from pathlib import Path, PurePosixPath
 
 RUNTIME_DIR = ".game/gpos-runtime"  # non-authoritative generated state; never a GPOS record
@@ -68,7 +69,14 @@ def unsafe_reason(scopes, path, must_exist=False):
     read or written. Finally the path is resolved and must still be inside a scope, so a symlink
     cannot move the target out of the project either. A scope that itself lies under a symlinked
     directory (macOS `/var` -> `/private/var`) is handled: only components below the scope matter.
+
+    On Windows (alpha.23) the rules are stricter and native (paths_win32.unsafe_reason): no UNC, device or mapped
+    network path, no alternate data stream, reserved name or trailing dot, and no reparse point (junction, link,
+    mount point) anywhere from the volume root down, scope roots and their ancestors included (D10).
     """
+    if sys.platform == "win32":
+        from . import paths_win32
+        return paths_win32.unsafe_reason(scopes, path, must_exist)
     if not scopes:
         return f"{path}: no permitted filesystem scope is declared"
     if not Path(path).is_absolute():
@@ -109,8 +117,14 @@ def runtime_dir(root, *parts):
 HOST_LOCATIONS = {"USER_APPLICATIONS_GPOS": ("Applications", "GPOS")}
 
 
+class HostLocationUnsupported(OSError):
+    """No host location is defined on this platform (alpha.23: Windows has none yet)."""
+
+
 def account_home():
     """The current user's home directory from the account database (pwd), not from the environment."""
+    if sys.platform == "win32":
+        raise HostLocationUnsupported("no host location is defined on Windows in this release")
     import pwd
     return Path(pwd.getpwuid(os.getuid()).pw_dir)
 

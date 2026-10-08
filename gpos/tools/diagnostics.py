@@ -239,6 +239,10 @@ CODES = {
     "CAPTURE_FAILED": (FAILED, "the capture helper failed or gave no trustworthy result; nothing was published"),
     "CAPTURE_OUTPUT_INVALID": (FAILED, "the captured file failed validation; it is not an artifact and offers no evidence"),
     "CAPTURE_HELPER_IDENTITY_MISMATCH": (FAILED, "the helper that answered is not the verified release, or the installed helper changed around the capture"),
+    # process integrity (alpha.23): judged by the foundation for every process an execution or a probe started
+    "PROCESS_TREE_NOT_CONTAINED": (OUTCOME_UNKNOWN, "a process was not observed to end together with its whole process tree; something it started may still be running"),
+    "PROCESS_CAPTURE_INCOMPLETE": (FAILED, "a process's standard output or error was not read to its end; nothing it printed is trusted as complete"),
+    "PROCESS_DESCENDANTS_TERMINATED": (INFO, "processes a tool left running when it exited were terminated with its job (Windows; POSIX leaves them)"),
 }
 
 

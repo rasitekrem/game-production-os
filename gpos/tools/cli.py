@@ -194,7 +194,18 @@ def _result_text(result):
     return "\n".join(lines)
 
 
+def _utf8_streams():
+    """alpha.23: on Windows the standard streams default to the ANSI code page and CRLF; the CLI writes UTF-8 with
+    LF, the same bytes as on every other host, and a path or message the code page cannot encode never raises."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="backslashreplace", newline="\n")
+
+
 def main(argv=None, stdout=None):
+    if sys.platform == "win32":
+        _utf8_streams()
     argv = list(sys.argv[1:] if argv is None else argv)
     stdout = stdout or sys.stdout
     fmt = "json" if "json" in argv else "text"

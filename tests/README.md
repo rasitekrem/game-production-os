@@ -4,7 +4,23 @@
 python3 tests/validate_framework.py
 ```
 
-Requires Python 3.8+ and **no third-party packages**.
+Requires Python 3.8+ and **no third-party packages**. That floor is not a qualification claim: only tested interpreter and operating-system combinations are qualified (alpha.23: Windows 11 Enterprise 10.0.26200 with CPython 3.14.8 x64; macOS as recorded for each release).
+
+## Windows (alpha.23)
+
+On Windows every suite runs in Python's UTF-8 Mode, given explicitly on the command line (the Windows locale is not UTF-8, and `python3` is usually the Microsoft Store alias, not an interpreter):
+
+```bash
+python -X utf8 tests/validate_framework.py
+```
+
+The same applies to every suite and harness below. A suite started without `-X utf8` on Windows stops at once with `WINDOWS_UTF8_MODE_REQUIRED`; the mutation harnesses pass the flag to every suite they run themselves.
+
+| Suite | What it covers |
+|---|---|
+| `tests/test_windows_foundation.py` | Windows only (skipped elsewhere): W01 the Job Object process mechanism, W02 executable pinning and refusals, W03 handle-based liveness, W04 the environment, W05 NTFS containment and races (junctions, links, hard links, SUBST, 8.3, writers, pins), W06 leases and sessions, W07 platform refusals, W08 UTF-8 and bytes. Side effects: temporary directories, one SUBST drive letter that is removed again |
+| `tests/test_posix_parity.py` | The alpha.22 POSIX source parity: frozen files unchanged but for the version, POSIX code unchanged but for `if sys.platform == "win32":` guards, every deliberate shared change listed. Source evidence only — never a macOS PASS. `tests/generate_posix_parity.py` wrote its fixture from the `v1.0.0-alpha.22` tag |
+| `tests/test_mutation_gate.py` | The baseline gate every mutation harness runs behind (`tests/mutation_gate.py`): no mutant runs, and none is counted, unless the unmutated suite passes in an identically prepared copy; mutants for another host are `NOT_RUN`, never counted |
 
 Optional cross-check: with `jsonschema` and `rfc3339-validator` installed, every result is compared with the reference implementation, including date-time format checking. If `jsonschema` is installed without date-time support the run fails rather than silently skipping format checks.
 

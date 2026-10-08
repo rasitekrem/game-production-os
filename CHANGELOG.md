@@ -4,6 +4,41 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.23] — Phase 2C-9.1: Windows Foundation Core
+
+Builds on the frozen Phase-2C-8 tree (`v1.0.0-alpha.22`, `92ca10b`). Windows is now the primary development and production platform; macOS keeps its alpha.22 behaviour. No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, no change to the Unity Editor bridge (`com.gpos.live-bridge` 1.5.0, `gpos.unity.live/5`, 67 files, digest `b7f4775d…`), to Unity Build Core or to the Player Runtime capabilities, and the production registry stays at seven adapters. Projects must pin `gpos_version` `1.0.0-alpha.23`.
+
+Qualified on Windows 11 Enterprise 10.0.26200 with CPython 3.14.8 x64 on local NTFS only; no other interpreter or operating-system combination is claimed. The tool adapter foundation now runs natively on Windows. The production adapters on Windows (git, FFmpeg, ffprobe, adb, Blender) are qualified in 2C-9.2; Unity and the Player stay macOS-only.
+
+### Added
+
+- **The Windows process backend** (`gpos/tools/process_win32.py`, a private part of the one audited process boundary; only `process.py` imports it): `CreateProcessW` with the validated `.exe` as `lpApplicationName`, a writable Unicode command line, `STARTUPINFOEX` with `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` (exactly the three standard handles) and `PROC_THREAD_ATTRIBUTE_JOB_LIST`, created `CREATE_SUSPENDED` inside a fresh unnamed Job Object (`KILL_ON_JOB_CLOSE | DIE_ON_UNHANDLED_EXCEPTION`, no breakaway), with `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW` and an explicit Unicode environment and working directory. Job membership (`IsProcessInJob`) and image identity (`QueryFullProcessImageNameW` against the pinned executable) are proven before `ResumeThread`; anything unproven is terminated before any of its code ran. The readers run before the child resumes. A timeout terminates the owned job (no console signal); whatever the tool leaves running when it exits is terminated with its job (D9), and containment is reported only when the job was observed empty. The executable is pinned (`FILE_SHARE_READ` only) and the working-directory chain is pinned through creation.
+- **Process integrity at every boundary:** `ProcessOutcome.tree_contained`, `capture_complete`, `descendants_terminated` and `integrity_ok` (defaults on POSIX); every `run_process` outcome passes through one observer (`process.observe`), and an unproven one never carries an exit code. `execute()` and `ToolRegistry.probe()` judge every process an execution or a probe started (through `ExecutionContext.run` or directly): an unproven one is never a success or a usable tool, withholds evidence and leaves artifacts incomplete, whatever the adapter reported. New codes `PROCESS_TREE_NOT_CONTAINED` (`OUTCOME_UNKNOWN`), `PROCESS_CAPTURE_INCOMPLETE` (`FAILED`) and `PROCESS_DESCENDANTS_TERMINATED` (`INFO`).
+- **Windows liveness** (`process.host_pid_alive`): `OpenProcess` + `WaitForSingleObject`, never `os.kill(pid, 0)` (a console control event on Windows); an inaccessible process counts as alive.
+- **Windows file-system containment** (`gpos/tools/paths_win32.py`): drive-letter paths only (no UNC, device, mapped network drive or SUBST alias), no alternate data stream, reserved device name, trailing dot or space or `<>"|?*`; every component from the volume root down, scope roots and their ancestors included, opened without following reparse points, refused if it is one and required to be spelled canonically (8.3 names refused); local NTFS only (D10, D11, D8). Artifacts are hashed through one handle that excludes writers (`FILE_SHARE_READ`), never follows a reparse point and refuses hard-linked aliases; workspaces and lease directories are created inside pinned, proven chains, and a letter-case variant of a workspace is refused (D4).
+- **Windows leases:** created with `CREATE_NEW` without following a reparse point, read without following one, released, session-released and broken by verifying the content through the delete handle and deleting through it; a sharing violation is a structured failure, never retried (D6). No NTFS ACL privacy is claimed.
+- **Windows environment** (D5): the default policy also inherits `SystemDrive`, `WINDIR`, `USERPROFILE`, `HOMEDRIVE` and `HOMEPATH`; names are case-insensitive and set once; ambiguous or malformed names are refused.
+- **Refusals on Windows:** a batch file, script, extensionless file, app-execution alias or other reparse point is never started; shells and script hosts are refused by name; detached processes are unavailable (D3); there is no host location; request ids Windows cannot name are refused.
+- **`.gitattributes`:** text is LF in every checkout whatever `core.autocrlf` says; the Unity bridge and the Player helper release are never converted.
+- **Tests:** `tests/test_windows_foundation.py` (W01–W08, Windows only), `tests/test_posix_parity.py` with `tests/posix_parity.py`, `tests/generate_posix_parity.py` and `tests/fixtures/posix-parity-alpha22.json` (alpha.22 POSIX source parity), `tests/test_mutation_gate.py` and `tests/mutation_gate.py`; foundation groups V01 (process integrity) and V02 (the static Windows boundary); Windows mutations in `tests/mutate_tools.py`.
+
+### Changed
+
+- **The platform gate fails closed** (D12): an unrecognised host is `PLATFORM_UNSUPPORTED`, and `ToolRegistry.probe()` never invokes an adapter on a platform it does not declare.
+- **Every mutation harness runs behind a baseline gate:** the unmutated suite must pass in an identically prepared copy before any mutant runs; a red, crashed, timed-out or unrun baseline is `BLOCKED` (exit 2) with nothing counted. Edits are applied byte for byte; on Windows each suite runs in its own hidden console. All 16 harnesses are gated; this release qualifies `mutate_tools`, `mutate_production` and `mutate_adapters`.
+- **The CLI** writes UTF-8 with LF on Windows. The Windows test command is `python -X utf8 tests/<suite>.py`; every in-scope suite refuses to run on Windows without UTF-8 Mode (`WINDOWS_UTF8_MODE_REQUIRED`).
+- `unity/project_lock.py` imports on Windows (`fcntl` and the `O_*` flags are optional there); macOS behaviour is unchanged.
+- An artifact outside the project is recorded with a `/`-separated path on every host.
+
+### Notes
+
+- **Windows/POSIX difference (D9):** on Windows, processes a tool leaves running when it exits are terminated with its job and recorded (`PROCESS_DESCENDANTS_TERMINATED`); POSIX leaves them. The adb server lifecycle is reviewed with the adb qualification (2C-9.2).
+- The native `CreateProcessW` call cannot be interrupted: its duration counts against the deadline, and a child created after the deadline is terminated before it runs, but the call itself is not bounded by GPOS.
+- A reader blocked by a pipe handle that a process outside the job duplicated cannot be cancelled; it is abandoned after the drain bound and the capture is reported incomplete.
+- A process started through WMI, COM, a service or the Task Scheduler is not a member of the job (Microsoft documents this for `Win32_Process.Create`); this is the counterpart of a POSIX double-fork.
+- Liveness by process id is advisory (ids are reused); it never breaks a lease.
+- macOS was not executed for this release: the POSIX paths are covered by source parity (`tests/test_posix_parity.py`) only, which is not a macOS PASS.
+
 ## [1.0.0-alpha.22] — Phase 2C-8: Runtime / Deploy / Capture Core
 
 Builds on the frozen Phase-2C-7 tree (`v1.0.0-alpha.21`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, no change to the Unity Editor bridge (`com.gpos.live-bridge` 1.5.0, `gpos.unity.live/5`, 67 files, digest `b7f4775d…`) and no change to the alpha.20 or alpha.21 sanitizers. Projects must pin `gpos_version` `1.0.0-alpha.22`.

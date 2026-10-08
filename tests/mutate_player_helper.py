@@ -20,6 +20,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import mutation_gate as gate
+
 ROOT = Path(__file__).resolve().parent.parent
 SRC = "gpos/tools/player/helper_src/"
 SUP, COM = SRC + "Supervise.swift", SRC + "Common.swift"
@@ -49,10 +51,10 @@ MUTATIONS = [
 def apply(copy, edits):
     for rel, anchor, replacement in edits:
         path = copy / rel
-        text = path.read_text()
+        text = gate.read(path)
         if text.count(anchor) != 1:
             return f"NOT APPLIED ({rel}: anchor found {text.count(anchor)} times)"
-        path.write_text(text.replace(anchor, replacement))
+        gate.write(path, text.replace(anchor, replacement))
     return None
 
 
@@ -68,12 +70,12 @@ def run(mutation):
         scratch = tmp / "t"
         scratch.mkdir()
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", TMPDIR=str(scratch))   # every test temp dir inside tmp
-        built = subprocess.run([sys.executable, "-B", str(copy / "tests" / "build_player_helper.py"), "--write"],
+        built = subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / "build_player_helper.py"), "--write"],
                                capture_output=True, text=True, timeout=900, env=env)
         if built.returncode != 0:
             return name, "CAUGHT"   # the mutation does not even compile
         try:
-            out = subprocess.run([sys.executable, "-B", str(copy / "tests" / "test_player_helper.py"), "RH1_Supervise",
+            out = subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / "test_player_helper.py"), "RH1_Supervise",
                                   "RH2_Refusals", "RH3_Modes"], capture_output=True, text=True, timeout=1800, env=env)
         except subprocess.TimeoutExpired:
             return name, "CAUGHT"
@@ -99,7 +101,7 @@ def anchors():
     problems = []
     for name, edits in MUTATIONS:
         for rel, anchor, _ in edits:
-            n = (ROOT / rel).read_text().count(anchor)
+            n = gate.read(ROOT / rel).count(anchor)
             if n != 1:
                 problems.append(f"{name}: {rel} anchor found {n} times")
     print("\n".join(problems) or f"all anchors of {len(MUTATIONS)} mutations apply exactly once")
@@ -116,13 +118,7 @@ def main():
     if args.anchors:
         return anchors()
     selected = [m for m in MUTATIONS if not args.only or args.only in m[0]]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(run, selected))
-    for name, verdict in results:
-        print(f"{verdict:<12} {name}")
-    caught = sum(v == "CAUGHT" for _, v in results)
-    print(f"caught {caught} of {len(results)}")
-    return 0 if caught == len(results) else 1
+    return gate.qualify(run, selected, args.jobs)
 
 
 if __name__ == "__main__":

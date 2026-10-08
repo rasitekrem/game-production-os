@@ -1,7 +1,7 @@
 ---
 name: level-design
 maturity: DRAFT
-gpos_version: 1.0.0-alpha.22
+gpos_version: 1.0.0-alpha.23
 may_own_gates: [LEVEL_DESIGN]
 ---
 

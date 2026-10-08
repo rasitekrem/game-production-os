@@ -1,0 +1,8 @@
+# alpha.23: the repository's bytes are part of its contract (artifact hashes, manifests, the Unity bridge package
+# digest, the signed Player helper). Every clone must check out exactly the committed bytes on every host, whatever
+# core.autocrlf says: text is LF in the working tree and is never converted on commit.
+* text=auto eol=lf
+
+# Digest-pinned content is never converted at all, not even by an eol rule.
+gpos/tools/unity/live_bridge/** -text
+gpos/tools/player/helper_release/** binary

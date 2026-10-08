@@ -175,13 +175,16 @@ exception, for a process that must outlive the execution that starts it (the pla
   run, and at most once per execution (a failed start is not retried either);
 - no `ExecutionRequest` field names its executable, arguments, working directory or environment: the adapter builds the
   spec from its own verified tool and its own workspace, and records it as the execution's command.
+- on Windows (alpha.23) a detached process is unavailable: `spawn_detached` refuses with `PLATFORM_UNSUPPORTED` and starts
+  nothing (see [Windows](#windows-alpha23)).
 
 ### Host locations (alpha.22)
 
 A host location is a fixed directory outside every project. The foundation resolves `USER_APPLICATIONS_GPOS` to
 `<home>/Applications/GPOS`, the home directory taken from the account database (`pwd`), never from the `HOME` environment variable or a request,
 and adds it to the scopes of the one allowlisted capability's execution only (`ExecutionContext.host_location`). No other
-capability's scopes contain it.
+capability's scopes contain it. No host location exists on Windows in alpha.23: a capability that uses one is refused there
+with `PLATFORM_UNSUPPORTED`.
 
 ### Environment policy
 
@@ -340,6 +343,38 @@ The request's existing provenance fields are exposed by the CLI (Phase 2C-2), on
 - `--device` → `device`.
 
 They are passed to the request unchanged, and the foundation validates them as it always has: a target platform must be registry vocabulary, and a supplied value must be non-empty. An omitted option stays unknown. Nothing is inferred, and no tool is called to find a value. The JSON output echoes the request through the same redaction as the result. The result's provenance records what the caller supplied exactly as supplied.
+
+## Windows (alpha.23)
+
+Windows is the primary platform. The foundation's contracts are the same on every host; on Windows they are kept with native mechanisms, and where Windows cannot give a guarantee the operation is refused rather than approximated. Qualified on Windows 11 Enterprise 10.0.26200 with CPython 3.14.8 x64 on local NTFS; the test commands are `python -X utf8 tests/<suite>.py`.
+
+### Process boundary
+
+`gpos/tools/process_win32.py` is a private part of the one audited boundary: only `process.py` imports it, it receives only a validated `ToolProcessSpec`, and it binds exactly sixteen kernel32 functions (`tests/validate_framework.py` pins the list). No adapter calls `CreateProcessW`, no request names an executable or a command, and nothing is ever started through a shell, `ShellExecute`, `WinExec` or a fallback to `subprocess`.
+
+- **What may start:** only a `.exe` image. A batch file, script or extensionless file is refused (it would run through an interpreter that re-parses its arguments), as are shells and script hosts by name and any executable that is a reparse point (a link or an app-execution alias).
+- **How it starts:** `CreateProcessW` with the validated executable as `lpApplicationName`, a writable Unicode command line, `bInheritHandles` with `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` naming exactly the child's three standard handles, `PROC_THREAD_ATTRIBUTE_JOB_LIST` naming a fresh, unnamed, non-inheritable Job Object (`KILL_ON_JOB_CLOSE | DIE_ON_UNHANDLED_EXCEPTION`, no breakaway), and `CREATE_SUSPENDED | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT`. The job is applied as the process is created, so no process of it ever exists outside the job.
+- **Proof before it runs:** while the child is suspended, `IsProcessInJob` must hold and its image path must equal the final path of the executable, which is pinned (`FILE_SHARE_READ` only) from validation to launch, so it cannot be written, renamed or replaced. Anything unproven is terminated before any of its code ran, and the launch is refused.
+- **Deadline:** the clock starts after validation. Setup and the native `CreateProcessW` call count against it; the call itself cannot be interrupted, so a child created after the deadline is terminated before it runs (`TIMED_OUT`). After `ResumeThread`, the loader, DLL initialisation and the program all run inside the remaining time. A timeout terminates the owned job; no console signal is ever sent.
+- **Capture:** both readers run before the child resumes, so a child that writes more than a pipe holds can never deadlock. After the root ends, whatever the tool left running in its job is terminated (a Windows/POSIX difference, recorded as `PROCESS_DESCENDANTS_TERMINATED`; POSIX leaves them) and the job must be observed empty within a bound; the readers then get a bound to reach end-of-file.
+- **Integrity:** an outcome reports `tree_contained` and `capture_complete`. When either is false its exit code is not reported, and the foundation — which observes every `run_process` outcome of an execution or a probe, through `ExecutionContext.run` or not — never reports a success or a usable tool for it: `PROCESS_TREE_NOT_CONTAINED` (`OUTCOME_UNKNOWN`) or `PROCESS_CAPTURE_INCOMPLETE` (`FAILED`), artifacts incomplete and no evidence.
+- **Liveness** comes from a process handle (`OpenProcess`, `WaitForSingleObject`), never from `os.kill(pid, 0)`, which on Windows is a console control event. An inaccessible process counts as alive.
+- **Environment:** the default policy additionally inherits `SystemDrive`, `WINDIR`, `USERPROFILE`, `HOMEDRIVE` and `HOMEPATH` — the counterparts of `HOME` and the system locations — and nothing else; names are case-insensitive and set once.
+- **Unavailable:** detached processes (the Windows Player supervisor is designed with the Windows Player Runtime) and host locations.
+
+Residuals: the `CreateProcessW` call is not bounded by GPOS; a reader blocked by a pipe handle that a process outside the job duplicated is abandoned after its bound and the capture reported incomplete; a process started through WMI, COM, a service or the Task Scheduler is not in the job (the counterpart of a POSIX double-fork); process ids are reused, so liveness is advisory and never breaks a lease.
+
+### File system
+
+`gpos/tools/paths_win32.py` serves the foundation's own operations only; it is no general file API and binds seven kernel32 functions.
+
+- **Lexical:** an absolute drive-letter path; no UNC, device or drive-relative path; no alternate data stream, reserved device name, trailing dot or space, or `<>"|?*` in any component. `..` is normalised first, so it cannot walk out unseen.
+- **Root and ancestors:** every component from the volume root down — scope roots and their ancestors included — is opened without following reparse points and refused if it is one (a junction, symlink, mount point or any other alias). Its final path must equal its spelling, which refuses SUBST drives and 8.3 names. The drive must be a local fixed or removable drive and the volume NTFS; network and mapped drives are refused.
+- **Pinning:** an operation holds every directory of its path open with a data right and without `FILE_SHARE_DELETE`, so no component can be renamed or deleted while it runs.
+- **Opened-object identity:** an artifact is hashed through one handle that does not follow a reparse point and shares only reading, so a file still open for writing is refused, and it cannot change, move or vanish while it is hashed; a file with more than one hard link is refused as an alias. Workspaces and lease directories are created inside a pinned chain and proven afterwards; a letter-case variant of an existing workspace is refused, never shared.
+- **Leases** are created with `CREATE_NEW` (an existing entry of any kind — a file, a link, a junction — is never followed or replaced), read without following a reparse point, and released, session-released or broken by verifying their content through the delete handle and deleting through it. A sharing violation is a structured failure, never retried. NTFS permissions are inherited from the project directory; no `0o600`-style privacy is claimed.
+
+The foundation still cannot stop an external tool from writing where the operating system lets it, and a path handed to a child as an argument is resolved again by that child.
 
 ## Future adapter sequence
 

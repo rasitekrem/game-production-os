@@ -33,8 +33,22 @@ environment policy), started in its own session with stdin, stdout and stderr on
 for. A daemon thread reaps it, so a long-lived host never keeps a zombie. Only an execution whose capability
 is allowlisted for it can reach `spawn_detached` (see `ExecutionContext.spawn_detached`); no request field
 names an executable, an argument, a directory or an environment for it.
+
+Windows (alpha.23) uses the same boundary with a native backend, `process_win32.py`, which only this module
+imports: a `.exe` only (never a batch file, script or shell), created suspended inside its own Job Object through
+STARTUPINFOEX + PROC_THREAD_ATTRIBUTE_JOB_LIST, proven (job membership, image identity) before it runs, its whole
+tree terminated on a timeout and whatever it leaves behind terminated when it exits. A Windows outcome reports
+whether that containment and the output capture were actually observed (`tree_contained`, `capture_complete`);
+when either was not, its exit code is not reported. Detached processes are unavailable on Windows.
+
+Every outcome this boundary returns, on every host, passes through one observer (`observe`), so the foundation
+judges the integrity of every process an execution or a probe started, including one an adapter ran without
+`ExecutionContext.run` or left out of its result.
 """
 
+import contextlib
+import contextvars
+import dataclasses
 import os
 import signal
 import subprocess  # the one permitted use in gpos/: see tests/validate_framework.py PROCESS_BOUNDARY
@@ -61,6 +75,18 @@ SHELL_PROGRAM_FLAGS = {"-c", "/c", "/k", "-command", "-Command", "-EncodedComman
 SAFE_ENV_DEFAULTS = ("PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "LC_CTYPE",
                      "SYSTEMROOT", "COMSPEC", "PATHEXT", "TZ")
 
+# alpha.23 (D5): on Windows the *default* policy also inherits these, and nothing else. USERPROFILE, HOMEDRIVE and
+# HOMEPATH are the Windows counterparts of HOME (Git for Windows, for one, finds the user's configuration through
+# them); SystemDrive and WINDIR are where Windows programs and the C runtime find the system. No credential, proxy
+# or application variable is ever added. A policy that names its own `inherit` keeps exactly what it names.
+WINDOWS_ENV_DEFAULTS = ("SystemDrive", "WINDIR", "USERPROFILE", "HOMEDRIVE", "HOMEPATH")
+# Windows interpreters and script hosts that would re-parse an argument as a command, refused by name like the
+# shells above. A batch file is refused by its suffix: only a `.exe` image is ever started on Windows.
+WINDOWS_SHELL_EXECUTABLES = {"bash.exe", "sh.exe", "zsh.exe", "dash.exe", "ksh.exe", "csh.exe", "tcsh.exe",
+                             "fish.exe", "wsl.exe", "wslhost.exe", "wscript.exe", "cscript.exe", "mshta.exe",
+                             "powershell_ise.exe", "conhost.exe", "openconsole.exe"}
+WINDOWS_EXECUTABLE_SUFFIX = ".exe"
+
 
 class ProcessSpecError(Exception):
     """The spec is not something this boundary is allowed to execute."""
@@ -84,6 +110,8 @@ class EnvironmentPolicy:
     recorded: tuple = ()           # names whose *presence* is worth recording in provenance
 
     def build(self, parent=None):
+        if sys.platform == "win32":
+            return _windows_environment(self, os.environ if parent is None else parent)
         parent = os.environ if parent is None else parent
         env = {name: parent[name] for name in self.inherit if name in parent}
         env.update({name: str(value) for name, value in self.overrides})
@@ -91,8 +119,33 @@ class EnvironmentPolicy:
 
     def metadata(self):
         """Safe environment metadata for provenance: names only, never values."""
+        if sys.platform == "win32":
+            return {"inherited_names": sorted(_windows_inherit(self.inherit)),
+                    "set_names": sorted({name for name, _ in self.overrides} | set(self.recorded))}
         names = {name for name, _ in self.overrides} | set(self.recorded)
         return {"inherited_names": sorted(self.inherit), "set_names": sorted(names)}
+
+
+def _windows_inherit(inherit):
+    """The names a Windows child inherits: the default allowlist gains WINDOWS_ENV_DEFAULTS (D5), any other stays."""
+    return tuple(inherit) + WINDOWS_ENV_DEFAULTS if tuple(inherit) == SAFE_ENV_DEFAULTS else tuple(inherit)
+
+
+def _windows_environment(policy, parent):
+    """The child environment on Windows, where names are case-insensitive: each allowlisted name is looked up
+    case-insensitively and set once, and an override replaces an inherited value of any letter case."""
+    by_upper = {}
+    for name, value in parent.items():
+        by_upper.setdefault(name.upper(), value)
+    env = {}
+    for name in _windows_inherit(policy.inherit):
+        if name.upper() in by_upper and name.upper() not in {k.upper() for k in env}:
+            env[name] = by_upper[name.upper()]
+    for name, value in policy.overrides:
+        for existing in [k for k in env if k.upper() == name.upper()]:
+            del env[existing]
+        env[name] = str(value)
+    return env
 
 
 @dataclass(frozen=True)
@@ -129,10 +182,21 @@ class ProcessOutcome:
     # repr so they cannot surface through a log line or an exception message by accident.
     raw_stdout: bytes = field(default=b"", repr=False)
     raw_stderr: bytes = field(default=b"", repr=False)
+    # alpha.23, observed on Windows only (a POSIX outcome keeps these defaults): whether the whole process tree was
+    # observed terminated (the Job Object reported no active process) and whether both output streams were read to
+    # their end. When either is False the exit code is untrustworthy and is None.
+    tree_contained: bool = True
+    capture_complete: bool = True
+    descendants_terminated: int = 0   # processes still in the job after the root ended, which GPOS terminated (D9)
 
     @property
     def truncated(self):
         return self.stdout_truncated or self.stderr_truncated
+
+    @property
+    def integrity_ok(self):
+        """Whether containment and capture were proven. An outcome without it can never count as a success."""
+        return self.tree_contained and self.capture_complete
 
 
 def validate_spec(spec, scopes):
@@ -172,6 +236,36 @@ def validate_spec(spec, scopes):
         raise ProcessSpecError("INVALID_TOOL_REQUEST", "a positive timeout is required")
     if not isinstance(spec.capture_bytes, int) or spec.capture_bytes <= 0:
         raise ProcessSpecError("INVALID_TOOL_REQUEST", "capture_bytes must be a positive integer")
+    if sys.platform == "win32":
+        _validate_windows(spec)
+
+
+def _validate_windows(spec):
+    """Windows-only refusals on top of the shared rules: only a `.exe` image is started (a batch file runs through
+    cmd.exe, which re-parses its arguments), never a script host or a reparse-point alias, and the environment has
+    no name Windows would read differently."""
+    exe = Path(spec.executable)
+    if exe.name.lower() in WINDOWS_SHELL_EXECUTABLES:
+        raise ProcessSpecError("UNSAFE_PROCESS_SPEC", f"{exe}: a shell or script host is never executed by the tool "
+                                                      f"foundation; an adapter declares a concrete program")
+    if exe.suffix.lower() != WINDOWS_EXECUTABLE_SUFFIX:
+        raise ProcessSpecError("UNSAFE_PROCESS_SPEC", f"{exe}: only a .exe image is started on Windows; a batch file, "
+                                                      f"script or extensionless file would run through an "
+                                                      f"interpreter")
+    if os.lstat(exe).st_file_attributes & 0x400:   # FILE_ATTRIBUTE_REPARSE_POINT: a link or an app-execution alias
+        raise ProcessSpecError("UNSAFE_PROCESS_SPEC", f"{exe}: is a reparse point (a link or app-execution alias); "
+                                                      f"an adapter resolves the real executable")
+    names = [n for n, _ in spec.env.overrides] + list(spec.env.inherit)
+    for name in names:
+        if not isinstance(name, str) or not name or "=" in name or "\x00" in name:
+            raise ProcessSpecError("UNSAFE_PROCESS_SPEC", f"environment name {name!r} is not a usable Windows name")
+    overrides = [n.upper() for n, _ in spec.env.overrides]
+    if len(set(overrides)) != len(overrides):
+        raise ProcessSpecError("UNSAFE_PROCESS_SPEC", "two environment overrides differ only in letter case; Windows "
+                                                      "would keep only one of them")
+    for _, value in spec.env.overrides:
+        if "\x00" in str(value):
+            raise ProcessSpecError("UNSAFE_PROCESS_SPEC", "an environment value contains NUL")
 
 
 def _drain(stream, limit, sink):
@@ -214,9 +308,69 @@ def _terminate(proc):
 def run_process(spec, scopes, clock=time.monotonic):
     """Execute an authorized spec. Returns a ProcessOutcome; raises ProcessSpecError for a bad spec.
 
-    Never raises for a failing, hanging or noisy process: those are outcomes, not exceptions.
+    Never raises for a failing, hanging or noisy process: those are outcomes, not exceptions. Every outcome is
+    passed to the active observer (`observe`), and one whose containment or capture was not proven carries no exit
+    code, so no caller can read it as a success.
     """
     validate_spec(spec, scopes)
+    backend = _run_windows if sys.platform == "win32" else _run_posix
+    return _observed(backend(spec, scopes, clock))
+
+
+# ---------------------------------------------------------------- observation (alpha.23)
+
+_OBSERVER = contextvars.ContextVar("gpos_tool_process_outcomes", default=None)
+
+
+@contextlib.contextmanager
+def observe():
+    """Collect every ProcessOutcome run_process returns in this context (an execution or a probe)."""
+    seen = []
+    token = _OBSERVER.set(seen)
+    try:
+        yield seen
+    finally:
+        _OBSERVER.reset(token)
+
+
+def _observed(outcome):
+    """The fail-closed integrity rule, applied to every outcome on every host before anyone sees it."""
+    if not outcome.integrity_ok and outcome.exit_code is not None:
+        outcome = dataclasses.replace(outcome, exit_code=None)
+    seen = _OBSERVER.get()
+    if seen is not None:
+        seen.append(outcome)
+    return outcome
+
+
+def _run_windows(spec, scopes, clock):
+    """The Windows backend: process_win32.run, its raw result redacted and bounded exactly like the POSIX one."""
+    from . import process_win32
+    command_line = subprocess.list2cmdline([spec.executable] + list(spec.argv))
+    try:
+        raw = process_win32.run(spec, command_line, spec.env.build(), _drain, clock)
+    except process_win32.LaunchRefused as exc:
+        raise ProcessSpecError(exc.code, str(exc)) from None
+    out, out_n = redact(raw.raw_stdout.decode("utf-8", errors="replace"))
+    err, err_n = redact(raw.raw_stderr.decode("utf-8", errors="replace"))
+    return ProcessOutcome(
+        exit_code=None if raw.timed_out else raw.exit_code, stdout=out, stderr=err,
+        stdout_bytes=raw.stdout_total, stderr_bytes=raw.stderr_total,
+        stdout_truncated=raw.stdout_total > len(raw.raw_stdout), stderr_truncated=raw.stderr_total > len(raw.raw_stderr),
+        timed_out=raw.timed_out, terminated=raw.terminated, duration_seconds=round(raw.duration, 6),
+        redactions=out_n + err_n, raw_stdout=raw.raw_stdout, raw_stderr=raw.raw_stderr,
+        tree_contained=raw.tree_contained, capture_complete=raw.capture_complete,
+        descendants_terminated=raw.descendants_terminated)
+
+
+def host_pid_alive(pid):
+    """Windows process liveness from a handle (process_win32.pid_alive); never a signal or a console event."""
+    from . import process_win32
+    return process_win32.pid_alive(pid)
+
+
+def _run_posix(spec, scopes, clock):
+    """The frozen alpha.22 POSIX body of run_process, unchanged (tests/test_posix_parity.py pins it)."""
     started = clock()
     popen_kwargs = {"cwd": spec.cwd, "env": spec.env.build(), "stdin": subprocess.DEVNULL,
                     "stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "close_fds": True}
@@ -283,6 +437,9 @@ class DetachedHandle:
 def spawn_detached(spec, scopes):
     """Start an authorized detached process and return its pid without waiting. Raises ProcessSpecError for a
     spec the boundary refuses, or when the process cannot be started."""
+    if sys.platform == "win32":   # D3: a Windows supervisor is designed with the Windows Player Runtime, not mapped
+        raise ProcessSpecError("PLATFORM_UNSUPPORTED", "a detached process is not available on Windows in this "
+                                                       "release; nothing was started")
     if not isinstance(spec, DetachedProcessSpec):
         raise ProcessSpecError("UNSAFE_PROCESS_SPEC", "a DetachedProcessSpec is required")
     if not isinstance(spec.env, EnvironmentPolicy):

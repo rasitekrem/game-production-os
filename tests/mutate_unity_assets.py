@@ -28,6 +28,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import mutation_gate as gate
+
 ROOT = Path(__file__).resolve().parent.parent
 AS, AU, LV = "gpos/tools/unity/assets.py", "gpos/tools/unity/authoring.py", "gpos/tools/unity/live.py"
 AD, BI = "gpos/tools/unity/adapter.py", "gpos/tools/unity/bridge_install.py"
@@ -180,10 +182,10 @@ def lab_editors_under(path):
 def apply(copy, edits):
     for rel, anchor, replacement in edits:
         path = copy / rel
-        text = path.read_text()
+        text = gate.read(path)
         if text.count(anchor) != 1:
             return f"NOT APPLIED ({rel}: anchor found {text.count(anchor)} times)"
-        path.write_text(text.replace(anchor, replacement))
+        gate.write(path, text.replace(anchor, replacement))
     return None
 
 
@@ -205,10 +207,10 @@ def run(mutation):
         if suite.startswith("real"):
             env.pop("GPOS_UNITY_TEST_FAST")
         if any("live_bridge/" in rel for rel, _, _ in edits):
-            subprocess.run([sys.executable, "-B", str(copy / "tests" / "generate_live_bridge_manifest.py")],
+            subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / "generate_live_bridge_manifest.py")],
                            capture_output=True, text=True, timeout=120, env=env, check=True)
         test, groups = SUITES[suite]
-        argv = [sys.executable, "-B", str(copy / "tests" / test)] + groups
+        argv = [*gate.PYTHON, "-B", str(copy / "tests" / test)] + groups
         try:
             out = subprocess.run(argv, capture_output=True, text=True, timeout=3000, env=env)
         except subprocess.TimeoutExpired:
@@ -225,7 +227,7 @@ def anchors():
     problems = []
     for name, _, edits in MUTATIONS + REAL_MUTATIONS:
         for rel, anchor, _ in edits:
-            n = (ROOT / rel).read_text().count(anchor)
+            n = gate.read(ROOT / rel).count(anchor)
             if n != 1:
                 problems.append(f"{name}: {rel} anchor found {n} times")
     print("\n".join(problems) or f"all anchors of {len(MUTATIONS)} + {len(REAL_MUTATIONS)} mutations apply exactly once")
@@ -242,13 +244,8 @@ def main():
     if args.anchors:
         return anchors()
     selected = [m for m in (REAL_MUTATIONS if args.real else MUTATIONS) if not args.only or args.only in m[0]]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(run, selected))
-    for name, verdict in results:
-        print(f"{verdict:<12} {name}")
-    caught = sum(v == "CAUGHT" for _, v in results)
-    print(f"caught {caught} of {len(results)}")
-    return 0 if caught == len(results) else 1
+    baselines = [(f"{gate.BASELINE} [{suite}]", suite, []) for suite in sorted({m[1] for m in selected})]
+    return gate.qualify(run, selected, args.jobs, baselines)
 
 
 if __name__ == "__main__":

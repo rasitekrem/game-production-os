@@ -23,6 +23,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import mutation_gate as gate
+
 ROOT = Path(__file__).resolve().parent.parent
 LIVE, IPC, STATUS = "gpos/tools/unity/live.py", "gpos/tools/unity/live_ipc.py", "gpos/tools/unity/live_status.py"
 IDENT, INSTALL, ADAPTER = "gpos/tools/unity/identity.py", "gpos/tools/unity/bridge_install.py", "gpos/tools/unity/adapter.py"
@@ -229,17 +231,17 @@ def run(mutation):
         shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "__pycache__", ".DS_Store"))
         for rel, anchor, replacement in edits:
             path = copy / rel
-            text = path.read_text()
+            text = gate.read(path)
             if text.count(anchor) != 1:
                 return name, f"NOT APPLIED ({rel}: anchor found {text.count(anchor)} times)"
-            path.write_text(text.replace(anchor, replacement))
+            gate.write(path, text.replace(anchor, replacement))
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", GPOS_UNITY_TEST_FAST="1")
         if any("live_bridge/" in rel for rel, _, _ in edits):
-            subprocess.run([sys.executable, "-B", str(copy / "tests" / "generate_live_bridge_manifest.py")],
+            subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / "generate_live_bridge_manifest.py")],
                            capture_output=True, text=True, timeout=120, env=env, check=True)
         test = "test_unity_live.py" if suite == "live" else "test_unity_live_bridge_core.py"
         try:
-            out = subprocess.run([sys.executable, "-B", str(copy / "tests" / test)], capture_output=True, text=True,
+            out = subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / test)], capture_output=True, text=True,
                                  timeout=1800, env=env)
         except subprocess.TimeoutExpired:
             return name, "CAUGHT"   # a hang is a failure of the suite
@@ -254,13 +256,8 @@ def main():
     parser.add_argument("--only", help="run only mutations whose name contains this text")
     args = parser.parse_args()
     selected = [m for m in MUTATIONS if not args.only or args.only in m[0]]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(run, selected))
-    for name, verdict in results:
-        print(f"{verdict:<12} {name}")
-    caught = sum(v == "CAUGHT" for _, v in results)
-    print(f"caught {caught} of {len(results)}")
-    return 0 if caught == len(results) else 1
+    baselines = [(f"{gate.BASELINE} [{suite}]", suite, []) for suite in sorted({m[1] for m in selected})]
+    return gate.qualify(run, selected, args.jobs, baselines)
 
 
 if __name__ == "__main__":

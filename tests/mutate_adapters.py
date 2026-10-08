@@ -19,6 +19,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import mutation_gate as gate
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # (name, file, anchor, replacement)
@@ -83,18 +85,19 @@ MUTATIONS = [
 
 
 def run(mutation):
-    name, rel, anchor, replacement = mutation
+    name, rel, anchor, replacement = mutation if len(mutation) == 4 else (mutation[0], None, None, None)  # no edit: a baseline
     tmp = Path(tempfile.mkdtemp(prefix="gpos-mut-"))
     try:
         copy = tmp / "repo"
         shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "__pycache__", ".DS_Store"))
-        path = copy / rel
-        text = path.read_text()
-        if text.count(anchor) != 1:
-            return name, f"NOT APPLIED (anchor found {text.count(anchor)} times)"
-        path.write_text(text.replace(anchor, replacement))
-        out = subprocess.run([sys.executable, "-B", str(copy / "tests" / "test_adapters.py")], capture_output=True,
-                             text=True, env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"), timeout=600)
+        if rel is not None:
+            path = copy / rel
+            text = gate.read(path)
+            if text.count(anchor) != 1:
+                return name, f"NOT APPLIED (anchor found {text.count(anchor)} times)"
+            gate.write(path, text.replace(anchor, replacement))
+        out = subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / "test_adapters.py")], capture_output=True,
+                             text=True, env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"), timeout=600, **gate.ISOLATED)
         return name, "CAUGHT" if out.returncode != 0 else "MISSED"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -106,13 +109,7 @@ def main():
     parser.add_argument("--only", help="run only mutations whose name contains this text")
     args = parser.parse_args()
     selected = [m for m in MUTATIONS if not args.only or args.only in m[0]]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(run, selected))
-    for name, verdict in results:
-        print(f"{verdict:<12} {name}")
-    caught = sum(v == "CAUGHT" for _, v in results)
-    print(f"caught {caught} of {len(results)}")
-    return 0 if caught == len(results) else 1
+    return gate.qualify(run, selected, args.jobs)
 
 
 if __name__ == "__main__":

@@ -32,6 +32,9 @@ import sys
 import tempfile
 import time
 import unittest
+
+if sys.platform == "win32" and not sys.flags.utf8_mode:   # alpha.23: the Windows locale is not UTF-8
+    sys.exit("WINDOWS_UTF8_MODE_REQUIRED: run this suite as `python -X utf8 tests/test_production_validator.py`")
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # keep bytecode out of the tree (X08 scans files)
@@ -1455,11 +1458,26 @@ class L01_Loading(unittest.TestCase):
     def test_unreadable_file(self):
         project_dir, b = self.tmp()
         p = b / "gates" / "G-DASH-TECH.json"
-        p.chmod(0)
-        try:
-            r = gpos.validate_project(load_project(project_dir))
-        finally:
-            p.chmod(0o644)
+        if sys.platform == "win32":   # alpha.23: permission bits do not block reads on Windows; an exclusive open does
+            import ctypes
+            from ctypes import wintypes
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            k32.CreateFileW.restype = wintypes.HANDLE
+            k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+                                        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+            k32.CloseHandle.argtypes = [wintypes.HANDLE]
+            handle = k32.CreateFileW(str(p), 0x80000000, 0, None, 3, 0, None)   # GENERIC_READ, no sharing at all
+            self.assertNotIn(handle, (None, ctypes.c_void_p(-1).value))
+            try:
+                r = gpos.validate_project(load_project(project_dir))
+            finally:
+                k32.CloseHandle(handle)
+        else:
+            p.chmod(0)
+            try:
+                r = gpos.validate_project(load_project(project_dir))
+            finally:
+                p.chmod(0o644)
         self.assertIn(("RECORD_UNREADABLE", "gates/G-DASH-TECH.json"), {(d.code, d.file) for d in r.diagnostics})
 
     def test_hidden_files_ignored_and_ids_from_contents(self):

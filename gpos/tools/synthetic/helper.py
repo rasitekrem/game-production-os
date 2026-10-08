@@ -14,6 +14,9 @@ import time
 
 
 def main(argv):
+    if sys.platform == "win32":   # alpha.23: the same UTF-8, LF output bytes as on every other host
+        for stream in (sys.stdout, sys.stderr):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace", newline="\n")
     verb = argv[1] if len(argv) > 1 else "inspect"
     if verb == "version":
         print("gpos-synthetic-helper 1.0.0")
@@ -23,7 +26,7 @@ def main(argv):
         return 0
     if verb == "write":
         path, text = argv[2], argv[3]
-        with open(path, "w", encoding="utf-8") as fh:
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:   # alpha.23: LF on every host
             fh.write(text + "\n")
         print(f"wrote {path}")
         return 0

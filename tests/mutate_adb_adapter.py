@@ -25,6 +25,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import mutation_gate as gate
+
 ROOT = Path(__file__).resolve().parent.parent
 ADAPTER, PARSERS, REGISTRY = "gpos/tools/adb/adapter.py", "gpos/tools/adb/parsers.py", "gpos/tools/registry.py"
 
@@ -238,15 +240,15 @@ def run(mutation):
                 if '"device": ""' in text:
                     return name, "NOT APPLIED (no physical target is configured)"
                 (copy / rel).parent.mkdir(parents=True, exist_ok=True)
-                (copy / rel).write_text(text)
+                gate.write(copy / rel, text)
                 continue
             rel, anchor, replacement = edit
             path = copy / rel
-            text = path.read_text()
+            text = gate.read(path)
             if text.count(anchor) != 1:
                 return name, f"NOT APPLIED ({rel}: anchor found {text.count(anchor)} times)"
-            path.write_text(text.replace(anchor, replacement))
-        out = subprocess.run([sys.executable, "-B", str(copy / "tests" / "test_adb_adapter.py")],
+            gate.write(path, text.replace(anchor, replacement))
+        out = subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / "test_adb_adapter.py")],
                              capture_output=True, text=True, timeout=1800,
                              env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
         return name, "CAUGHT" if out.returncode != 0 else "MISSED"
@@ -260,13 +262,7 @@ def main():
     parser.add_argument("--only", help="run only mutations whose name contains this text")
     args = parser.parse_args()
     selected = [m for m in MUTATIONS if not args.only or args.only in m[0]]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(run, selected))
-    for name, verdict in results:
-        print(f"{verdict:<12} {name}")
-    caught = sum(v == "CAUGHT" for _, v in results)
-    print(f"caught {caught} of {len(results)}")
-    return 0 if caught == len(results) else 1
+    return gate.qualify(run, selected, args.jobs)
 
 
 if __name__ == "__main__":

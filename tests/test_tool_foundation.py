@@ -24,6 +24,9 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
+if sys.platform == "win32" and not sys.flags.utf8_mode:   # alpha.23: the Windows locale is not UTF-8
+    sys.exit("WINDOWS_UTF8_MODE_REQUIRED: run this suite as `python -X utf8 tests/test_tool_foundation.py`")
+
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -54,6 +57,10 @@ FW = load_framework()
 REG = FW.registry
 POLICY = REG["tool_adapter_policy"]
 FIXTURE = ROOT / "tests" / "fixtures" / "adapter-project"
+# alpha.23: the suite runs on Windows too. A test that exercises POSIX-only semantics (permission bits, /bin tools,
+# sessions, detached processes, the account database) says so in its skip reason and names its Windows counterpart
+# in tests/test_windows_foundation.py; host-neutral tests run everywhere.
+WINDOWS = sys.platform == "win32"
 
 
 def registry(mode=tmodel.AVAILABLE, **kwargs):
@@ -627,7 +634,7 @@ class E01_ProcessSafety(TmpCase):
             tproc.validate_spec(self.spec(argv=(1,)), [str(self.tmp)])
 
     def test_unsafe_cwd_rejected_before_execution(self):
-        for cwd in ("/", str(self.tmp.parent), str(self.tmp / "missing"), "relative"):
+        for cwd in ("/", str(self.tmp.parent), str(self.tmp / "missing"), "relative") + ((self.tmp.anchor,) if WINDOWS else ()):
             with self.assertRaises(tproc.ProcessSpecError) as cm:
                 tproc.validate_spec(self.spec(cwd=cwd), [str(self.tmp / "scope")])
             self.assertIn(cm.exception.code, ("UNSAFE_EXECUTION_PATH",))
@@ -637,15 +644,17 @@ class E01_ProcessSafety(TmpCase):
         scope.mkdir()
         self.assertIsNone(tpaths.unsafe_reason([str(scope)], str(scope / "a" / "b.txt")))
         self.assertIn("outside", tpaths.unsafe_reason([str(scope)], str(scope / ".." / "x.txt")))
-        self.assertIn("outside", tpaths.unsafe_reason([str(scope)], "/etc/passwd"))
+        self.assertIn("outside", tpaths.unsafe_reason([str(scope)], str(self.tmp / "etc" / "passwd") if WINDOWS
+                                                      else "/etc/passwd"))
         self.assertIn("absolute", tpaths.unsafe_reason([str(scope)], "relative/x"))
         self.assertIn("no permitted filesystem scope", tpaths.unsafe_reason([], str(scope / "x")))
 
     def test_symlink_escape_rejected(self):
         scope = self.tmp / "scope"
         (scope / "real").mkdir(parents=True)
-        os.symlink("/etc", scope / "out")
-        os.symlink(str(scope / "real"), scope / "inside")
+        (self.tmp / "etc").mkdir()
+        os.symlink(str(self.tmp / "etc") if WINDOWS else "/etc", scope / "out", target_is_directory=True)
+        os.symlink(str(scope / "real"), scope / "inside", target_is_directory=True)
         self.assertIn("symlink", tpaths.unsafe_reason([str(scope)], str(scope / "out" / "passwd")))
         self.assertIn("symlink", tpaths.unsafe_reason([str(scope)], str(scope / "inside" / "x")))
 
@@ -831,7 +840,7 @@ class G01_Artifacts(TmpCase):
         self.assertEqual([c for c, _, _ in problems], ["ARTIFACT_MISSING"])
 
     def test_artifact_path_escape_rejected(self):
-        outside = self.tmp.parent / "escaped.txt"
+        outside = self.tmp.parent / f"escaped-{self.tmp.name}.txt"   # unique: parallel runs share the parent
         outside.write_text("x")
         self.addCleanup(outside.unlink, True)
         specs = (art.ArtifactSpec("bad", "TEXT", str(outside)),)
@@ -1239,7 +1248,8 @@ class K01_Determinism(TmpCase):
                               inputs={"text": "same"}, revision="r1")
         def normalize(result, root):
             text = json.dumps(self.stable(result.to_dict()))
-            text = text.replace(str(root.resolve()), "<ROOT>").replace(str(root), "<ROOT>")
+            for spelling in (str(root.resolve()), str(root)):
+                text = text.replace(json.dumps(spelling)[1:-1], "<ROOT>").replace(spelling, "<ROOT>")
             payload = json.loads(text.replace(result.request_id, "<REQ>"))
             payload["provenance"].pop("command", None)
             for candidate in payload["evidence_candidates"]:
@@ -1308,10 +1318,10 @@ class L01_Boundaries(TmpCase):
                                    "ffmpeg/__init__.py", "ffmpeg/adapter.py",
                                    "ffprobe/__init__.py", "ffprobe/adapter.py", "ffprobe/parser.py",
                                    "git/__init__.py", "git/adapter.py", "git/status.py", "leases.py",
-                                   "media_common.py", "model.py", "paths.py", "player/__init__.py", "player/adapter.py",
+                                   "media_common.py", "model.py", "paths.py", "paths_win32.py", "player/__init__.py", "player/adapter.py",
                                    "player/appkit.py", "player/capture.py", "player/contract.py", "player/helper.py",
                                    "player/invocation.py", "player/logs.py", "player/macos.py", "player/resolver.py",
-                                   "player/runtime.py", "process.py", "provenance.py",
+                                   "player/runtime.py", "process.py", "process_win32.py", "provenance.py",
                                    "redaction.py", "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
                                    "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/assets.py", "unity/authoring.py",
                                    "unity/bridge_install.py", "unity/build.py",
@@ -1990,7 +2000,7 @@ class N08_PortabilityRefinements(TmpCase):
                                               "capture_context": "TARGET_RUNTIME"})
 
     def make_executable(self):
-        exe = self.tmp / "vanishing-tool"
+        exe = self.tmp / ("vanishing-tool.exe" if WINDOWS else "vanishing-tool")
         exe.write_text(f"#!{tproc.interpreter_path()}\nprint('ok')\n")
         exe.chmod(0o755)
         return exe, tproc.ToolProcessSpec(executable=str(exe), cwd=str(self.tmp))
@@ -2003,6 +2013,8 @@ class N08_PortabilityRefinements(TmpCase):
             tproc.run_process(spec, [str(self.tmp)])
         self.assertEqual(cm.exception.code, "TOOL_NOT_FOUND")
 
+    @unittest.skipIf(WINDOWS, "POSIX permission bits do not gate execution on Windows; the Windows counterpart (an "
+                              "executable another process holds exclusively) is W02 in test_windows_foundation.py")
     def test_an_executable_that_loses_permission_is_a_tool_problem(self):
         exe, spec = self.make_executable()
         tproc.validate_spec(spec, [str(self.tmp)])
@@ -2014,7 +2026,7 @@ class N08_PortabilityRefinements(TmpCase):
 
     def test_a_start_failure_after_validation_is_structured_not_an_opaque_defect(self):
         """The file exists and is executable, so validation passes; the kernel refuses it at exec."""
-        exe = self.tmp / "unstartable-tool"
+        exe = self.tmp / ("unstartable-tool.exe" if WINDOWS else "unstartable-tool")   # Windows: not a PE image
         exe.write_text("#!/nonexistent/interpreter\nprint('ok')\n")
         exe.chmod(0o755)
         spec = tproc.ToolProcessSpec(executable=str(exe), cwd=str(self.tmp))
@@ -2038,7 +2050,7 @@ class N08_PortabilityRefinements(TmpCase):
                 return AdapterOutcome(process=context.run(
                     tproc.ToolProcessSpec(executable=str(self.exe), cwd=context.workspace)))
 
-        exe = self.tmp / "unstartable-tool"
+        exe = self.tmp / ("unstartable-tool.exe" if WINDOWS else "unstartable-tool")   # Windows: not a PE image
         exe.write_text("#!/nonexistent/interpreter\n")
         exe.chmod(0o755)
         r = ToolRegistry(FW, allow_test_only=True)
@@ -2147,6 +2159,15 @@ class N10_DryRunCreatesNothing(TmpCase):
 
         Path.mkdir = refuse
         self.addCleanup(setattr, Path, "mkdir", real_mkdir)
+        real_os_mkdir = os.mkdir
+
+        def refuse_os(path, *args, **kwargs):
+            if "absent" in Path(path).parts:
+                raise PermissionError(13, "Permission denied")
+            return real_os_mkdir(path, *args, **kwargs)
+
+        os.mkdir = refuse_os
+        self.addCleanup(setattr, os, "mkdir", real_os_mkdir)
         result = self.run_cap(syn.DETACHED_WRITE, output_dir=str(self.missing()), allow_mutation=True,
                               inputs={"text": "x"})
         self.assertEqual(result.status, tdg.INVALID_REQUEST)
@@ -2184,21 +2205,26 @@ class N10_DryRunCreatesNothing(TmpCase):
         execute() while trying to create a directory the symlink pointed at. It is now a result."""
         scope = self.tmp / "scope"
         scope.mkdir()
-        os.symlink("/etc", scope / "escape")
+        etc = self.tmp / "etc" if WINDOWS else Path("/etc")
+        etc.mkdir(exist_ok=True)
+        os.symlink(str(etc), scope / "escape", target_is_directory=True)
         result = self.run_cap(syn.DETACHED_WRITE, output_dir=str(scope / "escape" / "out"),
                               allow_mutation=True, inputs={"text": "x"})
         self.assertNotEqual(result.status, tdg.SUCCESS)
-        self.assertIn("WORKSPACE_NOT_USABLE", self.codes(result))
+        # Windows (D10) refuses the link in the scope itself before anything is created
+        self.assertIn("UNSAFE_ARTIFACT_PATH" if WINDOWS else "WORKSPACE_NOT_USABLE", self.codes(result))
         self.assertNotIn("Traceback", json.dumps(result.to_dict()))
-        self.assertFalse(Path("/etc/out").exists())
+        self.assertFalse((etc / "out").exists())
 
     def test_symlink_containment_inside_a_scope_is_unchanged(self):
         scope = self.tmp / "scope"
         scope.mkdir()
-        os.symlink("/etc", scope / "escape")
+        etc = str(self.tmp / "etc") if WINDOWS else "/etc"
+        Path(etc).mkdir(exist_ok=True)
+        os.symlink(etc, scope / "escape", target_is_directory=True)
         self.assertIn("symlink", tpaths.unsafe_reason([str(scope)], str(scope / "escape" / "passwd")))
         p = self.project()
-        os.symlink("/etc", p / "planted")
+        os.symlink(etc, p / "planted", target_is_directory=True)
         self.assertIn("symlink", tpaths.unsafe_reason([str(p)], str(p / "planted" / "passwd")))
 
     def test_a_scope_that_does_not_exist_is_still_checkable(self):
@@ -2318,7 +2344,9 @@ class P01_RawCapture(TmpCase):
                   if not name.startswith("raw_") and name != "duration_seconds"}
         self.assertEqual(set(public), {"exit_code", "stdout", "stderr", "stdout_bytes", "stderr_bytes",
                                        "stdout_truncated", "stderr_truncated", "timed_out", "terminated",
-                                       "redactions"})
+                                       "redactions", "tree_contained", "capture_complete", "descendants_terminated"})
+        self.assertEqual((public["tree_contained"], public["capture_complete"], public["descendants_terminated"]),
+                         (True, True, 0))
         self.assertEqual((public["exit_code"], public["redactions"], public["stdout_truncated"]), (0, 2, False))
         result = self.run_cap(syn.LEAK)
         self.assertEqual(result.status, tdg.SUCCESS)
@@ -2925,6 +2953,8 @@ class U01_DetachedSpawnAndHostLocation(TmpCase):
         base.update(kw)
         return tproc.DetachedProcessSpec(**base)
 
+    @unittest.skipIf(WINDOWS, "D3: no detached process exists on Windows in alpha.23; the refusal is W07 in "
+                              "test_windows_foundation.py")
     def test_the_boundary_rules_apply(self):
         scopes = [str(self.tmp.resolve())]
         bad = {"relative": self.spec(executable="sleep"), "shell": self.spec(executable="/bin/sh", argv=("x",)),
@@ -2938,6 +2968,8 @@ class U01_DetachedSpawnAndHostLocation(TmpCase):
         with self.assertRaises(tproc.ProcessSpecError):
             tproc.spawn_detached(tproc.ToolProcessSpec("/bin/sleep", ("1",), str(self.tmp)), scopes)
 
+    @unittest.skipIf(WINDOWS, "D3: no detached process exists on Windows in alpha.23; the refusal is W07 in "
+                              "test_windows_foundation.py")
     def test_a_detached_process_is_not_waited_for_is_its_own_session_and_is_reaped(self):
         import time as _t
         started = _t.monotonic()
@@ -2948,6 +2980,8 @@ class U01_DetachedSpawnAndHostLocation(TmpCase):
         with self.assertRaises(ProcessLookupError):   # a zombie would still answer signal 0
             os.kill(handle.pid, 0)
 
+    @unittest.skipIf(WINDOWS, "D3: no detached process exists on Windows in alpha.23; the refusal is W07 in "
+                              "test_windows_foundation.py")
     def test_the_context_gate(self):
         allowed = capability(id="synthetic.spawn", detached_spawn=True, requires_tool=False)
         with self.assertRaises(AssertionError):
@@ -2985,6 +3019,8 @@ class U01_DetachedSpawnAndHostLocation(TmpCase):
             self.assertEqual((cap.detached_spawn, cap.host_location), (False, None), cap.id)
             self.assertEqual((cap.to_dict()["detached_spawn"], cap.to_dict()["host_location"]), (False, None))
 
+    @unittest.skipIf(WINDOWS, "no host location exists on Windows in alpha.23 (the macOS player owns the only one); "
+                              "the structured refusal is W07 in test_windows_foundation.py")
     def test_the_host_location_comes_from_the_account_database(self):
         import pwd
         expected = Path(pwd.getpwuid(os.getuid()).pw_dir) / "Applications" / "GPOS"
@@ -2998,6 +3034,8 @@ class U01_DetachedSpawnAndHostLocation(TmpCase):
         with self.assertRaises(AssertionError):
             texec._host_location(FW, forged)
 
+    @unittest.skipIf(WINDOWS, "no host location exists on Windows in alpha.23 (the macOS player owns the only one); "
+                              "the structured refusal is W07 in test_windows_foundation.py")
     def test_only_the_install_execution_gets_the_location_in_scope(self):
         from gpos.tools.player import adapter as player_adapter
         reg = default_registry(FW)
@@ -3010,6 +3048,237 @@ class U01_DetachedSpawnAndHostLocation(TmpCase):
             located = [s for s in scopes if str(s).endswith("Applications/GPOS")]
             with self.subTest(cap=cap.id):
                 self.assertEqual(len(located), 1 if cap.id == "player.install-capture-helper" else 0)
+
+
+# ---------------------------------------------------------------- V  process integrity at every boundary (alpha.23)
+
+BACKEND = "_run_windows" if WINDOWS else "_run_posix"
+
+
+def unproven(tree=True, capture=True, exit_code=0, timed_out=False, descendants=0, stdout="partial"):
+    """A backend standing in for one that could not prove containment or capture (or could, for tree=capture=True)."""
+    def backend(spec, scopes, clock):
+        return tproc.ProcessOutcome(exit_code=exit_code, stdout=stdout, stdout_bytes=len(stdout),
+                                    timed_out=timed_out, terminated=timed_out, tree_contained=tree,
+                                    capture_complete=capture, descendants_terminated=descendants,
+                                    raw_stdout=stdout.encode())
+    return backend
+
+
+class IntegrityAdapter(ToolAdapter):
+    """Runs `plan` processes (each a backend or None for the real one), directly or through context.run, then reports
+    whatever `report` says, which is SUCCESS by default: the foundation, not the adapter, must catch an unproven one."""
+
+    def __init__(self, plan=(None,), direct=False, report="ok", evidence=False, probe_plan=None):
+        self.plan, self.direct, self.report, self.evidence, self.probe_plan = plan, direct, report, evidence, probe_plan
+        caps = (capability(requires_project=False, requires_tool=False, operation_class="MUTATING",
+                           category="TRANSFORM", artifact_kinds=("TEXT",), side_effect_scope="one file in the workspace",
+                           potential_evidence=(("CODE_EVIDENCE", "OFFLINE_ANALYSIS"),)),)
+        self.descriptor = descriptor(capabilities=caps)
+        self.probe_calls = 0
+
+    def spec(self, cwd):
+        return tproc.ToolProcessSpec(executable=tproc.interpreter_path(), argv=(str(syn.HELPER), "inspect", "x"),
+                                     cwd=cwd)
+
+    def run(self, context, backend):
+        spec = self.spec(context.workspace)
+        call = (lambda: tproc.run_process(spec, list(context.scopes))) if self.direct else (lambda: context.run(spec))
+        if backend is None:
+            return call()
+        with mock.patch.object(tproc, BACKEND, backend):
+            return call()
+
+    def probe(self):
+        self.probe_calls += 1
+        for backend in self.probe_plan or ():
+            with mock.patch.object(tproc, BACKEND, backend):
+                tproc.run_process(self.spec(str(Path(tempfile.gettempdir()).resolve())),
+                                  [str(Path(tempfile.gettempdir()).resolve())])
+        return ProbeResult("synthetic", tmodel.AVAILABLE, detail="the adapter claims it is fine",
+                           capability_availability=(("synthetic.example", True, ""),))
+
+    def execute(self, request, context):
+        outcomes = [self.run(context, backend) for backend in self.plan]
+        path = context.artifact_path("out.txt")
+        path.write_bytes(b"written by the adapter\n")
+        evidence = (ev.EvidenceCandidate(
+            evidence_type="CODE_EVIDENCE", capture_context="OFFLINE_ANALYSIS", summary="claimed after the run",
+            subject_kind="TASK", subject_ref="", source_adapter="synthetic", source_capability="synthetic.example",
+            generated_at=context.clock.now(), artifact_ids=("out",)),) if self.evidence else ()
+        process = {"ok": None, "first": outcomes[0], "fake": tproc.ProcessOutcome(exit_code=0)}[self.report]
+        return AdapterOutcome(ok=True, exit_code=0, process=process, mutation_performed=True,
+                              artifacts=(art.ArtifactSpec("out", "TEXT", str(path)),), evidence=evidence)
+
+
+class V01_ProcessIntegrity(TmpCase):
+    """Mandatory addition 1: an outcome whose tree containment or output capture was not proven can never become a
+    success, on any host, whoever started it and whatever the adapter then reports."""
+
+    def execute(self, adapter, **kwargs):
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(adapter)
+        return self.run_cap("synthetic.example", reg=r, output_dir=str(self.out()), allow_mutation=True, **kwargs)
+
+    def direct(self, backend):
+        spec = tproc.ToolProcessSpec(executable=tproc.interpreter_path(), argv=(str(syn.HELPER), "inspect", "x"),
+                                     cwd=str(self.tmp))
+        with mock.patch.object(tproc, BACKEND, backend):
+            return tproc.run_process(spec, [str(self.tmp)])
+
+    def test_a_direct_caller_never_sees_a_trustworthy_exit_code_for_an_unproven_tree(self):
+        outcome = self.direct(unproven(tree=False))
+        self.assertIsNone(outcome.exit_code)
+        self.assertFalse(outcome.integrity_ok)
+        self.assertFalse(outcome.tree_contained)
+
+    def test_a_direct_caller_never_sees_a_trustworthy_exit_code_for_an_incomplete_capture(self):
+        outcome = self.direct(unproven(capture=False))
+        self.assertIsNone(outcome.exit_code)
+        self.assertFalse(outcome.integrity_ok)
+        self.assertFalse(outcome.capture_complete)
+
+    def test_a_proven_outcome_keeps_its_exit_code_and_the_posix_defaults(self):
+        outcome = self.direct(unproven())
+        self.assertEqual(outcome.exit_code, 0)
+        self.assertTrue(outcome.integrity_ok)
+        real = tproc.run_process(tproc.ToolProcessSpec(executable=tproc.interpreter_path(),
+                                                       argv=(str(syn.HELPER), "inspect", "x"), cwd=str(self.tmp)),
+                                 [str(self.tmp)])
+        self.assertEqual((real.exit_code, real.tree_contained, real.capture_complete), (0, True, True))
+        if not WINDOWS:   # POSIX: the frozen behaviour, nothing Windows-specific is ever observed
+            self.assertEqual(real.descendants_terminated, 0)
+
+    def test_the_observer_sees_every_outcome_and_only_inside_its_scope(self):
+        with tproc.observe() as seen:
+            self.direct(unproven())
+            self.direct(unproven(tree=False))
+        self.assertEqual([o.tree_contained for o in seen], [True, False])
+        self.direct(unproven())   # outside the scope: not attributed to it
+        self.assertEqual(len(seen), 2)
+
+    def test_a_probe_that_runs_a_process_directly_cannot_report_a_usable_tool_after_an_unproven_tree(self):
+        adapter = IntegrityAdapter(probe_plan=(unproven(tree=False),))
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(adapter)
+        result = r.probe("synthetic")
+        self.assertEqual(result.status, tmodel.UNAVAILABLE)
+        self.assertIn("PROCESS_TREE_NOT_CONTAINED", {d.code for d in result.diagnostics})
+        self.assertEqual({a for _, a, _ in result.capability_availability}, {False})
+        _, problems = r.ready("synthetic")
+        self.assertTrue(problems)
+
+    def test_a_probe_cannot_report_a_usable_tool_after_an_incomplete_capture(self):
+        adapter = IntegrityAdapter(probe_plan=(unproven(), unproven(capture=False)))
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(adapter)
+        result = r.probe("synthetic")
+        self.assertEqual(result.status, tmodel.UNAVAILABLE)
+        self.assertIn("PROCESS_CAPTURE_INCOMPLETE", {d.code for d in result.diagnostics})
+
+    def test_a_probe_with_proven_processes_is_unchanged(self):
+        adapter = IntegrityAdapter(probe_plan=(unproven(),))
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(adapter)
+        self.assertEqual(r.probe("synthetic").status, tmodel.AVAILABLE)
+
+    def test_an_adapter_that_omits_the_unproven_process_cannot_report_success(self):
+        result = self.execute(IntegrityAdapter(plan=(unproven(tree=False),), report="ok"))
+        self.assertEqual(result.status, tdg.OUTCOME_UNKNOWN)
+        self.assertIn("PROCESS_TREE_NOT_CONTAINED", self.codes(result))
+        self.assertIsNone(result.exit_code)
+
+    def test_an_adapter_that_replaces_the_process_with_a_clean_one_cannot_report_success(self):
+        result = self.execute(IntegrityAdapter(plan=(unproven(capture=False),), report="fake"))
+        self.assertEqual(result.status, tdg.FAILED)
+        self.assertIn("PROCESS_CAPTURE_INCOMPLETE", self.codes(result))
+        self.assertIsNone(result.exit_code)
+
+    def test_an_adapter_that_bypasses_context_run_is_still_judged(self):
+        result = self.execute(IntegrityAdapter(plan=(unproven(tree=False),), direct=True))
+        self.assertNotEqual(result.status, tdg.SUCCESS)
+        self.assertIn("PROCESS_TREE_NOT_CONTAINED", self.codes(result))
+
+    def test_no_evidence_and_no_complete_artifact_after_an_uncontained_child(self):
+        result = self.execute(IntegrityAdapter(plan=(unproven(tree=False),), evidence=True))
+        self.assertEqual(result.evidence_candidates, ())
+        self.assertTrue(result.artifacts and not any(a.complete for a in result.artifacts))
+        self.assertIn("ARTIFACT_INCOMPLETE", self.codes(result))
+        self.assertFalse(result.ok)
+
+    def test_one_unproven_process_among_several_decides_the_execution(self):
+        for plan in ((unproven(), unproven(tree=False)), (unproven(capture=False), unproven())):
+            with self.subTest(plan=[p.__name__ for p in plan]):
+                result = self.execute(IntegrityAdapter(plan=plan, report="first", evidence=True))
+                self.assertNotEqual(result.status, tdg.SUCCESS)
+                self.assertEqual(result.evidence_candidates, ())
+
+    def test_every_proven_process_still_succeeds_with_evidence(self):
+        result = self.execute(IntegrityAdapter(plan=(unproven(), unproven()), evidence=True))
+        self.assertEqual(result.status, tdg.SUCCESS, [d.message for d in result.diagnostics])
+        self.assertEqual(len(result.evidence_candidates), 1)
+
+    def test_timed_out_failed_and_incomplete_stay_distinguishable(self):
+        timed = self.execute(IntegrityAdapter(plan=(unproven(tree=False, timed_out=True, exit_code=None),), report="first"))
+        self.assertEqual(timed.status, tdg.OUTCOME_UNKNOWN)
+        self.assertLessEqual({"EXECUTION_TIMEOUT", "PROCESS_TREE_NOT_CONTAINED"}, self.codes(timed))
+        capture = self.execute(IntegrityAdapter(plan=(unproven(capture=False),), report="first"))
+        self.assertEqual(capture.status, tdg.FAILED)
+        self.assertIn("PROCESS_CAPTURE_INCOMPLETE", self.codes(capture))
+        self.assertNotIn("EXECUTION_TIMEOUT", self.codes(capture))
+
+    def test_descendants_terminated_after_the_root_are_recorded(self):
+        result = self.execute(IntegrityAdapter(plan=(unproven(descendants=2),)))
+        self.assertEqual(result.status, tdg.SUCCESS)
+        self.assertIn("PROCESS_DESCENDANTS_TERMINATED", self.codes(result))
+
+    def test_an_adapter_defect_after_an_unproven_process_reports_both(self):
+        class Raising(IntegrityAdapter):
+            def execute(self, request, context):
+                self.run(context, unproven(tree=False))
+                raise RuntimeError("boom")
+
+        result = self.execute(Raising())
+        self.assertEqual(result.status, tdg.INTERNAL_ERROR)
+        self.assertLessEqual({"ADAPTER_INTERNAL_ERROR", "PROCESS_TREE_NOT_CONTAINED"}, self.codes(result))
+
+    def test_an_unrecognised_host_fails_closed_and_is_never_probed(self):
+        adapter = IntegrityAdapter()
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(adapter)
+        with mock.patch.object(tmodel, "current_platform", lambda: None):
+            probe = r.probe("synthetic")
+            result = self.run_cap("synthetic.example", reg=r, output_dir=str(self.out()), allow_mutation=True)
+        self.assertEqual(adapter.probe_calls, 0)
+        self.assertEqual(probe.status, tmodel.UNAVAILABLE)
+        self.assertIn("PLATFORM_UNSUPPORTED", {d.code for d in probe.diagnostics})
+        self.assertIn("PLATFORM_UNSUPPORTED", self.codes(result))
+        self.assertNotEqual(result.status, tdg.SUCCESS)
+
+    def test_an_adapter_is_never_probed_on_a_platform_it_does_not_declare(self):
+        adapter = IntegrityAdapter()
+        other = "LINUX" if tmodel.current_platform() != "LINUX" else "MACOS"
+        adapter.descriptor = dataclasses.replace(adapter.descriptor, supported_platforms=(other,))
+        r = ToolRegistry(FW, allow_test_only=True)
+        r.register(adapter)
+        self.assertEqual(r.probe("synthetic").status, tmodel.UNAVAILABLE)
+        self.assertEqual(adapter.probe_calls, 0)
+
+
+class V02_WindowsBoundaryIsStatic(unittest.TestCase):
+    """The Windows backend stays a private part of the one process boundary (host-neutral, source only)."""
+
+    def test_the_windows_boundary_rules_hold(self):
+        sys.path.insert(0, str(ROOT / "tests"))
+        import validate_framework
+        self.assertEqual(validate_framework.windows_boundary_problems(), [])
+
+    def test_the_rules_name_a_complete_reviewed_allowlist(self):
+        sys.path.insert(0, str(ROOT / "tests"))
+        import validate_framework as vf
+        self.assertEqual(len(vf.WIN32_ALLOWED[vf.PROCESS_BACKEND]), 16)
+        self.assertEqual(len(vf.WIN32_ALLOWED[vf.WIN32_FS]), 7)
+        self.assertEqual(vf.WIN32_IMPORTERS[vf.PROCESS_BACKEND], {"gpos/tools/process.py"})
 
 
 if __name__ == "__main__":

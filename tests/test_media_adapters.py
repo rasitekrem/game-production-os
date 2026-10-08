@@ -41,6 +41,8 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+if sys.platform == "win32" and not sys.flags.utf8_mode:   # alpha.24: the Windows locale is not UTF-8
+    sys.exit("WINDOWS_UTF8_MODE_REQUIRED: run this suite as `python -X utf8 tests/test_media_adapters.py`")
 
 _HOME = tempfile.mkdtemp(prefix="gpos-media-home-")
 os.environ["HOME"] = _HOME  # neither Git (group W) nor FFmpeg reads the user's configuration
@@ -62,6 +64,7 @@ from gpos.tools.git import adapter as ga  # noqa: E402
 from gpos.tools.model import InputArtifact, Subject  # noqa: E402
 from gpos.tools.registry import ToolRegistry, default_registry  # noqa: E402
 from gpos.tools.synthetic import SyntheticAdapter  # noqa: E402
+import windows_standin  # noqa: E402  (alpha.24: tool stand-ins that run on every host)
 
 FW = load_framework()
 REG = FW.registry
@@ -431,12 +434,20 @@ class B_RealProbes(MediaCase):
 # ---------------------------------------------------------------- C  missing or unusable tools
 
 def fake_tool(directory, name, script):
-    """A stand-in program (TEST_ONLY) for behaviour a real FFmpeg cannot be made to show on demand."""
-    exe = Path(directory) / "bin" / name
-    exe.parent.mkdir(exist_ok=True)
-    exe.write_text(f"#!{tproc.interpreter_path()}\nimport sys, time\nargv = sys.argv[1:]\n{script}\n")
-    exe.chmod(0o755)
-    return exe
+    """A stand-in program (TEST_ONLY) for behaviour a real FFmpeg cannot be made to show on demand: a script with a
+    shebang on POSIX, the compiled stand-in `<name>.exe` on Windows (tests/windows_standin.py)."""
+    return windows_standin.write_tool(Path(directory) / "bin" / name,
+                                      f"import sys, time\nargv = sys.argv[1:]\n{script}\n")
+
+
+def symlink_or_skip(test, link, target):
+    """Create a symbolic link, or skip when this Windows account may not (no Developer Mode, no privilege)."""
+    try:
+        link.symlink_to(target)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            test.skipTest("creating a symbolic link needs Developer Mode or SeCreateSymbolicLinkPrivilege")
+        raise
 
 
 FAKE_FFMPEG_HEADERS = """
@@ -1210,7 +1221,7 @@ class Q_DryRun(MediaCase):
         src = self.source(p)
         out = p / "reviews"
         out.mkdir()
-        (out / "frame.png").symlink_to(p / "missing-target.png")  # dangling: exists() alone would miss it
+        symlink_or_skip(self, out / "frame.png", p / "missing-target.png")  # dangling: exists() alone would miss it
         with Recorder() as rec:
             result = self.run_cap(fa.EXTRACT_FRAME, p, src, output_dir=str(out), dry_run=True)
         self.assertRefused(result, "already holds frame.png")
@@ -1308,6 +1319,21 @@ class S_OutputBoundaries(MediaCase):
 
 # ---------------------------------------------------------------- T  no overwrite
 
+class S2_Repeatability(MediaCase):
+    def test_identical_requests_give_identical_bytes_on_this_host_and_build(self):
+        """alpha.24 (D-M1): a measured repeatability, scoped to this host, this FFmpeg build, this input and these
+        settings. It is not a promise across builds, platforms or hardware."""
+        p = self.project()
+        src = self.source(p)
+        for cap in TRANSFORMS:
+            with self.subTest(capability=cap):
+                first, second = (self.run_cap(cap, p, src) for _ in range(2))
+                self.assertSucceeded(first)
+                self.assertSucceeded(second)
+                self.assertNotEqual(first.artifacts[0].absolute_path, second.artifacts[0].absolute_path)
+                self.assertEqual(first.artifacts[0].sha256, second.artifacts[0].sha256)
+
+
 class T_NoOverwrite(MediaCase):
     def test_every_template_uses_n_and_never_y(self):
         for argv in self.templates():
@@ -1346,7 +1372,7 @@ class T_NoOverwrite(MediaCase):
         src = self.source(p)
         out = p / "reviews"
         out.mkdir()
-        (out / "clip.mkv").symlink_to(src)
+        symlink_or_skip(self, out / "clip.mkv", src)
         result = self.run_cap(fa.EXTRACT_CLIP, p, src, output_dir=str(out))
         self.assertRefused(result, "already holds clip.mkv")
 
@@ -1498,6 +1524,12 @@ def git(repo, *args):
     return subprocess.run([GIT, *args], cwd=str(repo), env=FIXTURE_ENV, capture_output=True, text=True, check=True)
 
 
+# alpha.24 (D-W1): production Git does not declare WINDOWS until the D-G1 repository-filter decision, so a Git handoff
+# cannot run there; it is NOT_RUN, never run against a test-only Git declaration.
+GIT_WITHDRAWN = ("NOT_RUN: the production Git adapter does not declare WINDOWS in alpha.24 (D-W1, pending D-G1), so no "
+                 "Git handoff can run on this host")
+
+
 @unittest.skipIf(GIT is None, "the explicit handoff needs Git; the Git suite reports it as unavailable")
 class W_GitHandoff(MediaCase):
     def repo_with_media(self):
@@ -1508,6 +1540,7 @@ class W_GitHandoff(MediaCase):
         git(p, "commit", "-q", "-m", "fixture")
         return p, src
 
+    @unittest.skipIf(sys.platform == "win32", GIT_WITHDRAWN)
     def test_the_resolved_revision_is_recorded_exactly_when_passed(self):
         p, src = self.repo_with_media()
         resolved = execute(self.registry, ExecutionRequest(adapter_id="git", capability_id=ga.RESOLVE_PROVENANCE,
@@ -1521,7 +1554,7 @@ class W_GitHandoff(MediaCase):
         self.assertEqual(result.provenance.build_revision, revision)
         self.assertEqual(result.provenance.to_dict()["build_revision"], revision)
         self.assertEqual(result.evidence_candidates[0].provenance["build_revision"], revision)
-        self.assertEqual({Path(s.executable).name for s in rec.specs}, {"ffmpeg"})  # FFmpeg never called Git
+        self.assertEqual({Path(s.executable).stem.lower() for s in rec.specs}, {"ffmpeg"})  # never called Git
 
     def test_without_the_handoff_the_revision_stays_unknown(self):
         p, src = self.repo_with_media()
@@ -1530,7 +1563,7 @@ class W_GitHandoff(MediaCase):
         self.assertSucceeded(result)
         self.assertIsNone(result.provenance.build_revision)
         self.assertIn("build_revision", result.provenance.to_dict()["unknown"])
-        self.assertNotIn("git", {Path(s.executable).name for s in rec.specs})
+        self.assertNotIn("git", {Path(s.executable).stem.lower() for s in rec.specs})
 
     def test_the_media_modules_never_reference_git(self):
         for path in B_RealProbes.media_modules():
@@ -1615,18 +1648,18 @@ class Y_SecuritySurface(MediaCase):
         self.assertEqual(pa.inspect_argv(self.INPUT), ("-v", "error") + restrictions + (
             "-show_entries", "format=format_name,duration:stream=index,codec_type,codec_name,width,height,pix_fmt,"
                              "avg_frame_rate,sample_rate,channels,channel_layout,duration",
-            "-of", "json", "-i", "file:/in/src.mp4"))
+            "-of", "json", "-i", media.local_url(self.INPUT)))
         self.assertEqual(fa.frame_argv(self.INPUT, "1.500000", "/ws/frame.png", 67108864), common + (
-            "-ss", "1.500000", "-accurate_seek", "-i", "file:/in/src.mp4", "-map", "0:v:0", "-frames:v", "1",
-            "-an", "-sn", "-dn") + clean + ("-c:v", "png", "-f", "image2pipe", "-fs", "67108864", "file:/ws/frame.png"))
+            "-ss", "1.500000", "-accurate_seek", "-i", media.local_url(self.INPUT), "-map", "0:v:0", "-frames:v", "1",
+            "-an", "-sn", "-dn") + clean + ("-c:v", "png", "-f", "image2pipe", "-fs", "67108864", media.local_url("/ws/frame.png")))
         self.assertEqual(fa.clip_argv(self.INPUT, "0.500000", "2.000000", "/ws/clip.mkv", 4294967296), common + (
-            "-ss", "0.500000", "-accurate_seek", "-i", "file:/in/src.mp4", "-t", "2.000000", "-map", "0:v:0",
+            "-ss", "0.500000", "-accurate_seek", "-i", media.local_url(self.INPUT), "-t", "2.000000", "-map", "0:v:0",
             "-map", "0:a:0?", "-sn", "-dn") + clean + ("-c:v", "ffv1", "-c:a", "pcm_s16le", "-f", "matroska",
-                                                        "-fs", "4294967296", "file:/ws/clip.mkv"))
+                                                        "-fs", "4294967296", media.local_url("/ws/clip.mkv")))
         self.assertEqual(fa.audio_argv(self.INPUT, "0.000000", "1.000000", "/ws/audio.wav", 268435456), common + (
-            "-ss", "0.000000", "-accurate_seek", "-i", "file:/in/src.mp4", "-t", "1.000000", "-map", "0:a:0",
+            "-ss", "0.000000", "-accurate_seek", "-i", media.local_url(self.INPUT), "-t", "1.000000", "-map", "0:a:0",
             "-vn", "-sn", "-dn") + clean + ("-c:a", "pcm_s16le", "-f", "wav", "-fs", "268435456",
-                                            "file:/ws/audio.wav"))
+                                            media.local_url("/ws/audio.wav")))
 
     def test_every_real_process_matches_its_template_exactly(self):
         p = self.project()
@@ -1780,6 +1813,7 @@ class Z_Cli(MediaCase):
         return code, json.loads(out)
 
     @unittest.skipIf(GIT is None, "the handoff needs Git")
+    @unittest.skipIf(sys.platform == "win32", GIT_WITHDRAWN)
     def test_git_to_ffmpeg_provenance_handoff_through_the_cli(self):
         p = self.project()
         src = self.source(p)
@@ -1795,7 +1829,7 @@ class Z_Cli(MediaCase):
             code, payload = self.frame_via_cli(p, src, "--subject-revision", revision, "--build-revision", revision,
                                                "--target-platform", "MACOS")
         self.assertEqual(code, 0, payload["result"]["diagnostics"])
-        self.assertEqual({Path(s.executable).name for s in rec.specs}, {"ffmpeg"})  # the CLI never called Git
+        self.assertEqual({Path(s.executable).stem.lower() for s in rec.specs}, {"ffmpeg"})  # the CLI never called Git
         result = payload["result"]
         self.assertEqual(result["provenance"]["build_revision"], revision)
         self.assertEqual(result["provenance"]["target_platform"], "MACOS")

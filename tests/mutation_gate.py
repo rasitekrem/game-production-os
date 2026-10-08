@@ -67,15 +67,16 @@ def _verdict(run, mutation):
         return f"ERROR ({type(exc).__name__}: {exc})"
 
 
-def qualify(run, mutations, jobs=4, baselines=None, out=None, not_run=()):
+def qualify(run, mutations, jobs=4, baselines=None, out=None, not_run=(), not_run_reason="applies to another host"):
     """Run the baselines, then the mutants, and return the harness exit code.
 
     `run(mutation)` returns (name, verdict). `baselines` are no-edit mutations in this harness's own shape (default
     `[(BASELINE, [])]`). No mutant is run, and none is counted, unless every baseline passed. `not_run` are mutations
-    that do not apply to this host; they are listed as NOT_RUN and never counted."""
+    that do not apply to this host (or, with `not_run_reason`, to this run); they are listed as NOT_RUN and never
+    counted."""
     out = out or sys.stdout
     for mutation in not_run:
-        print(f"{'NOT_RUN':<12} {mutation[0]} (applies to another host)", file=out)
+        print(f"{'NOT_RUN':<12} {mutation[0]} ({not_run_reason})", file=out)
     baselines = list(baselines) if baselines is not None else [(BASELINE, [])]
     blocked = []
     if not baselines:

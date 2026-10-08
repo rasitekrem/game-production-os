@@ -21,6 +21,20 @@ The same applies to every suite and harness below. A suite started without `-X u
 | `tests/test_windows_foundation.py` | Windows only (skipped elsewhere): W01 the Job Object process mechanism, W02 executable pinning and refusals, W03 handle-based liveness, W04 the environment, W05 NTFS containment and races (junctions, links, hard links, SUBST, 8.3, writers, pins), W06 leases and sessions, W07 platform refusals, W08 UTF-8 and bytes. Side effects: temporary directories, one SUBST drive letter that is removed again |
 | `tests/test_posix_parity.py` | The alpha.22 POSIX source parity: frozen files unchanged but for the version, POSIX code unchanged but for `if sys.platform == "win32":` guards, every deliberate shared change listed. Source evidence only — never a macOS PASS. `tests/generate_posix_parity.py` wrote its fixture from the `v1.0.0-alpha.22` tag |
 | `tests/test_mutation_gate.py` | The baseline gate every mutation harness runs behind (`tests/mutation_gate.py`): no mutant runs, and none is counted, unless the unmutated suite passes in an identically prepared copy; mutants for another host are `NOT_RUN`, never counted |
+| `tests/test_windows_standin.py` | alpha.24: the test-only tool stand-in (`tests/windows_standin.py`, source `tests/fixtures/windows-standin/StandIn.cs`): exact argv, byte relay, exit code, timeout, refusal without its fixed files, and a fail-closed stop when the compiler is missing |
+
+### Tool stand-ins on Windows (alpha.24)
+
+The adapter suites replace a real tool with a stand-in only where the real tool cannot be made to misbehave on demand. On POSIX a stand-in is a script with a shebang. Windows starts only `.exe` images (alpha.23), so there each stand-in is a small C# program, compiled once per suite run from the reviewed source `tests/fixtures/windows-standin/StandIn.cs` by the .NET Framework compiler that ships with Windows (`C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`), into a temporary directory that is removed afterwards. Copied as `<tool>.exe`, it runs `<python> -X utf8 -B <tool>.standin.py <arguments>` from two fixed files beside it, passes the arguments through exactly, relays stdout and stderr as bytes and returns the script's exit code; it runs inside the same Job Object as any tool. No executable is committed, nothing is downloaded, no package is installed, and no production code uses it. Without the compiler the suite stops with WINDOWS_STANDIN_COMPILER_UNAVAILABLE. The compiler's identity and the source and image digests are recorded in `windows_standin.IDENTITY`; the image itself is not byte-reproducible (the compiler stamps it), so the source digest is what is pinned.
+
+### Windows qualification of the production tools (alpha.24)
+
+| Suite | On Windows |
+|---|---|
+| `test_git_adapter.py` | real Git; the production descriptor does not declare `WINDOWS` (D-W1, pending the repository-filter decision D-G1), so the suite measures the adapter through a test-side declaration and separately proves the production refusal |
+| `test_media_adapters.py` | real FFmpeg and ffprobe; the two Git handoff tests are `NOT_RUN` |
+| `test_adb_adapter.py` | always offline on Windows (see [ADB adapter tests](#adb-adapter-tests)); production does not declare `WINDOWS` |
+| `test_blender_adapter.py` | real Blender 5.2.2 on an interactive desktop; group WA (render path templates, every host) and WB (private directories, cleanup, the 5.2.x rule; Windows only). Side effect: one test makes its project in a temporary directory on Blender's own drive (a relative path cannot cross drives) and removes it |
 
 Optional cross-check: with `jsonschema` and `rfc3339-validator` installed, every result is compared with the reference implementation, including date-time format checking. If `jsonschema` is installed without date-time support the run fails rather than silently skipping format checks.
 
@@ -128,6 +142,8 @@ Every real-target test runs on each authorized target in turn as `adb -s <serial
 - the CLI, repository privacy and the other adapters.
 
 `mutate_adb_adapter.py` is its bounded mutation harness.
+
+**Offline runs (alpha.24).** With GPOS_TEST_ADB_OFFLINE=1, and always on Windows, the suite contacts no ADB server and no Android target: it never runs `adb devices`, and every test that needs a target is `NOT_RUN` (reported as a skip that says why). Only `adb version`, which the client answers alone, runs with the real adb; every other real adb command is refused at the process boundary before it starts, by a guard installed when the suite is imported (so no way of loading the suite can bypass it), and the run fails if any such command was attempted outside a test reported `NOT_RUN`. The stand-in, parser, refusal and classification tests run. The mutation harness lists the mutations only a real target can catch as `NOT_RUN` in an offline run.
 
 ## Blender adapter tests
 

@@ -23,6 +23,7 @@ V raw machine output and the version floor.
 """
 
 import ast
+import dataclasses
 import hashlib
 import io
 import json
@@ -38,10 +39,13 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+if sys.platform == "win32" and not sys.flags.utf8_mode:   # alpha.24: the Windows locale is not UTF-8
+    sys.exit("WINDOWS_UTF8_MODE_REQUIRED: run this suite as `python -X utf8 tests/test_git_adapter.py`")
 
 _HOME = tempfile.mkdtemp(prefix="gpos-git-home-")
 os.environ["HOME"] = _HOME  # the adapter's Git inherits this: no user-level configuration is read
 
+import windows_standin  # noqa: E402  (alpha.24: tool stand-ins that run on every host)
 from gpos.framework import load_framework  # noqa: E402
 from gpos.tools import diagnostics as tdg  # noqa: E402
 from gpos.tools import model as tmodel  # noqa: E402
@@ -61,6 +65,12 @@ REG = FW.registry
 FIXTURE = ROOT / "tests" / "fixtures" / "adapter-project"
 PROJECT_ID = "synthetic-adapter-project"
 GIT = shutil.which("git")
+PRODUCTION_DESCRIPTOR = ga.DESCRIPTOR
+if sys.platform == "win32":
+    # alpha.24 (D-W1): production withdraws WINDOWS until the repository-filter finding (D-G1) is decided. This suite
+    # still measures the adapter's Windows behaviour, through a TEST-SIDE descriptor that declares it; the production
+    # descriptor's refusal on Windows is proven separately (A_Registration).
+    GitAdapter.descriptor = dataclasses.replace(ga.DESCRIPTOR, supported_platforms=("WINDOWS", "MACOS", "LINUX"))
 SHA = re.compile(r"^[0-9a-f]{40}$")
 CONTRACT_KEYS = {"repository_root", "head_sha", "branch", "detached", "unborn", "clean", "exact_revision",
                  "staged_count", "unstaged_count", "untracked_count", "conflicted_count"}
@@ -77,6 +87,8 @@ FIXTURE_ENV = {"HOME": _HOME, "PATH": os.environ.get("PATH", ""), "GIT_CONFIG_NO
                "GIT_AUTHOR_NAME": "Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
                "GIT_COMMITTER_NAME": "Fixture", "GIT_COMMITTER_EMAIL": "fixture@example.invalid",
                "LC_ALL": "C"}
+if sys.platform == "win32":   # alpha.24: what Windows programs need from the environment; HOME stays the fixture home
+    FIXTURE_ENV.update({k: os.environ[k] for k in ("SYSTEMROOT", "TEMP", "TMP") if k in os.environ})
 
 
 def git(repo, *args, check=True):
@@ -186,9 +198,23 @@ class A_Registration(GitCase):
         d = ga.DESCRIPTOR
         self.assertEqual((d.adapter_id, d.tool_family, d.target_tool, d.adapter_kind, d.state_model, d.network),
                          ("git", "VERSION_CONTROL", "Git", "CLI", "STATELESS", "FORBIDDEN"))
-        self.assertEqual(d.supported_platforms, ("WINDOWS", "MACOS", "LINUX"))
+        self.assertEqual(d.supported_platforms, ("MACOS", "LINUX"))   # alpha.24 (D-W1): WINDOWS withdrawn
         self.assertFalse(d.test_only)
         self.assertEqual(d.filesystem_scopes, ())
+
+    def test_the_production_descriptor_is_refused_on_windows(self):
+        adapter = GitAdapter()
+        adapter.descriptor = PRODUCTION_DESCRIPTOR
+        registry = ToolRegistry(FW, allow_test_only=False)
+        registry.register(adapter)
+        probe = registry.probe("git")
+        if sys.platform == "win32":
+            self.assertEqual(probe.status, tmodel.UNAVAILABLE)
+            self.assertIn("PLATFORM_UNSUPPORTED", {d.code for d in probe.diagnostics})
+            result = self.run_cap("git.inspect", self.repo(), registry=registry)
+            self.assertIn("PLATFORM_UNSUPPORTED", {d.code for d in result.diagnostics})
+        else:
+            self.assertEqual(probe.status, tmodel.AVAILABLE, probe.detail)
 
     def test_exactly_two_read_only_capabilities(self):
         caps = {c.id: c for c in ga.DESCRIPTOR.capabilities}
@@ -262,11 +288,7 @@ class C_MissingTool(GitCase):
 
     def fake_git(self, output):
         """A stand-in program named git that prints `output` (TEST_ONLY; used only to probe)."""
-        exe = self.tmp / "bin" / "git"
-        exe.parent.mkdir()
-        exe.write_text(f"#!{tproc.interpreter_path()}\nimport sys\nsys.stdout.write({output!r})\n")
-        exe.chmod(0o755)
-        return exe
+        return windows_standin.write_tool(self.tmp / "bin" / "git", f"import sys\nsys.stdout.write({output!r})\n")
 
     def test_missing_git_is_unavailable_not_an_exception(self):
         probe = GitAdapter(which=lambda name: None).probe()
@@ -1013,10 +1035,8 @@ class T_Submodules(GitCase):
         """Git runs `git status` inside each submodule itself; the command-scope override must reach it."""
         p = self.superproject()
         marker = self.tmp / "SUBMODULE_HOOK_RAN"
-        hook = self.tmp / "submodule-hook"
-        hook.write_text(f"#!/bin/sh\necho ran >> '{marker}'\nexit 1\n")
-        hook.chmod(0o755)
-        git(p / "sub", "config", "core.fsmonitor", str(hook))
+        hook = marker_hook(self.tmp / "submodule-hook", marker)
+        git(p / "sub", "config", "core.fsmonitor", hook_command(hook))
         (p / "sub" / "a.txt").write_text("dirty\n")
         self.assertDirtySubmodule(p)
         self.assertFalse(marker.exists(), "the submodule's fsmonitor hook ran under the adapter")
@@ -1034,18 +1054,30 @@ class T_Submodules(GitCase):
 
 # ---------------------------------------------------------------- U  fsmonitor neutralized (hardening)
 
+def marker_hook(path, marker):
+    """A hook program that records that it ran and fails: a `/bin/sh` script on POSIX (unchanged); on Windows the
+    compiled stand-in (Git for Windows runs an `.exe` hook directly; its `sh` would mangle a quoted Windows path)."""
+    if sys.platform == "win32":
+        return windows_standin.write_tool(path, f"import sys\nopen({str(marker)!r}, 'a').write('ran')\nsys.exit(1)\n")
+    path.write_text(f"#!/bin/sh\necho ran >> '{marker}'\nexit 1\n")
+    path.chmod(0o755)
+    return path
+
+
+def hook_command(hook):
+    """The hook as Git's configuration names it (forward slashes: Git for Windows accepts them; POSIX unchanged)."""
+    return Path(hook).as_posix()
+
+
 class U_Fsmonitor(GitCase):
     def hook(self):
         marker = self.tmp / "FSMONITOR_RAN"
-        hook = self.tmp / "fsmonitor-hook"
-        hook.write_text(f"#!/bin/sh\necho ran >> '{marker}'\nexit 1\n")
-        hook.chmod(0o755)
-        return hook, marker
+        return marker_hook(self.tmp / "fsmonitor-hook", marker), marker
 
     def test_a_configured_hook_program_never_runs(self):
         p = self.repo()
         hook, marker = self.hook()
-        git(p, "config", "core.fsmonitor", str(hook))
+        git(p, "config", "core.fsmonitor", hook_command(hook))
         head = self.head(p)
         self.assertState(self.inspect(p), clean=True, exact_revision=head)   # still correct
         self.assertEqual(self.resolve(p).data["repository_revision"], head)
@@ -1093,7 +1125,7 @@ class U_Fsmonitor(GitCase):
     def test_no_configuration_is_written(self):
         p = self.repo()
         hook, _ = self.hook()
-        git(p, "config", "core.fsmonitor", str(hook))
+        git(p, "config", "core.fsmonitor", hook_command(hook))
         config = (p / ".git" / "config").read_bytes()
         self.inspect(p)
         self.assertEqual((p / ".git" / "config").read_bytes(), config)
@@ -1157,12 +1189,12 @@ class V_RawOutput(GitCase):
 
     def test_the_minimum_version_is_the_first_that_understands_a_boolean_fsmonitor(self):
         self.assertEqual(ga.MINIMUM_VERSION, (2, 36, 0))
-        exe = self.tmp / "bin" / "git"
-        exe.parent.mkdir()
+        exe = None
         for version, expected in (("2.35.1", tmodel.VERSION_UNSUPPORTED), ("2.31.0", tmodel.VERSION_UNSUPPORTED),
                                   ("2.36.0", tmodel.AVAILABLE)):
-            exe.write_text(f"#!{tproc.interpreter_path()}\nprint('git version {version}')\n")
-            exe.chmod(0o755)
+            body = f"print('git version {version}')\n"
+            exe = windows_standin.write_tool(self.tmp / "bin" / "git", body) if exe is None else \
+                windows_standin.rewrite(exe, body)
             self.assertEqual(GitAdapter(which=lambda name: str(exe)).probe().status, expected, version)
 
 

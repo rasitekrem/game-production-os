@@ -17,11 +17,13 @@ subprocess module.
 """
 
 import shutil
+import sys
 import tempfile
 from dataclasses import replace
 from pathlib import Path
 
 from .. import diagnostics as dg
+from .. import executables
 from .. import media_common as media
 from .. import model
 from .. import process as proc
@@ -79,6 +81,8 @@ class FfprobeAdapter(model.ToolAdapter):
     descriptor = DESCRIPTOR
 
     def __init__(self, which=shutil.which, capture_bytes=CAPTURE_BYTES):
+        if sys.platform == "win32":   # alpha.24: PATH only, never the current directory, only <name>.exe
+            which = executables.windows_which if which is shutil.which else which
         self._which = which
         self._capture_bytes = capture_bytes
 

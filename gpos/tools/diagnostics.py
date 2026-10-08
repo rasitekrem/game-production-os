@@ -243,6 +243,8 @@ CODES = {
     "PROCESS_TREE_NOT_CONTAINED": (OUTCOME_UNKNOWN, "a process was not observed to end together with its whole process tree; something it started may still be running"),
     "PROCESS_CAPTURE_INCOMPLETE": (FAILED, "a process's standard output or error was not read to its end; nothing it printed is trusted as complete"),
     "PROCESS_DESCENDANTS_TERMINATED": (INFO, "processes a tool left running when it exited were terminated with its job (Windows; POSIX leaves them)"),
+    # alpha.24: a DCC adapter's private, disposable state that could not be removed is reported, never assumed gone
+    "DCC_CLEANUP_INCOMPLETE": (INFO, "the DCC tool's private per-execution directory could not be removed completely; what remains is named"),
 }
 
 

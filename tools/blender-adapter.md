@@ -81,6 +81,8 @@ Blender is found by an exact-name lookup on PATH over a fixed per-platform candi
 
 No caller, request, input or environment variable chooses the executable. There is no alias, symlink or installation-path special case.
 
+On Windows (alpha.24) the lookup is `gpos/tools/executables.py` instead of `shutil.which`: only `<name>.exe` in an absolute PATH directory, never the current directory and never a `.cmd` or `.bat` shim. The exact-spelling and single-executable rules above still apply.
+
 During Phase 2C-4 the executable was reached by a temporary PATH prepend of the canonical macOS app-bundle executable directory, authorized by Human Review. It was per process only: no shell profile, system PATH, IDE or repository configuration was changed.
 
 ## The safety baseline
@@ -275,6 +277,22 @@ Recovery, authorized by Human Review:
 
 The production design was then changed to use Blender's official BLENDER_USER_RESOURCES isolation for every process. No further change to the real profile occurred. The test suite now fingerprints the real profile before and after every run.
 
+## Render output path templates (alpha.24, every host)
+
+Blender expands `#` in a render output path into the frame number, and `{...}` into a template variable. The adapter therefore refuses a render whose workspace output path contains `#`, `{` or `}`, before Blender starts (D-B1): the file Blender wrote could otherwise be one the adapter never checks, outside the name it reports. Only the render output path is checked: a `.blend` source whose path contains these characters is still inspected. This is a correction on every host; on macOS it is covered by source review only (not executed for alpha.24).
+
+## Windows (alpha.24)
+
+Qualified on Windows 11 Enterprise 10.0.26200 with **Blender 5.2.2 LTS** and CPython 3.14.8, on an interactive desktop (EEVEE and Workbench need one).
+
+**Version (D-B3).** On Windows only the 5.2.x release family is accepted, and the version `--version` prints must equal, exactly, the version Blender reports to the helper's self-test (on macOS and Linux the alpha.22 rule is unchanged). Any other release is `VERSION_UNSUPPORTED`: only 5.2.2 was qualified.
+
+**Private directories (D-B2).** Each Blender process (probe, inspection, render) gets its own user root, as on every host. On Windows the adapter also creates, and proves to be plain directories, a private temporary directory and private per-user and machine data directories inside that root, and points Blender at them: the TEMP, TMP and TMPDIR variables, and APPDATA, LOCALAPPDATA and ProgramData. Without the data directories a GPU driver wrote relative to the working directory: NVIDIA's `NVIDIA Corporation/umdlogs` appeared in the render workspace beside the image. With them, the driver caches (NVIDIA's logs, Intel's shader cache under `LocalLow`) land in the private root. The tests prove, with the real Blender, that nothing new appears in the global temporary directory, beside the project or in the workspace, and that the real Blender user profile (`%APPDATA%\Blender Foundation\Blender`) is unchanged.
+
+**Cleanup is verified, never assumed.** After each process the private root is removed (read-only files Blender left are made writable first) and its absence is checked. If anything remains, the result carries `DCC_CLEANUP_INCOMPLETE` (`INFO`) naming what was left; the render's own outcome is unchanged.
+
+This is isolation of where Blender and the drivers write, not a sandbox: Blender still runs as the user, the self-contained-input and blocked-Python rules are what keep a `.blend` from reaching elsewhere, and a GPU driver may keep state that GPOS cannot see.
+
 ## Limitations
 
 - One still frame of an authored scene. No animation, turntable, video, framing or camera choice.
@@ -282,8 +300,8 @@ The production design was then changed to use Blender's official BLENDER_USER_RE
 - An unavailable engine is detected through Blender's own load report in its log file, whose wording is version-specific. The helper fails closed if a report mentions an unavailable engine it cannot read, or if the log is larger than 256 KiB, and the self-test pins the helper to the Blender it runs in. This was verified on Blender 5.2.0 LTS only.
 - A non-simple driver expression is evaluated by Blender's own restricted driver namespace with auto-execution off; GPOS relies on Blender's report (`bpy.app.autoexec_fail`) of what that namespace blocked, and refuses those renders.
 - A file created from Blender's factory scene keeps a weak reference to Blender's bundled brush library, stored relative to where it was saved. After the file is moved to another directory depth it counts as a missing dependency, and the render is refused.
-- Rendering uses the host's CPU and GPU as Blender chooses; identical bytes are verified on one host, not across hardware.
-- Real-runtime tests ran on macOS only; Windows and Linux hosts were not exercised.
+- Rendering uses the host's CPU and GPU as Blender chooses; identical bytes are verified on one host, not across hardware. A GPU driver may keep caches the private directories do not cover.
+- Real-runtime tests ran on macOS with Blender 5.2.0 LTS (alpha.22) and on Windows 11 with Blender 5.2.2 LTS (alpha.24); Linux was not exercised. On Windows only the 5.2.x family is accepted.
 - Process-level isolation only; no operating-system sandbox.
 
 ## Tests

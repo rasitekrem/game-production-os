@@ -39,12 +39,14 @@ This module never starts a process itself and never imports the subprocess modul
 import math
 import re
 import shutil
+import sys
 import tempfile
 from dataclasses import replace
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from pathlib import Path
 
 from .. import diagnostics as dg
+from .. import executables
 from .. import media_common as media
 from .. import model
 from .. import process as proc
@@ -165,6 +167,8 @@ class FfmpegAdapter(model.ToolAdapter):
     descriptor = DESCRIPTOR
 
     def __init__(self, which=shutil.which, size_limits=None):
+        if sys.platform == "win32":   # alpha.24: PATH only, never the current directory, only <name>.exe
+            which = executables.windows_which if which is shutil.which else which
         self._which = which
         self._size_limits = dict(SIZE_LIMITS, **(size_limits or {}))
 

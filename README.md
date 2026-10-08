@@ -1,6 +1,6 @@
 # Game Production OS
 
-Version `1.0.0-alpha.23` · Phase 2C-9.1 (Windows Foundation Core: the tool adapter foundation on native Windows, the primary platform) on the frozen Phase-2C-8 Runtime / Deploy / Capture Core (the macOS player runtime adapter), Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation, Phase-2C-1 Git provenance adapter, Phase-2C-2 media evidence adapters, Phase-2C-3 Android ADB adapter, Phase-2C-4 Blender DCC adapter, Phase-2C-5 Unity batch plane, Phase-2C-6A Unity live session foundation, Phase-2C-6B1 Unity live Scene authoring core, Phase-2C-6B2A Unity live asset authoring core, Phase-2C-6B2B Unity live prefab authoring core, Phase-2C-6C Unity source, compile and diagnostics core and Phase-2C-7 Unity Build Core · all skills `DRAFT`
+Version `1.0.0-alpha.24` · Phase 2C-9.2 (Windows qualification of the production tools: FFmpeg, ffprobe and Blender qualified on Windows; Git and ADB not declared there) on the frozen Phase-2C-9.1 Windows Foundation Core, Phase-2C-8 Runtime / Deploy / Capture Core (the macOS player runtime adapter), Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation, Phase-2C-1 Git provenance adapter, Phase-2C-2 media evidence adapters, Phase-2C-3 Android ADB adapter, Phase-2C-4 Blender DCC adapter, Phase-2C-5 Unity batch plane, Phase-2C-6A Unity live session foundation, Phase-2C-6B1 Unity live Scene authoring core, Phase-2C-6B2A Unity live asset authoring core, Phase-2C-6B2B Unity live prefab authoring core, Phase-2C-6C Unity source, compile and diagnostics core and Phase-2C-7 Unity Build Core · all skills `DRAFT`
 
 A model-independent production framework for AI-assisted professional game development. It makes AI agents work like a disciplined, multidisciplinary game studio — with clear creative authority, specialist ownership, independent quality gates and typed evidence — instead of like a generic software agent that calls a feature done once the tests pass.
 
@@ -150,12 +150,13 @@ Each game keeps its own authority in a `.game/` directory built from `templates/
 | Unity Build Core: macOS Standalone Player (Mono) from the existing configuration, workspace payload and build manifest ([tools/unity-build.md](tools/unity-build.md)) | 2C-7 |
 | Player runtime: launch one revalidated build under a native supervisor, status, exact-window screenshot and silent video capture, stop; macOS, `DIAGNOSTIC_RUNTIME` evidence ([tools/player-adapter.md](tools/player-adapter.md)) | 2C-8 |
 | Windows Foundation Core: the tool adapter foundation on native Windows — Job Object process containment, handle-based NTFS containment and leases, process integrity at every boundary; qualified on Windows 11 with CPython 3.14.8 x64 ([tools/adapter-foundation.md § Windows](tools/adapter-foundation.md#windows-alpha23)) | 2C-9.1 |
+| Windows qualification of the production tools: PATH-only `.exe` discovery; FFmpeg and ffprobe 9.0.2 ([media § Windows](tools/media-adapters.md#windows-alpha24)) and Blender 5.2.2 with private temporary and data directories and verified cleanup ([Blender § Windows](tools/blender-adapter.md#windows-alpha24)) qualified; Git ([open finding D-G1](tools/git-adapter.md#repository-filter-drivers-open-finding-every-host)) and ADB ([server lifecycle deferred](tools/adb-adapter.md#windows-alpha24)) not declared on Windows | 2C-9.2 |
 
 **Platforms.** Windows is the primary development and production platform. macOS keeps its existing behaviour and is used mainly for Apple-specific work (iOS builds, signing, Xcode). Only tested interpreter and operating-system combinations are qualified.
 
 **Next critical path (Windows first):**
 
-1. Windows qualification of the existing Git, media, ADB and Blender adapters (2C-9.2).
+1. Human decisions on the Git repository-filter finding (D-G1) and on a GPOS-owned ADB server lifecycle, then Git and ADB on Windows.
 2. Unity 6.6 on Windows: the batch plane, the live Editor bridge and authoring.
 3. Windows Unity Build Core.
 4. Windows Player Runtime with exact-window capture (`TARGET_RUNTIME` reconsidered only when that runtime qualification justifies it).
@@ -169,7 +170,7 @@ Adapter and tool boundaries: [adapters/README.md](adapters/README.md), [tools/RE
 
 ## Versioning
 
-Semantic Versioning, currently `1.0.0-alpha.23` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
+Semantic Versioning, currently `1.0.0-alpha.24` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
 
 | Bump | When |
 |---|---|

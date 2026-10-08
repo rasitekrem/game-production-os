@@ -31,7 +31,11 @@ Before a capture the target must be connected (`get-state` = `device`) and fully
 finished booting. A dry run validates the request and reports a plan without contacting the target.
 
 ADB is client/server software: an `adb` client command may start the host ADB server if none is running.
-This adapter never starts, stops or configures that server explicitly, and claims no sandboxing.
+This adapter never starts, stops or configures that server explicitly, and claims no sandboxing. A failed
+command whose output names a server failure (it could not be started, reached or spoken to) is a tool failure,
+never a target state (alpha.24). On Windows a server the client starts is a process of the client's Job Object
+and is terminated when the command ends (alpha.23 D9), so no server lifecycle exists there: the adapter does not
+declare WINDOWS (alpha.24, D-W1) until a GPOS-owned server lifecycle is designed and qualified.
 This module never starts a process itself and never imports the subprocess module.
 """
 
@@ -39,11 +43,13 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 from dataclasses import replace
 from pathlib import Path
 
 from .. import diagnostics as dg
+from .. import executables
 from .. import model
 from .. import process as proc
 from ..artifacts import ArtifactSpec
@@ -166,7 +172,9 @@ CAPABILITIES = (
 DESCRIPTOR = model.AdapterDescriptor(
     adapter_id=ADAPTER_ID, adapter_version=ADAPTER_VERSION, tool_family="DEVICE",
     target_tool="Android Debug Bridge", adapter_kind="CLI", state_model="STATELESS",
-    supported_platforms=("WINDOWS", "MACOS", "LINUX"), capabilities=CAPABILITIES,
+    # alpha.24 (D-W1): WINDOWS is withdrawn: every capability needs a physical target and a host ADB server, and
+    # neither is qualified on Windows (no device operation was authorized; the server lifecycle is deferred).
+    supported_platforms=("MACOS", "LINUX"), capabilities=CAPABILITIES,
     availability="an adb executable (Android SDK Platform-Tools) on PATH (absolute PATH entries only)",
     compatibility_notes=(
         "Explicit physical targets only: the adb_serial input selects the exact local USB target; emulators, "
@@ -184,6 +192,8 @@ class AdbAdapter(model.ToolAdapter):
     descriptor = DESCRIPTOR
 
     def __init__(self, which=shutil.which, capture_bytes=None):
+        if sys.platform == "win32":   # alpha.24: PATH only, never the current directory, only <name>.exe
+            which = executables.windows_which if which is shutil.which else which
         self._which = which
         self._capture = dict(CAPTURE_BYTES, **(capture_bytes or {}))
 
@@ -396,6 +406,9 @@ class _Runner:
             return self.step_failure(outcome, "get-state")
         state = outcome.raw_stdout.decode("ascii", errors="replace").strip()
         if outcome.exit_code != 0:
+            if server_failure(outcome.raw_stderr):   # alpha.24: the host server failing says nothing of the target
+                return self.failed(outcome, "the host ADB server could not be started or did not answer, so the "
+                                            "target's state is unknown; nothing was captured")
             if b"not found" in outcome.raw_stderr:
                 return self.refused(outcome, "TARGET_DEVICE_UNAVAILABLE",
                                     "the ADB target named by adb_serial is not connected; no other target is used "
@@ -438,6 +451,20 @@ class _Runner:
         argv = tuple(TARGET_PLACEHOLDER if a == self.serial else a for a in self.spec.argv)
         return dict(command=replace(self.spec, argv=argv).command_for_provenance(),
                     environment=self.spec.env.metadata())
+
+
+# alpha.24: what the adb client prints when the host ADB server, not the target, is the problem (it could not be
+# started, reached or spoken to). Matched before the target states: such a failure never becomes one. The client's
+# informational lines when it starts a server ("daemon not running; starting now", "daemon started successfully")
+# are not failures and match none of these.
+SERVER_FAILURE_MARKERS = (b"failed to start daemon", b"cannot connect to daemon", b"could not read ok from adb server",
+                          b"doesn't match this client", b"failed to check server version", b"smartsocket",
+                          b"protocol fault")
+
+
+def server_failure(stderr):
+    text = bytes(stderr).lower()
+    return any(marker in text for marker in SERVER_FAILURE_MARKERS)
 
 
 def parse_version(raw):

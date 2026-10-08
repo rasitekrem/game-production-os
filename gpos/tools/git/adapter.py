@@ -44,11 +44,13 @@ exactly its HEAD commit). Both overrides are fixed, command-scope and write noth
 import os
 import re
 import shutil
+import sys
 import tempfile
 from dataclasses import replace
 from pathlib import Path
 
 from .. import diagnostics as dg
+from .. import executables
 from .. import model
 from .. import process as proc
 from ..capabilities import Capability, TimeoutPolicy
@@ -135,7 +137,9 @@ CAPABILITIES = (
 DESCRIPTOR = model.AdapterDescriptor(
     adapter_id=ADAPTER_ID, adapter_version=ADAPTER_VERSION, tool_family="VERSION_CONTROL",
     target_tool="Git", adapter_kind="CLI", state_model="STATELESS",
-    supported_platforms=("WINDOWS", "MACOS", "LINUX"), capabilities=CAPABILITIES,
+    # alpha.24 (D-W1): WINDOWS is withdrawn until the repository-filter finding (D-G1) has a Human-approved fix; the
+    # foundation refuses the adapter on Windows (PLATFORM_UNSUPPORTED) instead of running it unqualified.
+    supported_platforms=("MACOS", "LINUX"), capabilities=CAPABILITIES,
     availability="a Git executable on PATH (absolute PATH entries only), version "
                  + ".".join(str(n) for n in MINIMUM_VERSION) + " or later",
     minimum_tool_version=".".join(str(n) for n in MINIMUM_VERSION),
@@ -162,6 +166,8 @@ class GitAdapter(model.ToolAdapter):
     descriptor = DESCRIPTOR
 
     def __init__(self, which=shutil.which, status_capture_bytes=STATUS_CAPTURE_BYTES):
+        if sys.platform == "win32":   # alpha.24: PATH only, never the current directory, only <name>.exe
+            which = executables.windows_which if which is shutil.which else which
         self._which = which
         self._status_capture_bytes = status_capture_bytes
 

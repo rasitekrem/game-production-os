@@ -81,7 +81,7 @@ MUTATIONS = [
         (ADAPTER, 'return ("-s", serial, "shell", "dumpsys", "meminfo", "-s", package)',
          'return ("shell", "dumpsys", "meminfo", "-s", package)')]),
     ("8 get-state readiness check removed", [
-        (ADAPTER, '        if outcome.exit_code != 0:\n            if b"not found"', '        if False:\n            if b"not found"'),
+        (ADAPTER, '        if outcome.exit_code != 0:\n            if server_failure(', '        if False:\n            if server_failure('),
         (ADAPTER, '        if state != "device":\n', "        if False:\n")]),
     ("9 boot-completed check removed", [
         (ADAPTER, '        if outcome.exit_code != 0 or outcome.raw_stdout.strip() != b"1":\n', "        if False:\n")]),
@@ -224,7 +224,19 @@ MUTATIONS = [
          '    if not value("ro.hardware") or qemu - {"0"}:\n        return "physical"\n')]),
     ("an input artifact is silently accepted", [
         (ADAPTER, "        if context.input_artifacts:\n            return _refuse(", "        if False:\n            return _refuse(")]),
+    # --- alpha.24: the host ADB server is not the target
+    ("a host ADB server failure is reported as a target state", [
+        (ADAPTER, "            if server_failure(outcome.raw_stderr):", "            if False:")]),
+    ("the client's server-start messages count as a server failure", [
+        (ADAPTER, '(b"failed to start daemon", ', '(b"daemon", b"failed to start daemon", ')]),
 ]
+
+# alpha.24 (D-A1, D-A2): an OFFLINE run (always on Windows; GPOS_TEST_ADB_OFFLINE=1 elsewhere, as in the suite) sends
+# nothing to an ADB server or a target, so a mutation that only the device groups can catch is NOT_RUN there, never
+# counted. The suite's offline group (OF) proves the other guarantees against the stand-in; the one below needs a
+# physical target's serial to build its defect at all.
+OFFLINE = sys.platform == "win32" or os.environ.get("GPOS_TEST_ADB_OFFLINE") == "1"
+DEVICE_ONLY = {"35 a target serial is committed into a test snapshot"}
 
 
 def run(mutation):
@@ -249,7 +261,7 @@ def run(mutation):
                 return name, f"NOT APPLIED ({rel}: anchor found {text.count(anchor)} times)"
             gate.write(path, text.replace(anchor, replacement))
         out = subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / "test_adb_adapter.py")],
-                             capture_output=True, text=True, timeout=1800,
+                             capture_output=True, text=True, timeout=1800, **gate.ISOLATED,
                              env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
         return name, "CAUGHT" if out.returncode != 0 else "MISSED"
     finally:
@@ -262,7 +274,9 @@ def main():
     parser.add_argument("--only", help="run only mutations whose name contains this text")
     args = parser.parse_args()
     selected = [m for m in MUTATIONS if not args.only or args.only in m[0]]
-    return gate.qualify(run, selected, args.jobs)
+    not_run = [m for m in selected if OFFLINE and m[0] in DEVICE_ONLY]
+    return gate.qualify(run, [m for m in selected if m not in not_run], args.jobs, not_run=not_run,
+                        not_run_reason="needs a real target; this run is offline (D-A1/D-A2)")
 
 
 if __name__ == "__main__":

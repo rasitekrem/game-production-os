@@ -50,7 +50,7 @@ The installed tools showed behaviours that matter for correctness. Each one is h
 | `-fs` stops writing but **exits 0**, and overshoots by a packet or cluster (a Matroska clip reached 224,841 bytes under a 20,000-byte limit) | an output at or above its limit is treated as cut short: an incomplete artifact, never evidence |
 | a frame requested past the end **exits 0 with an empty file** | every output must be non-empty and start with its format's signature |
 | a clip window past the end exits 0 with a **shorter** clip | stated in the clip's evidence limitations |
-| `-fflags +bitexact` makes frame, clip and audio outputs **byte-identical** across runs | identical requests give identical hashes |
+| `-fflags +bitexact` makes frame, clip and audio outputs **byte-identical** across runs | identical requests give identical hashes on the same host, FFmpeg build, input and settings (measured; see [Repeatability](#repeatability)) |
 | an unknown option exits non-zero | an FFmpeg too old to know a whitelist option refuses to run rather than ignoring it, so no minimum version is needed |
 
 ## Local input contract
@@ -321,13 +321,26 @@ A credential-shaped file name and credential-shaped source metadata were tested 
 
 **No OS sandboxing is claimed.** FFmpeg and ffprobe are external native parsers and decoders, and they run under the same foundation trust boundary as every other tool: fixed argument vectors, an allowlisted environment, a validated working directory, bounded output and a timeout. A malicious media file is still parsed by native code.
 
+## Repeatability
+
+Identical requests have produced byte-identical frame, clip and audio outputs on each qualified environment: macOS with FFmpeg 9.0.1 (alpha.22), and Windows 11 with FFmpeg 9.0.2 (the gyan.dev full build, alpha.24), where `tests/test_media_adapters.py` measures it for every transform. That is a statement about one host, one FFmpeg build, one input and one set of settings. It is not a promise across FFmpeg builds or versions, operating systems or hardware, and evidence never depends on it: every artifact is identified by its own hash.
+
+## Windows (alpha.24)
+
+Qualified on Windows 11 Enterprise 10.0.26200 with FFmpeg and ffprobe 9.0.2 (gyan.dev full build, installed by WinGet) and CPython 3.14.8:
+
+- discovery takes `ffmpeg.exe` and `ffprobe.exe` from an absolute PATH directory only, never the current directory and never a `.cmd` or `.bat` shim. A WinGet "Links" entry is a symbolic link; the process boundary runs the real executable it resolves to, never the link (`gpos/tools/executables.py`);
+- the whole suite passes against the real tools; the stand-ins the suite needs are compiled from reviewed source by the installed .NET Framework compiler (`tests/windows_standin.py`), and nothing executable is committed;
+- the two Git handoff tests are `NOT_RUN` on Windows, because the production Git adapter is not declared there in alpha.24 ([Git § Windows](git-adapter.md#windows-alpha24));
+- the template, codec and filter settings are unchanged from alpha.22.
+
 ## Limitations
 
 - Local, self-contained files only; no capture of any kind.
 - Only the first video stream and the first audio stream are used.
 - The clip's audio is not audio evidence; use `ffmpeg.extract-audio`.
 - FFmpeg's `tool_version` in a materialized record names the deriving tool, not the source's capture tool.
-- Real-runtime tests ran on macOS with FFmpeg 9.0.1. Windows and Linux are declared but were not exercised here.
+- Real-runtime tests ran on macOS with FFmpeg 9.0.1 (alpha.22) and on Windows 11 with FFmpeg 9.0.2 (alpha.24). Linux is declared but was not exercised.
 
 ## Tests
 

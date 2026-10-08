@@ -4,6 +4,32 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.24] — Phase 2C-9.2: Windows qualification of the production tools
+
+Builds on the frozen Phase-2C-9.1 tree (`v1.0.0-alpha.23`, `a025d51`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, no new capability, no change to the Unity Editor bridge (`com.gpos.live-bridge` 1.5.0, `gpos.unity.live/5`, 67 files, digest `b7f4775d…`), to Unity Build Core or to the Player Runtime, and the production registry stays at seven adapters. Projects must pin `gpos_version` `1.0.0-alpha.24`.
+
+Qualified on Windows 11 Enterprise 10.0.26200 with CPython 3.14.8 x64 only. **Qualified for production on Windows:** FFmpeg and ffprobe (9.0.2, gyan.dev full build) and Blender (5.2.2 LTS only). **Not declared on Windows:** Git (pending the repository-filter decision D-G1) and ADB (no physical target or server lifecycle qualified). Unity and the Player stay macOS-only.
+
+### Added
+
+- **Windows tool discovery** (`gpos/tools/executables.py`): on Windows every production adapter finds `<name>.exe` in the absolute PATH directories, in order — never the current directory, never a relative, drive-relative or UNC entry, never a `.cmd` or `.bat` shim (which `shutil.which` would return there). The process boundary still validates and pins what it finds. POSIX keeps `shutil.which`.
+- **Blender on Windows (D-B2, D-B3):** each Blender process gets a private temporary directory and private per-user and machine data directories inside its user root (TEMP, TMP, TMPDIR, APPDATA, LOCALAPPDATA, ProgramData), created and proven to be plain directories before launch; without them the NVIDIA driver wrote `NVIDIA Corporation/umdlogs` into the render workspace. The private root's removal is verified, never assumed: a residue is reported as `DCC_CLEANUP_INCOMPLETE` (`INFO`, a new code). Only the 5.2.x family is accepted on Windows, and the version `--version` prints must equal Blender's own report exactly; macOS and Linux keep the alpha.22 rule.
+- **Tests:** a test-only tool stand-in for Windows (`tests/windows_standin.py`, compiled from `tests/fixtures/windows-standin/StandIn.cs` by the .NET Framework compiler that ships with Windows; no executable committed) and `tests/test_windows_standin.py`; W09 (tool discovery) in `tests/test_windows_foundation.py`; Blender groups WA and WB; the ADB suite's offline mode; a measured media repeatability test; P08 in `tests/test_posix_parity.py`; discovery, Blender and ADB mutations.
+
+### Changed
+
+- **Blender render path templates (D-B1, every host):** a render whose workspace output path contains `#`, `{` or `}` is refused before Blender starts, because Blender would expand them into another file name. A `.blend` source whose path contains them is still inspected.
+- **ADB server failures (every host):** a failed `get-state` whose output names a host ADB server failure is a tool failure (`FAILED`), never `TARGET_DEVICE_UNAVAILABLE` or `TARGET_DEVICE_NOT_READY`.
+- **Git and ADB no longer declare `WINDOWS` (D-W1):** the registry refuses them on Windows with `PLATFORM_UNSUPPORTED` before any process starts; their macOS and Linux declarations are unchanged. The media and ADB Git handoffs therefore cannot run on Windows.
+- `tests/mutation_gate.py`: `qualify` can name why a mutation is `NOT_RUN` (an offline ADB run).
+
+### Notes
+
+- **Open finding D-G1 (every host):** `git status` runs a repository's configured filter driver (`clean` or `process`) for a file whose attributes select it, so `git.inspect` and `git.resolve-provenance` can start a program the repository chose. Neutralising it needs the driver names, which needs a command outside the fixed Git surface; that choice is left to Human Review ([tools/git-adapter.md](tools/git-adapter.md#repository-filter-drivers-open-finding-every-host)). macOS keeps the alpha.22 behaviour.
+- **ADB on Windows:** a server the adb client starts is a process of the client's Job Object and is terminated with it (alpha.23 D9), so there is no server lifecycle to rely on. A GPOS-owned lifecycle is proposed for review, not implemented ([tools/adb-adapter.md](tools/adb-adapter.md#proposed-gpos-owned-server-lifecycle-future-not-implemented)). No physical device was used.
+- Media repeatability is measured for one host, FFmpeg build, input and settings; it is not a promise across builds, platforms or hardware.
+- macOS was not executed for this release. The shared changes (D-B1, the ADB server classification, the two descriptors) are listed and proven exact by source parity (`tests/test_posix_parity.py` P08), which is not a macOS PASS.
+
 ## [1.0.0-alpha.23] — Phase 2C-9.1: Windows Foundation Core
 
 Builds on the frozen Phase-2C-8 tree (`v1.0.0-alpha.22`, `92ca10b`). Windows is now the primary development and production platform; macOS keeps its alpha.22 behaviour. No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, no change to the Unity Editor bridge (`com.gpos.live-bridge` 1.5.0, `gpos.unity.live/5`, 67 files, digest `b7f4775d…`), to Unity Build Core or to the Player Runtime capabilities, and the production registry stays at seven adapters. Projects must pin `gpos_version` `1.0.0-alpha.23`.

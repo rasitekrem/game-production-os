@@ -286,7 +286,42 @@ MUTATIONS = [
     ("self-test no longer requires Blender's blocked-Python flag", [
         (PARSER, 'value["blend_paths"], value["autoexec_fail"], value["factory_startup"])',
          'value["blend_paths"], value["factory_startup"])')]),
+    # --- alpha.24 (2C-9.2)
+    ("D-B1: a render path holding a template character reaches Blender", [
+        (ADAPTER, "            if any(c in str(output) for c in TEMPLATE_CHARACTERS):   # alpha.24 (D-B1), every host\n",
+         "            if False:\n")]),
 ]
+
+# alpha.24: Windows isolation, cleanup and version rules (group WB of the suite); NOT_RUN on any other host
+WINDOWS_MUTATIONS = [
+    ("D-B2: Blender keeps the global TEMP on Windows", [
+        (ADAPTER, '        return proc.EnvironmentPolicy(overrides=(("BLENDER_USER_RESOURCES", str(user_root)), ("TEMP", temp),\n'
+                  '                                                 ("TMP", temp), ("TMPDIR", temp)) + data)',
+         '        return proc.EnvironmentPolicy(overrides=(("BLENDER_USER_RESOURCES", str(user_root)),) + data)')]),
+    ("D-B2: driver and per-user data directories stay the real ones on Windows", [
+        (ADAPTER, '("TMP", temp), ("TMPDIR", temp)) + data)', '("TMP", temp), ("TMPDIR", temp)))')]),
+    ("D-B2: the private directories are named but never created", [
+        (ADAPTER, '    for name in (TEMP_NAME,) + tuple(directory for _, directory in PRIVATE_DATA_DIRS):\n',
+         '    for name in ():\n')]),
+    ("D-B2: a cleanup that left files is assumed complete", [
+        (ADAPTER, "    if not os.path.lexists(user_root):\n        return None\n", "    return None\n")]),
+    ("D-B2: a read-only file defeats the cleanup", [
+        (ADAPTER, "            shutil.rmtree(user_root, **retry)\n", "            shutil.rmtree(user_root)\n")]),
+    ("D-B2: the probe's private root is removed without verification", [
+        (ADAPTER, "        finally:\n            leftover = remove_verified(user_root)\n",
+         "        finally:\n            leftover = shutil.rmtree(user_root, ignore_errors=True)\n")]),
+    ("D-B3: any Blender release family is accepted on Windows", [
+        (ADAPTER, "        if version_family(tool_version) != WINDOWS_QUALIFIED_FAMILY:\n", "        if False:\n")]),
+    ("isolated user root taken from the parent environment on Windows", [
+        (ADAPTER, '(("BLENDER_USER_RESOURCES", str(user_root)), ("TEMP", temp),',
+         '(("BLENDER_USER_RESOURCES", os.environ.get("BLENDER_USER_RESOURCES") or str(user_root)), ("TEMP", temp),')]),
+    ("D-B3: a version that only shares a prefix is accepted on Windows", [
+        (ADAPTER, '                if tool_version.split(" ")[0] != report["blender_version"]:\n',
+         '                if not tool_version.startswith(report["blender_version"]):\n')]),
+]
+# Mutations of the POSIX environment line, which Windows never runs (its twin above edits the Windows branch).
+POSIX_ONLY = {"isolated user root taken from the parent environment"}
+ONLY_ON = {**{m[0]: "WINDOWS" for m in WINDOWS_MUTATIONS}, **{n: "POSIX" for n in POSIX_ONLY}}
 
 
 def run(mutation):
@@ -303,7 +338,8 @@ def run(mutation):
             gate.write(path, text.replace(anchor, replacement))
         env = {k: v for k, v in os.environ.items() if not k.startswith("BLENDER_")}
         out = subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / "test_blender_adapter.py")],
-                             capture_output=True, text=True, timeout=3600, env=dict(env, PYTHONDONTWRITEBYTECODE="1"))
+                             capture_output=True, text=True, timeout=3600, env=dict(env, PYTHONDONTWRITEBYTECODE="1"),
+                             **gate.ISOLATED)
         return name, "CAUGHT" if out.returncode != 0 else "MISSED"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -314,8 +350,9 @@ def main():
     parser.add_argument("--jobs", type=int, default=2)
     parser.add_argument("--only", help="run only mutations whose name contains this text")
     args = parser.parse_args()
-    selected = [m for m in MUTATIONS if not args.only or args.only in m[0]]
-    return gate.qualify(run, selected, args.jobs)
+    selected = [m for m in MUTATIONS + WINDOWS_MUTATIONS if not args.only or args.only in m[0]]
+    here, elsewhere = gate.for_host(selected, ONLY_ON)
+    return gate.qualify(run, here, args.jobs, not_run=elsewhere)
 
 
 if __name__ == "__main__":

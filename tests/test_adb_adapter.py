@@ -31,6 +31,7 @@ X CLI · Y repository privacy · Z other adapters unchanged.
 """
 
 import ast
+import dataclasses
 import hashlib
 import io
 import json
@@ -48,10 +49,14 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tests"))
+if sys.platform == "win32" and not sys.flags.utf8_mode:   # alpha.24: the Windows locale is not UTF-8
+    sys.exit("WINDOWS_UTF8_MODE_REQUIRED: run this suite as `python -X utf8 tests/test_adb_adapter.py`")
 
 _HOME = tempfile.mkdtemp(prefix="gpos-adb-home-")  # Git fixtures only; adb keeps the real HOME (its key store)
 
 import gpos  # noqa: E402
+import windows_standin  # noqa: E402  (alpha.24: tool stand-ins that run on every host)
 from gpos.framework import load_framework  # noqa: E402
 from gpos.tools import diagnostics as tdg  # noqa: E402
 from gpos.tools import evidence as tev  # noqa: E402
@@ -89,6 +94,51 @@ FORBIDDEN_FAMILIES = {"install", "install-multiple", "uninstall", "push", "pull"
                       "disconnect", "pair", "forward", "reverse", "kill-server", "start-server", "bugreport", "backup",
                       "restore", "jdwp", "emu", "wait-for-device", "logcat", "screenrecord", "input", "am", "pm",
                       "settings", "rm", "mv", "cp", "sh", "su", "mdns", "-d", "-e"}
+# alpha.24 (D-A1, D-A2): an OFFLINE run sends nothing to a host ADB server or an Android target. Every test that
+# needs one is NOT_RUN (reported as a skip naming why); the stand-in, parser, refusal and real `adb version` tests
+# run. Windows runs are always offline in alpha.24: no device operation is authorized there and the production
+# descriptor does not declare WINDOWS. Elsewhere GPOS_TEST_ADB_OFFLINE=1 selects it; the default is unchanged.
+OFFLINE = sys.platform == "win32" or os.environ.get("GPOS_TEST_ADB_OFFLINE") == "1"
+NOT_RUN = ("NOT_RUN: needs a host ADB server and a connected Android target; this run is offline (alpha.24 D-A1/D-A2: "
+           "no device operation and no ADB server contact)")
+SERVER_CONTACTS = []  # real adb commands an offline run refused to start and no test reported NOT_RUN; must stay empty
+
+
+class _ServerContact(BaseException):
+    """Raised at the process boundary when an offline run would start a real adb command that talks to a server.
+    A BaseException, so no `except Exception` on the way can turn it into an ordinary result."""
+
+
+def _offline_guard():
+    if OFFLINE:
+        raise unittest.SkipTest(NOT_RUN)
+
+
+class _Targets(list):
+    """The authorized targets; an offline run has none, and a test that needs them is NOT_RUN, never vacuous."""
+
+    def __iter__(self):
+        _offline_guard()
+        return super().__iter__()
+
+    def __len__(self):
+        _offline_guard()
+        return super().__len__()
+
+    def __getitem__(self, index):
+        _offline_guard()
+        return super().__getitem__(index)
+
+
+if sys.platform == "win32":
+    # alpha.24 (D-W1): production withdraws WINDOWS (no physical target or server lifecycle is qualified there). The
+    # offline groups still measure the adapter on Windows through a TEST-SIDE descriptor that declares it; the
+    # production descriptor's refusal on Windows is proven separately (A_Registration).
+    PRODUCTION_DESCRIPTOR = aa.DESCRIPTOR
+    AdbAdapter.descriptor = dataclasses.replace(aa.DESCRIPTOR, supported_platforms=("WINDOWS", "MACOS", "LINUX"))
+else:
+    PRODUCTION_DESCRIPTOR = aa.DESCRIPTOR
+
 FIXTURE_ENV = {"HOME": _HOME, "PATH": os.environ.get("PATH", ""), "GIT_CONFIG_NOSYSTEM": "1",
                "GIT_AUTHOR_NAME": "Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
                "GIT_COMMITTER_NAME": "Fixture", "GIT_COMMITTER_EMAIL": "fixture@example.invalid", "LC_ALL": "C"}
@@ -98,6 +148,7 @@ FIXTURE_ENV = {"HOME": _HOME, "PATH": os.environ.get("PATH", ""), "GIT_CONFIG_NO
 
 def adb_test(serial, *args, timeout=60):
     """Read-only cross-check queries from test code (getprop, pidof, devices). Never a production path."""
+    _offline_guard()
     argv = [ADB] + (["-s", serial] if serial else []) + list(args)
     return subprocess.run(argv, capture_output=True, timeout=timeout)
 
@@ -144,13 +195,14 @@ def _targets():
     return out
 
 
-TARGETS = []          # filled in setUpModule
+TARGETS = _Targets()  # filled in setUpModule
 IDENTITY = {}         # serial -> canonical identity, derived by test code from getprop
 FINGERPRINTS = set()  # observed at runtime, only ever used to redact and to scan the repository
 
 
 def expected_identity(serial):
     """The canonical identity, derived by test code from the target's own properties (not the adapter)."""
+    _offline_guard()
     if serial not in IDENTITY:
         IDENTITY[serial] = (f"{prop(serial, 'ro.product.manufacturer')} {prop(serial, 'ro.product.model')} / Android "
                             f"{prop(serial, 'ro.build.version.release')} (API {prop(serial, 'ro.build.version.sdk')})")
@@ -158,16 +210,37 @@ def expected_identity(serial):
 
 
 def physical():
+    _offline_guard()
     return [t for t in TARGETS if t[2] == "physical"]
 
 
 def emulators():
+    _offline_guard()
     return [t for t in TARGETS if t[2] == "emulator"]
+
+
+def _offline_boundary(original, real):
+    def boundary(spec, scopes, *args, **kwargs):
+        if os.path.normcase(os.path.realpath(spec.executable)) == real and tuple(spec.argv) != aa.VERSION_ARGV:
+            SERVER_CONTACTS.append(tuple(a if a.startswith("-") or a in ("shell", "get-state", "exec-out") else "…"
+                                         for a in spec.argv[:3]))
+            raise _ServerContact(NOT_RUN)
+        return original(spec, scopes, *args, **kwargs)
+    return boundary
+
+
+if OFFLINE and ADB is not None:
+    # Installed at import, not in setUpModule: however the suite is loaded or run, an offline run can only ever start
+    # `adb version` with the real adb (a client-only command); every other real adb command is refused before it
+    # starts. (alpha.24: a loader that skipped setUpModule once let a real `get-state` autostart a server.)
+    tproc.run_process = _offline_boundary(tproc.run_process, os.path.normcase(os.path.realpath(ADB)))
 
 
 def setUpModule():
     if ADB is None:
         raise RuntimeError("ADB_RUNTIME_UNAVAILABLE_FOR_PHASE2C3: no adb on PATH")
+    if OFFLINE:   # nothing is discovered: no `adb devices`, no target
+        return
     if not TARGETS:
         TARGETS.extend(_targets())
     for label, serial, _ in TARGETS:
@@ -181,6 +254,8 @@ def setUpModule():
 
 
 def tearDownModule():
+    if SERVER_CONTACTS:
+        raise AssertionError(f"an offline run attempted real adb server commands: {SERVER_CONTACTS}")
     if MATRIX.project is not None:
         shutil.rmtree(MATRIX.project.parent, ignore_errors=True)
     shutil.rmtree(_HOME, ignore_errors=True)
@@ -197,7 +272,7 @@ def sha256(path):
 
 def redact(text):
     """The runner's output filter: physical serials and build fingerprints never reach the log."""
-    for label, serial, kind in TARGETS:
+    for label, serial, kind in list.__iter__(TARGETS):   # never NOT_RUN: an offline run simply has none
         if kind == "physical":
             text = text.replace(serial, f"<{label}_SERIAL_REDACTED>")
     for fingerprint in FINGERPRINTS:
@@ -261,6 +336,7 @@ class _Matrix:
         self.project, self.runs, self.registry, self.retries = None, {}, None, 0
 
     def get(self, serial, capability):
+        _offline_guard()
         key = (serial, capability)
         if key not in self.runs:
             if self.registry is None:
@@ -288,6 +364,7 @@ EMULATOR_RUNS = {}
 
 def emulator_run(serial, capability):
     """An emulator's refused capture (with its own correct identity), run once and shared."""
+    _offline_guard()
     key = (serial, capability)
     if key not in EMULATOR_RUNS:
         project = _new_project(MATRIX.project.parent / f"emu-{len(EMULATOR_RUNS)}")
@@ -320,7 +397,11 @@ class AdbCase(unittest.TestCase):
         return _new_project(target)
 
     def run_cap(self, capability, project, serial, registry=None, **kwargs):
-        return execute(registry or self.registry, request(capability, project, serial, **kwargs))
+        try:
+            return execute(registry or self.registry, request(capability, project, serial, **kwargs))
+        except _ServerContact:
+            SERVER_CONTACTS.pop()   # refused before it started, and reported NOT_RUN
+            raise unittest.SkipTest(NOT_RUN) from None
 
     def first(self):
         return physical()[0][1]
@@ -408,9 +489,7 @@ class StandIn:
         if isinstance(cfg.get("png"), (bytes, bytearray)):
             cfg["png"] = {"hex": bytes(cfg["png"]).hex()}
         self.config.write_text(json.dumps(cfg))
-        self.exe = self.dir / "adb"
-        self.exe.write_text(f"#!{tproc.interpreter_path()}\nCONFIG = {str(self.config)!r}\n{STAND_IN}")
-        self.exe.chmod(0o755)
+        self.exe = windows_standin.write_tool(self.dir / "adb", f"CONFIG = {str(self.config)!r}\n{STAND_IN}")
 
     def adapter(self, **kwargs):
         return AdbAdapter(which=lambda name: str(self.exe), **kwargs)
@@ -423,7 +502,7 @@ class StandIn:
     @property
     def calls(self):
         log = Path(str(self.config) + ".log")
-        return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+        return [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()] if log.exists() else []
 
     @property
     def captures(self):
@@ -457,9 +536,25 @@ class A_Registration(AdbCase):
         d = aa.DESCRIPTOR
         self.assertEqual((d.adapter_id, d.tool_family, d.target_tool, d.adapter_kind, d.state_model, d.network),
                          ("adb", "DEVICE", "Android Debug Bridge", "CLI", "STATELESS", "FORBIDDEN"))
-        self.assertEqual(d.supported_platforms, ("WINDOWS", "MACOS", "LINUX"))
+        self.assertEqual(d.supported_platforms, ("MACOS", "LINUX"))   # alpha.24 (D-W1): WINDOWS withdrawn
         self.assertFalse(d.test_only)
         self.assertEqual(d.filesystem_scopes, ())
+
+    def test_the_production_descriptor_is_refused_on_windows(self):
+        adapter = AdbAdapter()
+        adapter.descriptor = PRODUCTION_DESCRIPTOR
+        registry = ToolRegistry(FW, allow_test_only=False)
+        registry.register(adapter)
+        if sys.platform != "win32":
+            return self.assertIn("MACOS" if sys.platform == "darwin" else "LINUX", PRODUCTION_DESCRIPTOR.supported_platforms)
+        with Recorder() as rec:
+            probe = registry.probe("adb")
+            result = self.run_cap(aa.DEVICE_REPORT, self.project(), STAND_IN_SERIAL, registry=registry,
+                                  device=STAND_IN_IDENTITY)
+        self.assertEqual(probe.status, tmodel.UNAVAILABLE)
+        self.assertIn("PLATFORM_UNSUPPORTED", {d.code for d in probe.diagnostics})
+        self.assertIn("PLATFORM_UNSUPPORTED", self.codes(result))
+        self.assertEqual(rec.specs, [])                               # not even `adb version` runs
 
     def test_exactly_three_capabilities(self):
         caps = {c.id: c for c in aa.DESCRIPTOR.capabilities}
@@ -494,10 +589,13 @@ class B_RealProbe(AdbCase):
         self.assertEqual(f"Version {probe.tool_version}", second.strip())
 
     def test_the_probe_runs_only_adb_version_and_never_lists_devices(self):
-        with Recorder() as rec:
+        outcomes = []
+        with Recorder(transform=lambda spec, outcome: outcomes.append(outcome) or outcome) as rec:
             AdbAdapter().probe()
         self.assertEqual([tuple(s.argv) for s in rec.specs], [("version",)])
         self.assertEqual(rec.target_runs, [])
+        # alpha.24: `adb version` is answered by the client alone; it starts no server (nothing was left to terminate)
+        self.assertEqual([o.descendants_terminated for o in outcomes], [0])
 
     def test_the_adb_modules_never_import_subprocess(self):
         for path in sorted((ROOT / "gpos" / "tools" / "adb").glob("*.py")):
@@ -525,7 +623,7 @@ class B_RealProbe(AdbCase):
         registry = ToolRegistry(FW, allow_test_only=False)
         registry.register(AdbAdapter(which=lambda n: None))
         with Recorder() as rec:
-            result = self.run_cap(aa.DEVICE_REPORT, self.project(), self.first(), registry=registry)
+            result = self.run_cap(aa.DEVICE_REPORT, self.project(), STAND_IN_SERIAL, registry=registry)
         self.assertEqual(result.status, tdg.UNAVAILABLE)
         self.assertEqual(rec.specs, [])
 
@@ -751,6 +849,44 @@ class D_Readiness(StandInCase):
                                        status=tdg.CONFLICT)
                 self.assertEqual(stand_in.captures, [])
                 self.assertNotIn(["-s", STAND_IN_SERIAL, "shell", "getprop"], stand_in.calls)
+
+    def test_a_host_server_failure_is_a_tool_failure_never_a_target_state(self):
+        """alpha.24: the ADB server not starting or not answering says nothing about the target."""
+        cases = {"failed to start": "* daemon not running; starting now at tcp:5037\n* failed to start daemon\n"
+                                    "adb: cannot connect to daemon\n",
+                 "cannot connect": "error: cannot connect to daemon at tcp:5037: cannot connect to 127.0.0.1:5037\n",
+                 "no ok": "adb: failed to check server version: protocol fault (couldn't read status): "
+                          "could not read ok from ADB Server\n",
+                 "version mismatch": "adb server version (41) doesn't match this client (40); killing...\n"
+                                     "* failed to start daemon\nadb: cannot connect to daemon\n"}
+        for name, err in cases.items():
+            with self.subTest(case=name):
+                stand_in = StandIn(self.tmp / name.replace(" ", "-"), state="", state_exit=1, state_err=err)
+                result = self.stand_in_run(aa.DEVICE_REPORT, stand_in)
+                self.assertEqual(result.status, tdg.FAILED, self.messages(result))
+                self.assertIn("ADB server", self.messages(result))
+                self.assertFalse({"TARGET_DEVICE_NOT_READY", "TARGET_DEVICE_UNAVAILABLE"} & self.codes(result))
+                self.assertEqual((result.artifacts, result.evidence_candidates), ((), ()))
+                self.assertEqual([c[2:] for c in stand_in.calls if c[:1] == ["-s"]], [["get-state"]])
+
+    def test_a_named_target_that_is_not_attached_is_unavailable(self):
+        for name, prefix in (("server running", ""),
+                             ("server started now", "* daemon not running; starting now at tcp:5037\n"
+                                                    "* daemon started successfully\n")):
+            with self.subTest(case=name):   # starting a server on the way is not a server failure
+                stand_in = StandIn(self.tmp / name.replace(" ", "-"), state="", state_exit=1,
+                                   state_err=prefix + f"adb: device '{STAND_IN_SERIAL}' not found\n")
+                self.assertRefused(self.stand_in_run(aa.SCREENSHOT, stand_in), "is not connected",
+                                   code="TARGET_DEVICE_UNAVAILABLE", status=tdg.UNAVAILABLE)
+
+    def test_the_offline_guard_refuses_real_server_commands_however_the_suite_is_loaded(self):
+        if not OFFLINE:
+            self.skipTest("the guard exists only in an offline run")
+        spec = tproc.ToolProcessSpec(executable=ADB, argv=aa.state_argv("GPOSNOSUCHDEVICE0001"), cwd=str(self.tmp),
+                                     timeout=5)
+        with self.assertRaises(_ServerContact):
+            tproc.run_process(spec, [str(self.tmp)])
+        self.assertEqual(SERVER_CONTACTS.pop(), ("-s", "…", "get-state"))
 
 
 # ---------------------------------------------------------------- E  device report
@@ -1174,7 +1310,11 @@ class M2_ReferenceDevices(AdbCase):
 def cli(*argv):
     from gpos.tools import cli as tool_cli
     buffer = io.StringIO()
-    code = tool_cli.main(list(argv), stdout=buffer)
+    try:
+        code = tool_cli.main(list(argv), stdout=buffer)
+    except _ServerContact:
+        SERVER_CONTACTS.pop()   # refused before it started, and reported NOT_RUN
+        raise unittest.SkipTest(NOT_RUN) from None
     return code, buffer.getvalue()
 
 
@@ -1194,13 +1334,13 @@ class N_GitHandoff(AdbCase):
         return code, json.loads(out)["result"]
 
     def test_git_revision_through_the_cli_is_recorded_exactly(self):
+        serial = self.first()
         p = self.repo()
         code, out = cli("execute", "--adapter", "git", "--capability", ga.RESOLVE_PROVENANCE, "--project", str(p),
                         "--subject-ref", "FEATURE-X", "--format", "json")
         self.assertEqual(code, 0)
         revision = json.loads(out)["result"]["data"]["repository_revision"]
         self.assertTrue(re.fullmatch(r"[0-9a-f]{40}", revision))
-        serial = self.first()
         with Recorder() as rec:
             code, result = self.adb_cli(p, serial, "--subject-revision", revision, "--build-revision", revision)
         self.assertEqual(code, 0, redact(json.dumps(result["diagnostics"])))
@@ -1415,6 +1555,103 @@ class U_PublicOutput(AdbCase):
                         self.assertNotIn(needle, public, cap)
 
 
+# ---------------------------------------------------------------- OF offline guarantees (alpha.24)
+
+class OF_OfflineGuarantees(StandInCase):
+    """alpha.24: the guarantees that hold before, or without, a real target, proven against the stand-in so that an
+    offline run (D-A1, D-A2) still qualifies them. The device groups prove them again against real targets."""
+
+    def target_calls(self, stand_in):
+        return [c for c in stand_in.calls if c[:1] == ["-s"]]
+
+    def test_requests_refused_before_any_target_command(self):
+        stand_in = StandIn(self.tmp / "refusals", png=png_bytes(), meminfo=MEMINFO_OK)
+        p = self.project()
+        artifact = p / "input.txt"
+        artifact.write_text("x", encoding="utf-8")
+        cases = {"no target_platform": dict(target_platform=None),
+                 "another target_platform": dict(target_platform="IOS"),
+                 "no request.device": dict(device=None),
+                 "no adb_serial": dict(serial=None),
+                 "an input artifact": dict(input_artifacts=(InputArtifact("in", str(artifact)),))}
+        for name, case in cases.items():
+            for cap in CAPS:
+                with self.subTest(case=name, capability=cap):
+                    kwargs = dict(case)
+                    serial = kwargs.pop("serial", STAND_IN_SERIAL)
+                    kwargs.setdefault("device", STAND_IN_IDENTITY)
+                    self.assertRefused(self.run_cap(cap, p, serial, registry=stand_in.registry(), **kwargs))
+        with self.subTest(case="a package that is not an application id"):
+            self.assertRefused(self.stand_in_run(aa.MEMINFO, stand_in, inputs={"package_name": "a;id"}))
+        self.assertEqual(self.target_calls(stand_in), [])
+
+    def test_a_dry_run_contacts_no_target_and_writes_nothing(self):
+        stand_in = StandIn(self.tmp / "dry", png=png_bytes(), meminfo=MEMINFO_OK)
+        p = self.project()
+        for cap in CAPS:
+            with self.subTest(capability=cap):
+                result = self.run_cap(cap, p, STAND_IN_SERIAL, registry=stand_in.registry(),
+                                      device=STAND_IN_IDENTITY, dry_run=True)
+                self.assertSucceeded(result)
+                self.assertIn("MUTATION_SKIPPED_DRY_RUN", self.codes(result))
+                self.assertEqual((result.artifacts, result.evidence_candidates, result.mutation_performed),
+                                 ((), (), False))
+        self.assertEqual(self.target_calls(stand_in), [])
+        self.assertFalse(self.workspace_root(p).exists())
+
+    def test_an_existing_output_is_refused_in_a_dry_run_and_a_real_run(self):
+        stand_in = StandIn(self.tmp / "collide", png=png_bytes(), meminfo=MEMINFO_OK)
+        p = self.project()
+        out = p / "reviews"
+        out.mkdir()
+        for cap in CAPS:
+            existing = out / FILES[cap]
+            existing.write_bytes(b"an existing file the adapter must not touch")
+            for dry in (True, False):
+                with self.subTest(capability=cap, dry_run=dry):
+                    self.assertRefused(self.run_cap(cap, p, STAND_IN_SERIAL, registry=stand_in.registry(),
+                                                    device=STAND_IN_IDENTITY, output_dir=str(out), dry_run=dry),
+                                       f"already holds {FILES[cap]}")
+            self.assertEqual(existing.read_bytes(), b"an existing file the adapter must not touch")
+        self.assertEqual(self.target_calls(stand_in), [])
+
+    def test_a_screenshot_over_its_capture_bound_is_refused(self):
+        stand_in = StandIn(self.tmp / "bound", png=png_bytes(width=640, height=480))
+        result = self.run_cap(aa.SCREENSHOT, self.project(), STAND_IN_SERIAL, device=STAND_IN_IDENTITY,
+                              registry=stand_in.registry(capture_bytes={"screenshot": 16}))
+        self.assertEqual(result.status, tdg.FAILED, self.messages(result))
+        self.assertIn("output reached its capture bound; a partial capture is never reported", self.messages(result))
+        self.assertEqual((result.artifacts, result.evidence_candidates), ((), ()))
+
+    def test_a_capture_keeps_target_output_and_the_serial_out_of_the_result(self):
+        stand_in = StandIn(self.tmp / "ok", png=png_bytes(), meminfo=MEMINFO_OK)
+        for cap in CAPS:
+            with self.subTest(capability=cap):
+                result = self.stand_in_run(cap, stand_in)
+                self.assertSucceeded(result)
+                self.assertEqual((result.stdout, result.stderr), ("", ""))
+                public = json.dumps(result.to_dict())
+                for needle in ("[ro.", "MEMINFO in pid", "IHDR", STAND_IN_SERIAL, "SECRETSERIAL0001"):
+                    self.assertNotIn(needle, public)
+                self.assertIn(aa.TARGET_PLACEHOLDER, public)        # the recorded command names no serial
+                self.assertNotIn("build_revision", result.data)     # never fabricated from the target
+                written = Path(result.artifacts[0].absolute_path).read_bytes()
+                self.assertNotIn(STAND_IN_SERIAL.encode(), written)
+                self.assertNotIn(b"SECRETSERIAL0001", written)
+        meminfo = self.stand_in_run(aa.MEMINFO, StandIn(self.tmp / "mem", meminfo=MEMINFO_OK))
+        (candidate,) = meminfo.evidence_candidates
+        self.assertTrue(candidate.summary.startswith("Point-in-time memory snapshot of "), candidate.summary)
+        self.assertEqual(meminfo.data["instrumentation"]["timing_impact"], "UNKNOWN")
+
+    def test_a_device_that_is_not_the_selected_target_is_refused(self):
+        stand_in = StandIn(self.tmp / "other", png=png_bytes(), meminfo=MEMINFO_OK)
+        for cap in CAPS:
+            with self.subTest(capability=cap):
+                self.assertRefused(self.stand_in_run(cap, stand_in, device="Acme Model Two / Android 15 (API 35)"),
+                                   code="TARGET_DEVICE_IDENTITY_MISMATCH")
+        self.assertEqual([c for c in stand_in.calls if c[2:3] == ["exec-out"] or c[2:4] == ["shell", "dumpsys"]], [])
+
+
 # ---------------------------------------------------------------- V  parsers
 
 class V_Parsers(AdbCase):
@@ -1565,14 +1802,16 @@ if __name__ == "__main__":
         print("ADB_RUNTIME_UNAVAILABLE_FOR_PHASE2C3: these are real integration tests and require adb on PATH")
         sys.exit(1)
     try:
-        TARGETS.extend(_targets())
+        if not OFFLINE:
+            TARGETS.extend(_targets())
     except RuntimeError as exc:
         print(exc)
         sys.exit(1)
     stream = _RedactingStream(sys.stderr)
     result = unittest.main(verbosity=1, exit=False, testRunner=unittest.TextTestRunner(stream=stream)).result
     version = subprocess.run([ADB, "version"], capture_output=True, text=True).stdout.splitlines()[1].strip()
-    print(f"GPOS ADB adapter tests (real adb {version}; targets: "
-          f"{', '.join(f'{label} ({kind})' for label, _, kind in TARGETS)}; "
+    targets = ("none: OFFLINE, device and server groups NOT_RUN" if OFFLINE else
+               ", ".join(f"{label} ({kind})" for label, _, kind in TARGETS))
+    print(f"GPOS ADB adapter tests (real adb {version}; targets: {targets}; "
           f"incomplete real meminfo snapshots retried: {MATRIX.retries})")
     sys.exit(0 if result.wasSuccessful() else 1)

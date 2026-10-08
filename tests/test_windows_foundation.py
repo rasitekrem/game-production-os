@@ -234,10 +234,13 @@ class W01_ProcessMechanism(Case):
 
     def test_a_deadline_spent_in_setup_creates_nothing(self):
         pwin.HOOKS["setup_done"] = lambda: time.sleep(0.4)
+        created = []   # alpha.24: proven at creation, not by whether a slow child got to run (load-independent)
+        pwin.HOOKS["after_create"] = lambda info, job: created.append(True)
         before = self.handle_count()
         outcome = self.run_child("hello", timeout=0.2)
         self.assertTrue(outcome.timed_out)
         self.assertIsNone(outcome.exit_code)
+        self.assertEqual(created, [])
         time.sleep(0.2)
         self.assertFalse(self.ran("hello"))
         self.assertLessEqual(self.handle_count(), before + 2)
@@ -949,6 +952,63 @@ class W08_Utf8AndBytes(Case):
         self.assertEqual(result.status, tdg.SUCCESS, [d.message for d in result.diagnostics])
         self.assertEqual(result.artifacts[0].sha256, hashlib.sha256("hashed · ğ\n".encode("utf-8")).hexdigest())
         self.assertNotIn("\\", result.artifacts[0].path)
+
+
+# ---------------------------------------------------------------- W09 tool discovery (alpha.24)
+
+@windows_only
+class W09_ToolDiscovery(Case):
+    """alpha.24: a production adapter finds its tool only as `<name>.exe` in an absolute PATH directory. shutil.which on
+    Windows also searches the current directory first and accepts PATHEXT scripts (.cmd, .bat); neither is used."""
+
+    def tool(self, directory, name):
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / name).write_bytes(b"MZ")
+        return str(directory / name)
+
+    def test_the_first_absolute_path_directory_holding_the_exe_wins(self):
+        from gpos.tools import executables
+        first, second = self.tool(self.tmp / "a", "git.exe"), self.tool(self.tmp / "b", "git.exe")
+        path = os.pathsep.join([str(self.tmp / "a"), str(self.tmp / "b")])
+        self.assertEqual(executables.windows_which("git", path), first)
+        self.assertEqual(executables.windows_which("git.exe", path), first)
+        self.assertEqual(executables.windows_which("git", f'"{self.tmp / "b"}"'), second)   # a quoted entry
+
+    def test_the_current_directory_relative_and_drive_relative_entries_are_never_searched(self):
+        from gpos.tools import executables
+        self.tool(self.tmp, "git.exe")
+        old = os.getcwd()
+        os.chdir(self.tmp)
+        self.addCleanup(os.chdir, old)
+        drive = str(self.tmp)[:2]
+        for path in ("", ".", "bin", os.pathsep.join([".", "."]), drive + str(self.tmp)[3:], "\\" + str(self.tmp)[3:]):
+            with self.subTest(path=path):
+                self.assertIsNone(executables.windows_which("git", path))
+
+    def test_scripts_unc_paths_and_names_with_separators_are_refused(self):
+        from gpos.tools import executables
+        self.tool(self.tmp / "s", "git.cmd")
+        self.tool(self.tmp / "s", "git.bat")
+        self.assertIsNone(executables.windows_which("git", str(self.tmp / "s")))
+        self.assertIsNone(executables.windows_which("git", r"\\localhost\c$\Windows"))
+        self.tool(self.tmp, "git.exe")                       # reachable from PATH entry `s` only through `..`
+        self.tool(self.tmp / "s" / "a", "git.exe")           # reachable only through a sub-path
+        for name in ("..\\git", "../git", "a/git", "a\\git", "c:git", ""):
+            with self.subTest(name=name):
+                self.assertIsNone(executables.windows_which(name, str(self.tmp / "s")))
+
+    def test_every_production_adapter_discovers_through_it_unless_a_seam_is_given(self):
+        from gpos.tools import executables
+        from gpos.tools.adb import AdbAdapter
+        from gpos.tools.blender import BlenderAdapter
+        from gpos.tools.ffmpeg import FfmpegAdapter
+        from gpos.tools.ffprobe import FfprobeAdapter
+        from gpos.tools.git import GitAdapter
+        seam = lambda name: None
+        for cls in (AdbAdapter, BlenderAdapter, FfmpegAdapter, FfprobeAdapter, GitAdapter):
+            with self.subTest(adapter=cls.__name__):
+                self.assertIs(cls()._which, executables.windows_which)
+                self.assertIs(cls(which=seam)._which, seam)
 
 
 if __name__ == "__main__":

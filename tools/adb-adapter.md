@@ -21,7 +21,7 @@ The adapter answers three questions about one explicitly named **physical** Andr
 | `tool_family` | `DEVICE` |
 | `adapter_kind` | `CLI` |
 | `state_model` | `STATELESS` |
-| platforms | `WINDOWS`, `MACOS`, `LINUX` (the host running adb) |
+| platforms | `MACOS`, `LINUX` (the host running adb; alpha.24: `WINDOWS` withdrawn, see [Windows](#windows-alpha24)) |
 | network | `FORBIDDEN`; no wireless ADB |
 | minimum version | none (see below) |
 | TEST_ONLY | no |
@@ -322,7 +322,9 @@ ADB is client/server software, and an adb client command may start the host ADB 
 - never configures the server beyond the fixed auto-connect override on processes it starts;
 - does not treat server state as project or device authority.
 
-The adapter does **not** claim that no host process state ever changes. A server started by the adapter's first command keeps running afterwards, as ADB always does.
+The adapter does **not** claim that no host process state ever changes. A server started by the adapter's first command keeps running afterwards on macOS and Linux, as ADB always does.
+
+A failed `adb get-state` whose output names a server failure — the client could not start the server, could not connect to it, could not read its answer, or found a server of another version — is reported as a tool failure (`FAILED`), never as `TARGET_DEVICE_UNAVAILABLE` or `TARGET_DEVICE_NOT_READY` (alpha.24, every host): a server failure says nothing about the target. The client's own messages when it starts a server successfully are not failures.
 
 It also does not claim OS or device sandboxing. What it guarantees is narrower: production capabilities never intentionally change target Android state. Each of their commands is one of the read-only templates above.
 
@@ -339,6 +341,7 @@ It also does not claim OS or device sandboxing. What it guarantees is narrower: 
 | offline, unauthorized, bootloader or still booting | `CONFLICT` | `TARGET_DEVICE_NOT_READY` |
 | package not running | `CONFLICT` | `TARGET_PROCESS_NOT_RUNNING` |
 | truncated, malformed or incomplete output | `FAILED` | `EXECUTION_FAILED` |
+| the host ADB server could not be started or did not answer | `FAILED` | `EXECUTION_FAILED` |
 | timeout | `TIMED_OUT` | `EXECUTION_TIMEOUT` |
 | adb missing, or only on a relative PATH entry | `UNAVAILABLE` | `TOOL_NOT_FOUND` |
 | unrecognized `adb version` | `INCOMPATIBLE` | `TOOL_VERSION_UNSUPPORTED` |
@@ -365,6 +368,32 @@ The five target codes are generic to device adapters, not specific to ADB.
 | fabricated target platform, device id or build revision | none: the platform and build revision come from the request unchanged, or stay unknown; the device identity must match the target's observation |
 | serial in evidence | none: `<adb-target>` in recorded commands; never in provenance, the report or a record |
 
+## Windows (alpha.24)
+
+**Not declared.** The descriptor lists `MACOS` and `LINUX` only (D-W1), and the registry refuses the adapter on Windows with `PLATFORM_UNSUPPORTED` before any process starts. Every capability needs a physical target and a host ADB server, and neither could be qualified: no device operation was authorized for this phase (D-A2), and on Windows the server has no lifecycle GPOS could rely on.
+
+**Why there is no server lifecycle on Windows.** When no server is running, the adb client starts one as its own child. On Windows that child is a process of the client's Job Object, and the foundation terminates whatever a tool leaves running when it exits (alpha.23 D9). So each capture command would start a server and the foundation would end it again; a command that meets a server another program started (Android Studio's, on the default port) would use that shared server instead, which GPOS neither owns nor may disturb. Containment is not weakened to keep a server alive, and a server a Human starts by hand is not made the architecture (D-A1). It was not proven, and is not assumed, that pointing the client at a loopback address prevents it from starting a server.
+
+**What was qualified on Windows** (adb 37.0.1-15733141, Windows 11, CPython 3.14.8), offline only:
+
+- discovery of `adb.exe` from an absolute PATH directory (`gpos/tools/executables.py`) and the real `adb version` probe, which the client answers alone: it starts no server, and nothing was left running when it ended;
+- the version, getprop, PNG and meminfo parsers, every refusal that happens before a target is contacted, and the readiness and capture logic against stand-ins, including the server-failure classification above;
+- the suite's offline mode, in which every test that needs a server or a target is `NOT_RUN`.
+
+**Not run:** every real-target group, the device-only mutations, and any experiment with the 37.0.1 server, because starting a server, even on another port, makes it enumerate and claim attached USB devices.
+
+### Proposed GPOS-owned server lifecycle (future; not implemented)
+
+For Human Review before any Windows device work:
+
+- **Ownership:** GPOS starts and owns one server per host session, as a supervised process outside any execution's job, on the future Windows supervisor (detached processes are unavailable on Windows today, alpha.23 D3). An execution only ever talks to a server it can prove GPOS owns; it never adopts, kills or reconfigures a server it did not start, Android Studio's included.
+- **Version:** the owned server is started from the same `adb.exe` the probe identified, and a client/server version mismatch is refused, never resolved by the client's own kill-and-restart.
+- **Port:** a GPOS port that is not the default 5037, given explicitly on every command; before use the listener on it must be proven to be the owned server's process (by process handle and image path), never just "something answers".
+- **Health:** a read-only server query before each execution; an unhealthy or missing owned server is a tool failure, never a target state.
+- **Session:** a SESSION lease records the owned server (pid, start time, image, port, version) the way the Unity live session does, so concurrent executions share one proven server and stale ones are recognised.
+- **Cleanup:** the owning session stops exactly its own server on its own port and verifies by handle that the process is gone; nothing else is ever stopped.
+- **Coexistence:** two servers on one host both try to claim the same USB devices. Whether GPOS needs exclusive use of a device while capturing, and how a Human grants it, is a decision for that review.
+
 ## Limitations
 
 - Local physical USB targets only. Emulator evidence and wireless ADB are out of scope.
@@ -373,7 +402,7 @@ The five target codes are generic to device adapters, not specific to ADB.
 - The adb client uses the default server port. A server started by the adapter lacks any vendor keys the user set only through the environment, so the adapter does not inherit ADB_VENDOR_KEYS or ANDROID_ADB_SERVER_PORT.
 - Meminfo requires the package's process to be running already; the adapter never launches it.
 - Two units of the same model and OS release share one canonical identity, by design: a reference device is a model and OS, not a serial.
-- Real-runtime tests ran on macOS hosts only (Windows and Linux hosts were not exercised), against 2 physical devices (API 31, full capture) and 2 emulators (API 35, refusal verified).
+- Real-runtime tests ran on macOS hosts only (Linux hosts were not exercised), against 2 physical devices (API 31, full capture) and 2 emulators (API 35, refusal verified). On Windows only the offline groups ran (alpha.24); Windows is not declared.
 
 ## Tests
 

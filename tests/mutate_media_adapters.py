@@ -143,7 +143,7 @@ MUTATIONS = [
          '        spec = proc.ToolProcessSpec(executable=(request.inputs or {}).get("executable", '
          'context.probe.tool_path), argv=inspect_argv(source.absolute_path),')]),
     ("the ffprobe adapter imports subprocess", [
-        (FFPROBE, "import shutil\nimport tempfile\n", "import shutil\nimport subprocess\nimport tempfile\n")]),
+        (FFPROBE, "import shutil\nimport sys\nimport tempfile\n", "import shutil\nimport subprocess\nimport sys\nimport tempfile\n")]),
     ("existing output no longer refused (-n exits 0)", [
         (FFMPEG, "        if output.exists() or output.is_symlink():", "        if False:")]),
     ("output signature not checked", [
@@ -226,6 +226,7 @@ def run(mutation):
             gate.write(path, text.replace(anchor, replacement))
         out = subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / "test_media_adapters.py")],
                              capture_output=True, text=True, timeout=900,
+                             **gate.ISOLATED,
                              env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
         return name, "CAUGHT" if out.returncode != 0 else "MISSED"
     finally:

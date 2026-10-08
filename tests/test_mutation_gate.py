@@ -128,6 +128,16 @@ class G04_HostApplicability(unittest.TestCase):
         self.assertIn("NOT_RUN      m2", out.getvalue())
         self.assertIn("caught 1 of 1 (1 NOT_RUN on this host)", out.getvalue())
 
+    def test_a_run_specific_not_run_names_its_reason_and_is_never_counted(self):
+        """alpha.24: an offline adb run lists device-only mutations as NOT_RUN with why, never as caught."""
+        out = io.StringIO()
+        run = Stub("MISSED", {"m1": "CAUGHT", "m2": "MISSED"})
+        code = gate.qualify(run, [mutant("m1")], jobs=1, out=out, not_run=[mutant("m2")],
+                            not_run_reason="needs a real target; this run is offline")
+        self.assertEqual(code, gate.QUALIFIED_EXIT)
+        self.assertNotIn("m2", run.calls)
+        self.assertIn("NOT_RUN      m2 (needs a real target; this run is offline)", out.getvalue())
+
     def test_not_run_mutations_do_not_bypass_a_red_baseline(self):
         out = io.StringIO()
         code = gate.qualify(Stub("CAUGHT", {"m1": "CAUGHT"}), [mutant("m1")], jobs=1, out=out,

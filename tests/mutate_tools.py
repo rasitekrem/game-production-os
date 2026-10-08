@@ -301,8 +301,8 @@ MUTATIONS = [
      '"TOOL_INHERENT": [\n        "unity",\n        "player"\n      ]', '"TOOL_INHERENT": [\n        "unity",\n        "player",\n        "git"\n      ]'),
     ('a FORBIDDEN adapter silently becomes TOOL_INHERENT', [
         ('core/registry.json', '"TOOL_INHERENT": [\n        "unity",\n        "player"\n      ]', '"TOOL_INHERENT": [\n        "unity",\n        "player",\n        "git"\n      ]'),
-        ('gpos/tools/git/adapter.py', 'supported_platforms=("WINDOWS", "MACOS", "LINUX"), capabilities=CAPABILITIES,',
-         'supported_platforms=("WINDOWS", "MACOS", "LINUX"), capabilities=CAPABILITIES, network="TOOL_INHERENT", '
+        ('gpos/tools/git/adapter.py', 'supported_platforms=("MACOS", "LINUX"), capabilities=CAPABILITIES,',
+         'supported_platforms=("MACOS", "LINUX"), capabilities=CAPABILITIES, network="TOOL_INHERENT", '
          'network_disclosure=("git may fetch",),')]),
     ('an execution request carries a network destination', 'gpos/tools/execution.py',
      '    request_id: str = None\n    session_id: str = None', '    request_id: str = None\n    registry_url: str = None\n    session_id: str = None'),
@@ -447,6 +447,8 @@ MUTATIONS = [
 
 # --- alpha.23: the Windows mechanisms (tests/test_windows_foundation.py); NOT_RUN on any other host
 P32, F32, L = 'gpos/tools/process_win32.py', 'gpos/tools/paths_win32.py', 'gpos/tools/leases.py'
+DISCOVERY_GUARD = ('        if sys.platform == "win32":   # alpha.24: PATH only, never the current directory, only <name>.exe\n'
+                   '            which = executables.windows_which if which is shutil.which else which\n')
 WINDOWS_MUTATIONS = [
     ('the child is not created suspended', P32,
      'CREATION_FLAGS = (EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED\n',
@@ -546,7 +548,17 @@ WINDOWS_MUTATIONS = [
      '    if sys.platform == "win32":\n        _utf8_streams()\n', ''),
     ('the synthetic artifact is written with CRLF', 'gpos/tools/synthetic/helper.py',
      'with open(path, "w", encoding="utf-8", newline="\\n") as fh:', 'with open(path, "w", encoding="utf-8") as fh:'),
-]
+    # --- alpha.24: tool discovery on Windows (W09)
+    ('Windows discovery searches relative and drive-relative PATH entries', 'gpos/tools/executables.py',
+     '        if not entry or not p.drive or len(p.drive) != 2 or not p.root:', '        if not entry:'),
+    ('Windows discovery accepts a name with a path separator', 'gpos/tools/executables.py',
+     "    if not name or any(c in name for c in '\\\\/:'):", "    if not name:"),
+    ('Windows discovery accepts any extension', 'gpos/tools/executables.py',
+     '        candidate = os.path.join(entry, exe)\n',
+     '        candidate = next((os.path.join(entry, name + x) for x in (".cmd", ".bat", ".exe")\n'
+     '                          if os.path.isfile(os.path.join(entry, name + x))), os.path.join(entry, exe))\n'),
+] + [(f'the {tool} adapter discovers through shutil.which on Windows', f'gpos/tools/{tool}/adapter.py', DISCOVERY_GUARD, '')
+     for tool in ("adb", "blender", "ffmpeg", "ffprobe", "git")]
 # Mutations whose tests exercise POSIX-only behaviour (permission bits, sessions, detached processes, the account
 # database, killpg): they run on POSIX and are NOT_RUN on Windows, where those tests are explicitly skipped.
 POSIX_ONLY = {'the host location follows HOME', 'lease conflict ignored', "another owner's lease is released",

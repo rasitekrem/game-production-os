@@ -28,13 +28,16 @@ import posix_parity as pp  # noqa: E402
 
 FIXTURE = json.loads((ROOT / "tests" / "fixtures" / "posix-parity-alpha22.json").read_bytes().decode("utf-8"))
 BRIDGE_DIGEST = "b7f4775d4f1e807136df0978d27218eac20dbe5e163fe23618fd84a17a62ea16"
-VERSION_FROZEN, VERSION_NOW = b"1.0.0-alpha.22", b"1.0.0-alpha.23"
+VERSION_FROZEN, VERSION_NOW = b"1.0.0-alpha.22", b"1.0.0-alpha.24"
 
-# The only frozen files alpha.23 edits. Every other file under core/, schemas/, skills/, workflows/, templates/ and
-# gpos/ is byte-identical to alpha.22.
+# The only frozen files alpha.23 and alpha.24 edit. Every other file under core/, schemas/, skills/, workflows/,
+# templates/ and gpos/ is byte-identical to alpha.22.
 EDITED = {"gpos/tools/artifacts.py", "gpos/tools/cli.py", "gpos/tools/diagnostics.py", "gpos/tools/execution.py",
           "gpos/tools/leases.py", "gpos/tools/paths.py", "gpos/tools/process.py", "gpos/tools/registry.py",
-          "gpos/tools/synthetic/helper.py", "gpos/tools/unity/project_lock.py"}
+          "gpos/tools/synthetic/helper.py", "gpos/tools/unity/project_lock.py",
+          # alpha.24 (2C-9.2): Windows discovery guards, D-B1/D-B2/D-B3, D-W1 and the ADB server classification
+          "gpos/tools/adb/adapter.py", "gpos/tools/blender/adapter.py", "gpos/tools/ffmpeg/adapter.py",
+          "gpos/tools/ffprobe/adapter.py", "gpos/tools/git/adapter.py"}
 
 # Every alpha.22 unit whose POSIX code changed beyond guarded `if sys.platform == "win32":` statements, and why. The
 # mechanical checks below narrow several of them further; the rest are the shared changes a macOS regression covers.
@@ -53,7 +56,8 @@ DELIBERATE = {
     ("gpos/tools/artifacts.py", "def _relative"):
         "str(path) -> path.as_posix() for an artifact outside the project: the same string for a POSIX path (P05)",
     ("gpos/tools/diagnostics.py", "assign CODES"):
-        "three codes added; every alpha.22 code keeps its class and meaning (P06)",
+        "four codes added (three in alpha.23, DCC_CLEANUP_INCOMPLETE in alpha.24); every alpha.22 code keeps its "
+        "class and meaning (P06)",
     ("gpos/tools/execution.py", "def request_problems"):
         "D12: an unrecognised host (current_platform() is None) now fails closed with PLATFORM_UNSUPPORTED; MACOS and "
         "LINUX hosts are judged exactly as before",
@@ -68,6 +72,19 @@ DELIBERATE = {
     ("gpos/tools/unity/project_lock.py", "assign OPEN_FLAGS"):
         "os.O_* read through getattr so the module imports on Windows; every flag exists on macOS, so the value is "
         "unchanged",
+    # alpha.24 (2C-9.2); P08 proves each is exactly the change named
+    ("gpos/tools/git/adapter.py", "assign DESCRIPTOR"):
+        "D-W1: WINDOWS withdrawn from supported_platforms pending the D-G1 repository-filter decision; MACOS and LINUX "
+        "are declared exactly as before",
+    ("gpos/tools/adb/adapter.py", "assign DESCRIPTOR"):
+        "D-W1: WINDOWS withdrawn from supported_platforms (no physical target or ADB server lifecycle is qualified "
+        "there); MACOS and LINUX are declared exactly as before",
+    ("gpos/tools/adb/adapter.py", "def _Runner.ready"):
+        "a failed get-state whose stderr names a host ADB server failure is a tool failure (FAILED), checked before the "
+        "target states; it applies on every host (a macOS regression covers it)",
+    ("gpos/tools/blender/adapter.py", "def BlenderAdapter.execute"):
+        "D-B1: a workspace render path holding `#`, `{` or `}` is refused before Blender starts; it applies on every "
+        "host (a macOS regression covers it); the other alpha.24 statements are Windows guards",
 }
 IMPORT_CHANGES = {("gpos/tools/unity/project_lock.py", "import fcntl"):
                   "imported in try/except ImportError (fcntl = None on Windows); the macOS-only proofs never run there"}
@@ -83,7 +100,7 @@ class P01_FrozenFilesAreByteIdentical(unittest.TestCase):
                          ("v1.0.0-alpha.22", "92ca10b582f1633201810781c11095a8db1ca21b"))
 
     def test_every_frozen_file_not_deliberately_edited_is_byte_identical_but_for_the_version(self):
-        """A release bumps `1.0.0-alpha.22` to `1.0.0-alpha.23` (tests/validate_framework.py X05). That is the only
+        """A release bumps `1.0.0-alpha.22` to `1.0.0-alpha.24` (tests/validate_framework.py X05). That is the only
         change a frozen file outside EDITED may carry: putting the old version back gives its exact alpha.22 bytes."""
         for rel, digest in FIXTURE["frozen"].items():
             with self.subTest(file=rel):
@@ -108,7 +125,7 @@ class P01_FrozenFilesAreByteIdentical(unittest.TestCase):
                                                               "gpos")
                      for p in (ROOT / d).rglob("*") if p.is_file() and "__pycache__" not in p.parts
                      and p.relative_to(ROOT).as_posix() not in FIXTURE["frozen"])
-        self.assertEqual(new, ["gpos/tools/paths_win32.py", "gpos/tools/process_win32.py"])
+        self.assertEqual(new, ["gpos/tools/executables.py", "gpos/tools/paths_win32.py", "gpos/tools/process_win32.py"])
 
 
 class P02_PosixUnitsAreUnchanged(unittest.TestCase):
@@ -194,7 +211,7 @@ class P05_OneExpressionSubstitutions(unittest.TestCase):
 
 
 class P06_DiagnosticCodes(unittest.TestCase):
-    def test_every_alpha22_code_is_unchanged_and_only_three_were_added(self):
+    def test_every_alpha22_code_is_unchanged_and_only_four_were_added(self):
         source = (ROOT / "gpos/tools/diagnostics.py").read_bytes().decode("utf-8")
         tree = ast.parse(source)
         table = next(n.value for n in tree.body if isinstance(n, ast.Assign)
@@ -204,7 +221,54 @@ class P06_DiagnosticCodes(unittest.TestCase):
             with self.subTest(code=code):
                 self.assertEqual(now.get(code), value)
         self.assertEqual(sorted(set(now) - set(FIXTURE["codes"])),
-                         ["PROCESS_CAPTURE_INCOMPLETE", "PROCESS_DESCENDANTS_TERMINATED", "PROCESS_TREE_NOT_CONTAINED"])
+                         ["DCC_CLEANUP_INCOMPLETE", "PROCESS_CAPTURE_INCOMPLETE", "PROCESS_DESCENDANTS_TERMINATED",
+                          "PROCESS_TREE_NOT_CONTAINED"])   # alpha.24 added DCC_CLEANUP_INCOMPLETE (Windows only)
+
+
+class P08_Alpha24SharedChanges(unittest.TestCase):
+    """Each alpha.24 shared change is exactly the one named in DELIBERATE: undoing it gives the alpha.22 fingerprint."""
+
+    def node(self, rel, unit):
+        tree = ast.parse((ROOT / rel).read_bytes().decode("utf-8"))
+        if unit.startswith("assign "):
+            return next(n for n in tree.body if isinstance(n, ast.Assign)
+                        and [ast.unparse(t) for t in n.targets] == [unit[len("assign "):]])
+        owner, _, name = unit[len("def "):].rpartition(".")
+        scope = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == owner).body if owner else tree.body
+        return next(n for n in scope if isinstance(n, ast.FunctionDef) and n.name == name)
+
+    def assertAlpha22(self, rel, unit, node):
+        old = FIXTURE["units"][rel][unit]
+        self.assertEqual(pp._function(node) if isinstance(node, ast.FunctionDef) else {"stmt": pp._h(node)}, old)
+
+    def test_the_descriptors_only_withdraw_windows(self):
+        for rel in ("gpos/tools/git/adapter.py", "gpos/tools/adb/adapter.py"):
+            with self.subTest(file=rel):
+                node = self.node(rel, "assign DESCRIPTOR")
+                keyword = next(k for k in node.value.keywords if k.arg == "supported_platforms")
+                self.assertEqual(ast.literal_eval(keyword.value), ("MACOS", "LINUX"))
+                keyword.value = ast.parse('("WINDOWS", "MACOS", "LINUX")', mode="eval").body
+                self.assertAlpha22(rel, "assign DESCRIPTOR", node)
+
+    def test_adb_readiness_only_adds_the_server_failure_check(self):
+        node = self.node("gpos/tools/adb/adapter.py", "def _Runner.ready")
+        failed = next(s for s in node.body if isinstance(s, ast.If) and ast.unparse(s.test) == "outcome.exit_code != 0")
+        added = failed.body.pop(0)
+        self.assertEqual(ast.unparse(added.test), "server_failure(outcome.raw_stderr)")
+        self.assertEqual(len(added.body), 1)
+        self.assertTrue(ast.unparse(added.body[0]).startswith("return self.failed(outcome,"))
+        self.assertAlpha22("gpos/tools/adb/adapter.py", "def _Runner.ready", node)
+
+    def test_blender_execute_only_adds_the_template_refusal(self):
+        node = self.node("gpos/tools/blender/adapter.py", "def BlenderAdapter.execute")
+        added = [(parent, s) for parent in ast.walk(node) if isinstance(getattr(parent, "body", None), list)
+                 for s in parent.body if isinstance(s, ast.If) and "TEMPLATE_CHARACTERS" in ast.unparse(s.test)]
+        self.assertEqual(len(added), 1)
+        parent, statement = added[0]
+        self.assertEqual(ast.unparse(statement.test), "any((c in str(output) for c in TEMPLATE_CHARACTERS))")
+        self.assertTrue(ast.unparse(statement.body[0]).startswith("return _refuse(cap,"))
+        parent.body.remove(statement)
+        self.assertAlpha22("gpos/tools/blender/adapter.py", "def BlenderAdapter.execute", node)
 
 
 class P07_FrozenBoundaries(unittest.TestCase):

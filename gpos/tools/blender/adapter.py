@@ -40,6 +40,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .. import diagnostics as dg
+from .. import executables
 from .. import model
 from .. import paths as tp
 from .. import process as proc
@@ -73,6 +74,17 @@ MAX_SCENE_NAME = 256
 MAX_FRAME = 1_048_574                   # Blender 5.2: frame_start/frame_end are 0..1048574
 FRAME_TEXT = re.compile(r"0|[1-9][0-9]{0,6}")
 _VERSION_LINE = re.compile(r"Blender ([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,4}(?: [A-Za-z]{2,12})?)")
+# alpha.24 (D-B1, every host): Blender expands `#` (the frame number) and `{...}` (path templates) in a render output
+# path, so a path holding any of them is never given to Blender: the render could land outside the workspace.
+TEMPLATE_CHARACTERS = "#{}"
+# alpha.24 (D-B2, D-B3, Windows): Blender's temporary files go into the private user root, and only the qualified
+# Blender release family is accepted on Windows, its version reported identically by --version and by Blender itself.
+TEMP_NAME = "tmp"
+# alpha.24 (D-B2, Windows): the per-user and machine data locations Blender and the GPU drivers write to, each named
+# into the private user root. Without them a driver writes relative to the working directory (NVIDIA's
+# `NVIDIA Corporation/umdlogs` appeared in the render workspace), and with the real values into the user's profile.
+PRIVATE_DATA_DIRS = (("APPDATA", "Roaming"), ("LOCALAPPDATA", "Local"), ("ProgramData", "ProgramData"))
+WINDOWS_QUALIFIED_FAMILY = (5, 2)
 
 # Placeholders for the recorded command: the real argv is unchanged.
 PLACEHOLDERS = {"helper": "<gpos-blender-helper>", "blend": "<blend-input>", "output": "<workspace>/render.png",
@@ -131,6 +143,8 @@ class BlenderAdapter(model.ToolAdapter):
     descriptor = DESCRIPTOR
 
     def __init__(self, which=shutil.which, platform=None, capture_bytes=CAPTURE_BYTES):
+        if sys.platform == "win32":   # alpha.24: PATH only, never the current directory, only <name>.exe
+            which = executables.windows_which if which is shutil.which else which
         self._which = which
         self._platform = platform or sys.platform
         self._capture_bytes = capture_bytes
@@ -165,6 +179,8 @@ class BlenderAdapter(model.ToolAdapter):
         return accepted[0], None
 
     def probe(self):
+        if sys.platform == "win32":
+            return self._windows_probe()
         platform = model.current_platform()
         unusable = lambda reason: tuple((c.id, False, reason) for c in CAPABILITIES)
         executable, problem = self.find_executable()
@@ -219,6 +235,74 @@ class BlenderAdapter(model.ToolAdapter):
         finally:
             shutil.rmtree(user_root, ignore_errors=True)
 
+    def _windows_probe(self):
+        """The Windows probe (alpha.24): the alpha.22 probe with Blender's temporary files kept in the private user
+        root, only the qualified 5.2.x release family accepted, the version required to be identical in --version
+        and in Blender's own report, and the private root's removal verified rather than assumed."""
+        platform = model.current_platform()
+        unusable = lambda reason: tuple((c.id, False, reason) for c in CAPABILITIES)
+        refused = lambda status, detail, **kw: model.ProbeResult(ADAPTER_ID, status, platform=platform, detail=detail,
+                                                                  capability_availability=unusable(detail), **kw)
+        executable, problem = self.find_executable()
+        if problem:
+            return refused(model.UNAVAILABLE, problem)
+        neutral = str(Path(tempfile.gettempdir()).resolve())
+        user_root = tempfile.mkdtemp(prefix="gpos-blender-probe-", dir=neutral)
+        try:
+            result = self._windows_probe_steps(executable, neutral, user_root, refused, platform)
+        finally:
+            leftover = remove_verified(user_root)
+        if leftover:   # reported, never mistaken for a clean removal
+            result = replace(result, diagnostics=tuple(result.diagnostics) + (
+                dg.make("DCC_CLEANUP_INCOMPLETE", leftover, ADAPTER_ID),))
+        return result
+
+    def _windows_probe_steps(self, executable, neutral, user_root, refused, platform):
+        """The steps of the Windows probe; the caller verifies the private root's removal."""
+        problem = prepare_user_root(user_root)
+        if problem:
+            return refused(model.UNAVAILABLE, problem, tool_path=executable)
+        env = user_environment(user_root)
+        try:
+            version = proc.run_process(proc.ToolProcessSpec(executable=executable, argv=("--version",), cwd=neutral,
+                                                            timeout=PROBE_TIMEOUT, env=env), [neutral])
+        except proc.ProcessSpecError as exc:
+            return refused(model.UNAVAILABLE, f"Blender could not be started: {exc}", tool_path=executable)
+        if version.timed_out or version.exit_code != 0 or version.truncated:
+            return refused(model.UNAVAILABLE, f"`Blender --version` did not complete normally "
+                                                f"(exit {version.exit_code})", tool_path=executable)
+        tool_version = parse_version(version.raw_stdout)
+        if tool_version is None:
+            return refused(model.VERSION_UNSUPPORTED, "unrecognized `Blender --version` output; the version "
+                                                        "could not be established", tool_path=executable)
+        if version_family(tool_version) != WINDOWS_QUALIFIED_FAMILY:
+            return refused(model.VERSION_UNSUPPORTED,
+                             f"Blender {tool_version} is not a release qualified on Windows (only "
+                             f"{'.'.join(map(str, WINDOWS_QUALIFIED_FAMILY))}.x is)",
+                             tool_path=executable, tool_version=tool_version)
+        nonce = secrets.token_hex(16)
+        test = proc.run_process(proc.ToolProcessSpec(executable=executable, argv=selftest_argv(user_root, nonce),
+                                                     cwd=neutral, timeout=PROBE_TIMEOUT, env=env,
+                                                     capture_bytes=self._capture_bytes), [neutral])
+        problem = None
+        if test.timed_out or test.truncated or test.exit_code != 0:
+            problem = f"the GPOS helper self-test did not complete (exit {test.exit_code})"
+        else:
+            try:
+                report = parser.selftest(parser.record(test.raw_stdout, nonce))
+                if tool_version.split(" ")[0] != report["blender_version"]:
+                    problem = (f"Blender itself reports {report['blender_version']}, not the {tool_version} "
+                               f"--version printed; the version is not unambiguous")
+            except parser.HelperProtocolError as exc:
+                problem = f"the GPOS helper self-test failed: {exc}"
+        if problem:
+            return refused(model.VERSION_UNSUPPORTED, problem, tool_path=executable, tool_version=tool_version)
+        return model.ProbeResult(ADAPTER_ID, model.AVAILABLE, tool_path=executable, tool_version=tool_version,
+                                   platform=platform,
+                                   detail=f"Blender {tool_version} at {executable}; helper self-test passed "
+                                          f"(engines {', '.join(report['engines'])})",
+                                   capability_availability=tuple((c.id, True, "") for c in CAPABILITIES))
+
     # ------------------------------------------------------------ execution
 
     def execute(self, request, context):
@@ -243,6 +327,10 @@ class BlenderAdapter(model.ToolAdapter):
             if problem:
                 return _refuse(cap, problem)
             output = Path(context.workspace) / OUTPUT_NAME
+            if any(c in str(output) for c in TEMPLATE_CHARACTERS):   # alpha.24 (D-B1), every host
+                return _refuse(cap, f"the render output path contains one of {' '.join(TEMPLATE_CHARACTERS)}, which "
+                                    f"Blender expands (frame number, path template); a render could be written outside "
+                                    f"the workspace, so nothing is rendered")
             if output.exists() or output.is_symlink():
                 return _refuse(cap, f"the workspace already holds {OUTPUT_NAME}; an existing file is never reported "
                                     f"as a new render")
@@ -260,6 +348,11 @@ class BlenderAdapter(model.ToolAdapter):
         runtime_base = tp.runtime_dir(context.project_root, "blender-user")
         runtime_base.mkdir(parents=True, exist_ok=True)
         user_root = tempfile.mkdtemp(prefix=f"{request.request_id}-", dir=str(runtime_base))
+        if sys.platform == "win32":   # alpha.24 (D-B2): Blender's temporary directory, created and proven first
+            problem = prepare_user_root(user_root)
+            if problem:
+                leftover = remove_verified(user_root)
+                return AdapterOutcome(ok=False, detail=problem + (f"; {leftover}" if leftover else ""))
         nonce = secrets.token_hex(16)
         try:
             argv = (inspect_argv(user_root, source.absolute_path, nonce) if cap == INSPECT else
@@ -277,6 +370,14 @@ class BlenderAdapter(model.ToolAdapter):
                 pass
         record = dict(command=_command(spec, source, output, nonce, user_root), environment=spec.env.metadata())
         public = _without_output(outcome)
+        if sys.platform == "win32":   # alpha.24 (D-B2): the removal above is verified, never assumed
+            leftover = remove_verified(user_root)
+            result = (self._inspected(cap, outcome, public, record, nonce, source) if cap == INSPECT else
+                      self._rendered(cap, context, outcome, public, record, nonce, source, output))
+            if leftover:
+                result = replace(result, diagnostics=tuple(result.diagnostics) + (
+                    dg.make("DCC_CLEANUP_INCOMPLETE", leftover, ADAPTER_ID, cap),))
+            return result
         if cap == INSPECT:
             return self._inspected(cap, outcome, public, record, nonce, source)
         return self._rendered(cap, context, outcome, public, record, nonce, source, output)
@@ -341,7 +442,52 @@ class BlenderAdapter(model.ToolAdapter):
 
 def user_environment(user_root):
     """The adapter-owned environment: the foundation's allowlist plus an isolated Blender user root."""
+    if sys.platform == "win32":   # alpha.24 (D-B2): TEMP/TMP name the private root's temporary directory
+        temp = str(Path(user_root) / TEMP_NAME)
+        data = tuple((name, str(Path(user_root) / directory)) for name, directory in PRIVATE_DATA_DIRS)
+        return proc.EnvironmentPolicy(overrides=(("BLENDER_USER_RESOURCES", str(user_root)), ("TEMP", temp),
+                                                 ("TMP", temp), ("TMPDIR", temp)) + data)
     return proc.EnvironmentPolicy(overrides=(("BLENDER_USER_RESOURCES", str(user_root)),))
+
+
+def prepare_user_root(user_root):
+    """alpha.24 (Windows): create the private temporary and data directories Blender is pointed at and prove each is
+    a plain directory inside the user root. A reason when one is not, else None."""
+    for name in (TEMP_NAME,) + tuple(directory for _, directory in PRIVATE_DATA_DIRS):
+        path = Path(user_root) / name
+        try:
+            os.mkdir(path)
+            attributes = os.lstat(path).st_file_attributes
+        except OSError as exc:
+            return f"the private directory {path} could not be created ({type(exc).__name__}: {exc})"
+        if attributes & 0x400 or not attributes & 0x10:   # a reparse point, or not a directory
+            return f"{path} is not a plain directory"
+    return None
+
+
+def remove_verified(user_root):
+    """alpha.24 (Windows): remove the private user root, clearing a read-only attribute Blender may have left, and
+    verify that it is gone. None when it is; otherwise what remains, which is reported, never assumed removed."""
+    def writable_then_retry(function, path, _):
+        os.chmod(path, 0o700)
+        function(path)
+
+    retry = {"onexc" if sys.version_info >= (3, 12) else "onerror": writable_then_retry}   # same three arguments
+    if os.path.lexists(user_root):
+        try:
+            shutil.rmtree(user_root, **retry)
+        except OSError:
+            pass
+    if not os.path.lexists(user_root):
+        return None
+    left = sum(1 for _ in Path(user_root).rglob("*"))
+    return f"the private Blender user root {user_root} could not be removed completely ({left} entries remain)"
+
+
+def version_family(version):
+    """(major, minor) of a parsed Blender version such as `5.2.2` or `5.2.2 LTS`."""
+    major, minor = version.split(" ")[0].split(".")[:2]
+    return int(major), int(minor)
 
 
 def _start(user_root):

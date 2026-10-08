@@ -1314,7 +1314,7 @@ class L01_Boundaries(TmpCase):
         self.assertEqual(modules, ["__init__.py", "__main__.py", "adb/__init__.py", "adb/adapter.py", "adb/parsers.py",
                                    "artifacts.py", "blender/__init__.py", "blender/adapter.py", "blender/helper.py",
                                    "blender/parser.py", "capabilities.py", "cli.py",
-                                   "diagnostics.py", "errors.py", "evidence.py", "execution.py",
+                                   "diagnostics.py", "errors.py", "evidence.py", "executables.py", "execution.py",
                                    "ffmpeg/__init__.py", "ffmpeg/adapter.py",
                                    "ffprobe/__init__.py", "ffprobe/adapter.py", "ffprobe/parser.py",
                                    "git/__init__.py", "git/adapter.py", "git/status.py", "leases.py",

@@ -35,14 +35,18 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
+if sys.platform == "win32" and not sys.flags.utf8_mode:   # alpha.24: the Windows locale is not UTF-8
+    sys.exit("WINDOWS_UTF8_MODE_REQUIRED: run this suite as `python -X utf8 tests/test_blender_adapter.py`")
 
 import gpos  # noqa: E402
+import windows_standin  # noqa: E402  (alpha.24: tool stand-ins that run on every host)
 from gpos.framework import load_framework  # noqa: E402
 from gpos.records import from_records  # noqa: E402
 from gpos.tools import diagnostics as tdg  # noqa: E402
@@ -65,7 +69,8 @@ BUILDER = ROOT / "tests" / "blender_fixture_builder.py"
 BLENDER, _DISCOVERY_PROBLEM = BlenderAdapter().find_executable()
 REVISION = "rev-asset-0001"
 SECRET = "ghp_" + "Q1w2E3r4T5y6U7i8O9p0" + "asdfghjklzxc"          # credential-shaped, not a credential
-REAL_PROFILE = Path.home() / "Library" / "Application Support" / "Blender"
+REAL_PROFILE = (Path(os.environ.get("APPDATA", Path.home())) / "Blender Foundation" / "Blender" if sys.platform == "win32"
+                else Path.home() / "Library" / "Application Support" / "Blender")   # the real user profile, never touched
 FIX = {}                    # name -> generated .blend path
 _STATE = {}
 
@@ -80,6 +85,10 @@ def blender_test(args, user_root, timeout=300):
     """A TEST-SIDE Blender run (fixtures and sensitivity controls), always with its own isolated user root."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("BLENDER_")}
     env["BLENDER_USER_RESOURCES"] = str(user_root)
+    if sys.platform == "win32":   # the test's own Blender runs keep their temporary files private too
+        temp = Path(user_root) / "tmp"
+        temp.mkdir(exist_ok=True)
+        env.update(TEMP=str(temp), TMP=str(temp), TMPDIR=str(temp))
     return subprocess.run([BLENDER, *args], capture_output=True, timeout=timeout, env=env)
 
 
@@ -226,6 +235,12 @@ STAND_IN = r"""
 import json, sys, time
 cfg = json.load(open(CONFIG))
 argv = sys.argv[1:]
+if "env_dump" in cfg:   # alpha.24: what the adapter gave Blender for its temporary and user directories
+    import os
+    names = ("TEMP", "TMP", "TMPDIR", "BLENDER_USER_RESOURCES", "APPDATA", "LOCALAPPDATA", "ProgramData")
+    seen = {k: os.environ.get(k) for k in names}
+    seen["missing"] = sorted(k for k in names if not (seen[k] and os.path.isdir(seen[k])))
+    open(cfg["env_dump"], "a").write(json.dumps(seen) + "\n")
 if argv == ["--version"]:
     sys.stdout.write(cfg.get("version", "Blender 5.2.0 LTS\n\tbuild date: 2026-07-14\n")); sys.exit(0)
 rest = argv[argv.index("--") + 1:]
@@ -277,9 +292,7 @@ class StandIn:
             config["png_hex"] = config.pop("png").hex()
         self.config = self.dir / "config.json"
         self.config.write_text(json.dumps(config))
-        self.exe = self.dir / name
-        self.exe.write_text(f"#!{tproc.interpreter_path()}\nCONFIG = {str(self.config)!r}\n{STAND_IN}")
-        self.exe.chmod(0o755)
+        self.exe = windows_standin.write_tool(self.dir / name, f"CONFIG = {str(self.config)!r}\n{STAND_IN}")
 
     def adapter(self, **kwargs):
         return BlenderAdapter(which=lambda name: str(self.exe) if name == self.exe.name else None, **kwargs)
@@ -792,7 +805,8 @@ class J_ExternalDependencies(BlenderCase):
         user.mkdir(exist_ok=True)
         done = blender_test(["--background", "--factory-startup", "--disable-autoexec", "--offline-mode",
                              "--python", str(script)], user)
-        self.assertIn(b"//../", re.search(rb"GPOS_FACTORY_PATHS (.*)", done.stdout).group(1))  # the reference exists
+        stored = re.search(rb"GPOS_FACTORY_PATHS (.*)", done.stdout).group(1)
+        self.assertRegex(stored, rb"//\.\.[/\\]")   # the relative reference exists (Windows stores `//..\`)
         datafiles = Path(re.search(rb"GPOS_DATAFILES (.+)", done.stdout).group(1).decode().strip())
         for resolved in json.loads(re.search(rb"GPOS_FACTORY_RESOLVED (.+)", done.stdout).group(1)):
             # the positive control: a real, existing bundled resource inside the real installation
@@ -800,6 +814,12 @@ class J_ExternalDependencies(BlenderCase):
         return target
 
     def test_a_reference_counts_as_blenders_own_only_where_it_really_resolves_into_the_installation(self):
+        drive = os.path.splitdrive(BLENDER)[0]
+        if drive and os.path.splitdrive(str(self.tmp))[0].lower() != drive.lower():
+            # Windows: a relative path cannot cross drives, so this project is made on the installation's drive,
+            # in a disposable directory removed again
+            self.tmp = Path(tempfile.mkdtemp(prefix="gpos-blender-", dir=drive + os.sep)).resolve()
+            self.addCleanup(shutil.rmtree, self.tmp, True)
         p = self.project()
         in_place = self.factory_file(p, "assets/factory.blend")
         artifacts = (InputArtifact("blend", str(in_place)),)
@@ -816,7 +836,7 @@ class J_ExternalDependencies(BlenderCase):
 
     def test_a_missing_file_inside_blenders_real_datafiles_is_a_missing_dependency(self):
         missing = Path(_STATE["missing_bundled"])
-        datafiles = Path(os.sep + _STATE["spoof_tail"])
+        datafiles = Path(os.path.splitdrive(BLENDER)[0] + os.sep + _STATE["spoof_tail"])
         self.assertTrue(datafiles.is_dir() and missing.parent == datafiles)   # inside the REAL installation
         self.assertFalse(missing.exists())
         p = self.project("missing-datafiles")
@@ -976,7 +996,7 @@ class O_RenderEngine(BlenderCase):
             "out = {'limit': limit}\n"
             "for name, text in cases.items():\n"
             "    log = os.path.join(WORK, name.replace(' ', '-').replace(',', '') + '.log')\n"
-            "    open(log, 'w').write(text)\n"
+            "    open(log, 'w', newline='\\n').write(text)\n"
             "    sys.argv = ['blender', '--log-file', log, '--']\n"
             "    try:\n        out[name] = {'size': len(text), 'engines': helper['unavailable_engines']()}\n"
             "    except helper['Refusal'] as refusal:\n        out[name] = {'size': len(text), 'refused': refusal.code}\n"
@@ -1158,7 +1178,12 @@ class V_DryRun(BlenderCase):
         self.assertEqual((out / "render.png").read_bytes(), b"existing")
         link = p / "reviews-link"
         link.mkdir()
-        (link / "render.png").symlink_to(self.tmp / "elsewhere.png")  # dangling: exists() alone would miss it
+        try:
+            (link / "render.png").symlink_to(self.tmp / "elsewhere.png")  # dangling: exists() alone would miss it
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 1314:
+                self.skipTest("creating a symbolic link needs Developer Mode or SeCreateSymbolicLinkPrivilege")
+            raise
         for dry in (True, False):
             self.assertRefused(self.run_cap(ba.RENDER, p, "safe", output_dir=str(link), dry_run=dry),
                                "already holds render.png")
@@ -1206,6 +1231,118 @@ class W_PartialAndTimeout(BlenderCase):
 
 # ---------------------------------------------------------------- X  path and secret privacy
 
+# ---------------------------------------------------------------- WA render-path templates (alpha.24, every host)
+
+class WA_RenderPathTemplates(BlenderCase):
+    """D-B1: Blender expands `#` and `{...}` in a render output path, so such a path is never given to it."""
+
+    def test_a_template_character_in_the_render_path_refuses_before_launch(self):
+        for name in ("p#1", "p{x}", "p}2"):
+            with self.subTest(name=name):
+                p = self.project("safe", name=name)
+                with Recorder() as rec:
+                    result = self.run_cap(ba.RENDER, p, "safe")
+                self.assertRefused(result, "Blender expands")
+                self.assertEqual(rec.project_runs, [])
+                self.assertEqual(list(self.tmp.rglob("render*.png")), [])
+
+    def test_inspection_of_a_source_whose_path_holds_one_is_not_refused(self):
+        p = self.project("safe", name="p#3")
+        self.assertSucceeded(self.run_cap(ba.INSPECT, p, "safe"))
+
+
+# ---------------------------------------------------------------- WB Windows isolation and version (alpha.24)
+
+def global_temp_entries():
+    root = Path(tempfile.gettempdir())
+    return {e.name for e in root.iterdir()
+            if e.name.lower().startswith(("blender", "gpos-blender-probe-")) or e.name.lower().endswith(".crash.txt")}
+
+
+@unittest.skipUnless(sys.platform == "win32", "Windows isolation and the Windows-qualified release family")
+class WB_WindowsHost(BlenderCase):
+    def test_the_real_probe_is_the_qualified_release_reported_identically(self):
+        before = global_temp_entries()
+        probe = BlenderAdapter().probe()
+        self.assertEqual(probe.status, tmodel.AVAILABLE, probe.detail)
+        self.assertEqual(ba.version_family(probe.tool_version), ba.WINDOWS_QUALIFIED_FAMILY)
+        self.assertNotIn("DCC_CLEANUP_INCOMPLETE", {d.code for d in probe.diagnostics})
+        self.assertEqual(global_temp_entries() - before, set())
+
+    def test_real_runs_write_nothing_to_the_global_temp_or_the_real_profile(self):
+        before, profile = global_temp_entries(), fingerprint(REAL_PROFILE)
+        p = self.project("safe")
+        top = sorted(x.name for x in p.iterdir())
+        self.assertSucceeded(self.run_cap(ba.INSPECT, p, "safe"))     # runs in the project root
+        rendered = self.run_cap(ba.RENDER, p, "safe")                  # runs in its workspace
+        self.assertSucceeded(rendered)
+        self.assertEqual(sorted(x.name for x in p.iterdir()), top)    # no driver or Blender residue beside the project
+        self.assertEqual([x.name for x in Path(rendered.artifacts[0].absolute_path).parent.iterdir()], ["render.png"])
+        self.assertEqual(global_temp_entries() - before, set())
+        self.assertEqual(fingerprint(REAL_PROFILE), profile)
+        self.assertFalse((p / ".game" / "gpos-runtime" / "blender-user").exists())   # cleanup verified
+
+    def test_blender_is_given_a_private_temporary_directory_that_is_removed(self):
+        dump = self.tmp / "env.jsonl"
+        stand_in = StandIn(self.tmp / "bin", env_dump=str(dump), render=GOOD_RENDER, png=png_bytes())
+        p = self.project("safe")
+        self.assertSucceeded(self.run_cap(ba.RENDER, p, "safe", registry=stand_in.registry()))
+        seen = [json.loads(line) for line in dump.read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(seen)
+        for env in seen:
+            root = Path(env["BLENDER_USER_RESOURCES"])
+            self.assertEqual({env["TEMP"], env["TMP"], env["TMPDIR"]}, {str(root / ba.TEMP_NAME)})
+            self.assertEqual({name: env[name] for name, _ in ba.PRIVATE_DATA_DIRS},
+                             {name: str(root / directory) for name, directory in ba.PRIVATE_DATA_DIRS})
+            self.assertEqual(env["missing"], [])   # each existed, as a directory, while Blender ran
+            self.assertFalse(root.exists(), "the private user root was not removed")
+
+    def test_a_release_outside_the_qualified_family_is_unsupported(self):
+        stand_in = StandIn(self.tmp / "bin", version="Blender 4.5.1 LTS\n",
+                           selftest=dict(GOOD_SELFTEST, blender_version="4.5.1"))
+        probe = stand_in.adapter().probe()
+        self.assertEqual(probe.status, tmodel.VERSION_UNSUPPORTED)
+        self.assertIn("not a release qualified on Windows", probe.detail)
+
+    def test_a_version_blender_reports_differently_is_unsupported(self):
+        """POSIX accepts `5.2.20` when Blender reports 5.2.2 (a prefix); Windows requires the same version."""
+        stand_in = StandIn(self.tmp / "bin", version="Blender 5.2.20\n",
+                           selftest=dict(GOOD_SELFTEST, blender_version="5.2.2"))
+        probe = stand_in.adapter().probe()
+        self.assertEqual(probe.status, tmodel.VERSION_UNSUPPORTED)
+        self.assertIn("not unambiguous", probe.detail)
+
+    def test_cleanup_that_fails_is_reported_never_assumed(self):
+        stand_in = StandIn(self.tmp / "bin", render=GOOD_RENDER, png=png_bytes())
+        p = self.project("safe")
+        failing = type("FailingShutil", (), {"rmtree": staticmethod(lambda *a, **k: None), "which": shutil.which})
+        with mock.patch.object(ba, "shutil", failing):   # only the adapter's removals fail
+            result = self.run_cap(ba.RENDER, p, "safe", registry=stand_in.registry())
+            probe = stand_in.adapter().probe()
+        self.assertIn("DCC_CLEANUP_INCOMPLETE", self.codes(result))
+        self.assertEqual(result.status, tdg.SUCCESS)               # the render itself is sound; the residue is named
+        self.assertIn("DCC_CLEANUP_INCOMPLETE", {d.code for d in probe.diagnostics})
+        for leftover in Path(tempfile.gettempdir()).glob("gpos-blender-probe-*"):
+            self.assertIsNone(ba.remove_verified(leftover))   # the residue the mock left, removed and proven gone
+
+    def test_a_read_only_file_left_in_the_user_root_is_still_removed(self):
+        root = self.tmp / "root"
+        (root / "tmp").mkdir(parents=True)
+        f = root / "tmp" / "locked.txt"
+        f.write_text("x")
+        os.chmod(f, 0o444)
+        self.assertIsNone(ba.remove_verified(root))
+        self.assertFalse(root.exists())
+
+    def test_discovery_takes_the_exact_windows_name(self):
+        hits = {"blender.exe": r"D:\B\blender.exe", "Blender.exe": r"D:\B\Blender.exe", "blender": r"D:\B\blender.EXE",
+                "Blender": r"D:\B\Blender.EXE"}
+        adapter = BlenderAdapter(which=hits.get, platform="win32")
+        with mock.patch.object(ba.os, "listdir", lambda d: ["blender.exe", "blender-launcher.exe"]), \
+                mock.patch.object(ba.os.path, "isfile", lambda f: True),                 mock.patch.object(ba.os, "access", lambda f, m: True):
+            self.assertEqual(adapter.find_executable(), (r"D:\B\blender.exe", None))
+
+
 class X_Privacy(BlenderCase):
     def secret_project(self):
         p = self.project()
@@ -1249,7 +1386,7 @@ class Y_CommandSurface(BlenderCase):
     def test_the_fixed_templates(self):
         root, h = Path("/iso"), ba.HELPER
         start = ("--background", "--factory-startup", "--disable-autoexec", "--offline-mode", "-noaudio",
-                 "--log-file", "/iso/blender.log", "--python-exit-code", "71", "--python", h, "--")
+                 "--log-file", str(root / "blender.log"), "--python-exit-code", "71", "--python", h, "--")
         self.assertEqual(ba.selftest_argv(root, "n"), start + ("selftest", "n"))
         self.assertEqual(ba.inspect_argv(root, "/a.blend", "n"), start + ("inspect", "n", "/a.blend"))
         self.assertEqual(ba.render_argv(root, "/a.blend", "/w/render.png", "Alt", "7", "n"),

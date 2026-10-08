@@ -119,6 +119,7 @@ def run(mutation):
             gate.write(path, text.replace(anchor, replacement))
         out = subprocess.run([*gate.PYTHON, "-B", str(copy / "tests" / "test_git_adapter.py")],
                              capture_output=True, text=True, timeout=900,
+                             **gate.ISOLATED,
                              env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
         return name, "CAUGHT" if out.returncode != 0 else "MISSED"
     finally:

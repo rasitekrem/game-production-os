@@ -8,7 +8,7 @@ Maturity promotions of skills are recorded here, each with the Human Decision an
 
 Builds on the frozen Phase-2C-9.1 tree (`v1.0.0-alpha.23`, `a025d51`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, no new capability, no change to the Unity Editor bridge (`com.gpos.live-bridge` 1.5.0, `gpos.unity.live/5`, 67 files, digest `b7f4775d…`), to Unity Build Core or to the Player Runtime, and the production registry stays at seven adapters. Projects must pin `gpos_version` `1.0.0-alpha.24`.
 
-Qualified on Windows 11 Enterprise 10.0.26200 with CPython 3.14.8 x64 only. **Qualified for production on Windows:** FFmpeg and ffprobe (9.0.2, gyan.dev full build) and Blender (5.2.2 LTS only). **Not declared on Windows:** Git (pending the repository-filter decision D-G1) and ADB (no physical target or server lifecycle qualified). Unity and the Player stay macOS-only.
+Qualified on Windows 11 Enterprise 10.0.26200 with CPython 3.14.8 x64 only. **Qualified for production on Windows:** FFmpeg and ffprobe (9.0.2, gyan.dev full build) and Blender (5.2.2 LTS only). **Not declared on Windows:** Git (temporarily disabled under D-G1 option (c), pending a separately reviewed filter-security fix) and ADB (no physical target or server lifecycle qualified). Unity and the Player stay macOS-only.
 
 ### Added
 

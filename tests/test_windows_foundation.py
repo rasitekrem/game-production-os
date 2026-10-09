@@ -899,10 +899,15 @@ class W07_PlatformRefusals(Case):
     def test_macos_only_adapters_are_never_probed_here(self):
         from gpos.tools.registry import default_registry
         reg = default_registry(FW)
-        for adapter_id in ("player", "unity"):
+        for adapter_id in ("player",):
             result = reg.probe(adapter_id)
             self.assertEqual(result.status, "UNAVAILABLE")
             self.assertIn("PLATFORM_UNSUPPORTED", {d.code for d in result.diagnostics})
+        # alpha.25: Unity declares WINDOWS for its batch plane only; it is probed here, and offers nothing else
+        unity = reg.probe("unity")
+        self.assertNotIn("PLATFORM_UNSUPPORTED", {d.code for d in unity.diagnostics})
+        offered = {c for c, ok, _ in unity.capability_availability if ok}
+        self.assertLessEqual(offered, {"unity.inspect-project", "unity.run-editmode-tests", "unity.run-playmode-tests"})
 
     def run_transform(self, request_id, project):
         r = ToolRegistry(FW, allow_test_only=True)

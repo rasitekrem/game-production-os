@@ -28,7 +28,10 @@ GPOS_UNITY_TEST_FAST=1 (the mutation harness only) skips every group that starts
 
 import ast
 import errno
-import fcntl
+try:
+    import fcntl
+except ImportError:  # alpha.25: Windows has no fcntl; setUpModule reports this macOS suite NOT_RUN there
+    fcntl = None
 import hashlib
 import json
 import os

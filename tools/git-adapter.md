@@ -4,7 +4,7 @@ Code: [`gpos/tools/git/`](../gpos/tools/git/__init__.py) · adapter id `git` · 
 
 The adapter reads a local Git repository and reports two things: what state it is in, and whether an exact, immutable revision describes it. It exists to prove that the foundation works with a real external command-line tool, and to give future tool executions a trustworthy repository revision, explicitly.
 
-It is not a Git command runner. It changes nothing in a repository and never touches a network.
+It is not a Git command runner. The commands the adapter itself authorizes change nothing in a repository and perform no network operation. That is a statement about the adapter's fixed Git invocations, not about every program Git may start on their behalf: a repository-configured filter driver can still run (see [Repository filter drivers](#repository-filter-drivers-open-finding-every-host)), and what such a program does — including writing files or using the network — is outside what the adapter controls.
 
 ## Identity
 
@@ -16,7 +16,7 @@ It is not a Git command runner. It changes nothing in a repository and never tou
 | `adapter_kind` | `CLI` |
 | `state_model` | `STATELESS` |
 | platforms | `MACOS`, `LINUX` (alpha.24: `WINDOWS` withdrawn; see [Windows](#windows-alpha24)) |
-| network | `FORBIDDEN` |
+| network | `FORBIDDEN` (GPOS originates no network operation; a repository-configured filter program is not constrained by this, see [Repository filter drivers](#repository-filter-drivers-open-finding-every-host)) |
 | minimum Git | 2.36.0 |
 | TEST_ONLY | no — this is a production adapter |
 
@@ -104,7 +104,7 @@ From the CLI, step 4 is `--build-revision <repository_revision>` on `python3 -m 
 
 ## Authorized Git surface
 
-The adapter can start exactly three Git processes, each with a fixed argument vector. Nothing from a request, a configuration or a caller is ever appended:
+The adapter itself starts exactly three Git processes, each with a fixed argument vector. Nothing from a request, a configuration or a caller is ever appended. This is the adapter's command authorization; it is not a bound on the programs Git itself may start while running these commands (Git's own submodule children, and any repository-configured filter driver, below):
 
 | Purpose | Invocation |
 |---|---|
@@ -222,16 +222,17 @@ The three repository codes are generic to version control, not specific to Git.
 | interactive prompts | disabled; stdin is closed by the boundary |
 | **indirect process execution through `core.fsmonitor`** | **none: disabled at command scope, for the repository and for Git's own submodule children; hook and daemon both verified not to start** |
 | **submodule ignore settings hiding dirtiness** | **none: `--ignore-submodules=none` overrides config and `.gitmodules`** |
+| **indirect process execution through repository-configured filter drivers** | **not neutralized (open, D-G1): `git status` can run a driver's `clean` or `process` program, in the superproject and in submodules, on every host; see [Repository filter drivers](#repository-filter-drivers-open-finding-every-host)** |
 | partial or truncated output treated as complete | refused: truncation and parse checks, including a cut exactly on a record boundary |
 | raw process output crossing the public result boundary | none: the raw capture never reaches a result, provenance, diagnostic, CLI output or evidence |
 | repository-root escape | refused: equality with the project root, compared on Git's exact bytes |
 | revision fabrication on dirty or unborn trees | none: `exact_revision` is `null` |
 
-No OS sandboxing is claimed. The foundation's external-tool trust boundary is otherwise unchanged. Git runs with the repository's and the user's own configuration under Git's own trust model, and refuses to use the configuration of a repository owned by another user (`safe.directory`). The two settings that would break this adapter's contract are overridden: fsmonitor, which runs another process, and submodule ignore, which hides dirtiness.
+No OS sandboxing is claimed. The foundation's external-tool trust boundary is otherwise unchanged. Git runs with the repository's and the user's own configuration under Git's own trust model, and refuses to use the configuration of a repository owned by another user (`safe.directory`). Two settings that would break this adapter's contract are overridden: fsmonitor, which runs another process, and submodule ignore, which hides dirtiness. A third, repository-configured filter drivers, also runs another process and is **not** overridden (D-G1, below).
 
 ## Repository filter drivers (open finding, every host)
 
-Found in alpha.24 (2C-9.2) and **open for Human Review (D-G1)**; no production change has been made for it.
+Found in alpha.24 (2C-9.2). **Human decision D-G1: option (c) for alpha.24** — the Git adapter is unavailable on Windows. This is a temporary security restriction, not the final architecture. The security fix itself is **pending**: it needs a focused, separately reviewed solution before Git's Windows production capability is restored, and no production change has been made for it in alpha.24. Configuration discovery is not authorized in this release, and repository-selected filter execution is not an authorized behaviour of the adapter — yet on macOS and Linux Git can still perform it (see the operational risk below).
 
 `git status` runs a repository's configured filter driver on a file whose attributes select it (`filter=<driver>` in a `.gitattributes`) when the file's index stat information no longer matches, so that Git can compare its content: the driver's `clean` command, or its long-running `process` command. A repository's own configuration names those programs. The adapter overrides `core.fsmonitor` and submodule ignore settings only, so `git.inspect` and `git.resolve-provenance` (both `READ_ONLY`) can start a program the repository chose. This was reproduced in disposable repositories with Git 2.56.0.windows.2, in the superproject and inside a submodule; it is Git's behaviour on every host, macOS included (not executed there).
 
@@ -240,11 +241,13 @@ What was established in those disposable repositories:
 - command-scope configuration (the same GIT_CONFIG_COUNT mechanism as the fsmonitor override) setting `filter.<driver>.clean`, `.smudge` and `.process` to empty and `.required` to false stops every one of them from running, required and process drivers included, and it reaches the `git status` Git runs inside each submodule;
 - it works only for drivers named explicitly. Driver names are chosen by the repository (and by each submodule), so they would first have to be discovered.
 
-Discovering them needs a command outside the fixed Git surface, for example `git config --null --name-only --get-regexp` with the pattern `^filter\.` at the work-tree top level and again inside each submodule. That is a configuration read, not a mutation, but `config` is on the list of subcommands this adapter must never run, it follows the repository's `include` and `includeIf` files, and each submodule adds a process. The alternatives that keep the current surface (refusing a repository whose attributes select any filter, or reading attributes from an empty tree) either cannot see every attribute source or change what status reports. Choosing between them is a Human decision; until it is made, the adapter is not declared on Windows and macOS keeps the alpha.22 behaviour.
+Discovering them needs a command outside the fixed Git surface, for example `git config --null --name-only --get-regexp` with the pattern `^filter\.` at the work-tree top level and again inside each submodule. That is a configuration read, not a mutation, but `config` is on the list of subcommands this adapter must never run, it follows the repository's `include` and `includeIf` files, and each submodule adds a process. The alternatives that keep the current surface (refusing a repository whose attributes select any filter, or reading attributes from an empty tree) either cannot see every attribute source or change what status reports. None of them is implemented in alpha.24.
+
+**Operational risk on macOS and Linux.** The existing `MACOS` and `LINUX` declarations are unchanged and keep the unresolved filter-driver risk: on those hosts `git.inspect` and `git.resolve-provenance` run with the alpha.22 behaviour, so inspecting a repository whose configuration and attributes select a filter driver can start the program that driver names, with the user's rights. Use them only on repositories whose Git configuration, including included files and every submodule's, you trust. **No macOS (or Linux) security qualification was run for this finding**: the macOS statement rests on Git's documented behaviour and on the Windows reproduction, and the alpha.24 POSIX source-parity evidence shows only that the POSIX code is unchanged, which is not a security qualification.
 
 ## Windows (alpha.24)
 
-**Not declared.** The descriptor lists `MACOS` and `LINUX` only (D-W1): an adapter that can start a repository-selected program through a `READ_ONLY` capability is not qualified for production on the primary platform. The registry refuses it on Windows with `PLATFORM_UNSUPPORTED` before any process starts, so the media and ADB Git handoffs cannot run there either. The macOS and Linux declarations are unchanged.
+**Not declared** (D-W1; Human decision D-G1, option (c) for alpha.24). The descriptor lists `MACOS` and `LINUX` only: an adapter that can start a repository-selected program through a `READ_ONLY` capability is not qualified for production on the primary platform. The restriction is temporary; Windows Git provenance returns only after the separately reviewed filter-security fix. The registry refuses it on Windows with `PLATFORM_UNSUPPORTED` before any process starts, so the media and ADB Git handoffs cannot run there either. The macOS and Linux declarations are unchanged.
 
 What was measured on Windows 11 with Git 2.56.0.windows.2, through a test-side declaration that only the test suite makes:
 
@@ -256,7 +259,7 @@ What was measured on Windows 11 with Git 2.56.0.windows.2, through a test-side d
 
 - `MONOREPO_NESTED_PROJECT_NOT_YET_SUPPORTED`: the project root must be the repository top level.
 - A branch name that is not valid UTF-8 is reported with backslash escapes (`\xff`).
-- Git's own configuration applies, except `core.fsmonitor` and submodule ignore settings, which are overridden. Repository filter drivers are not overridden: see [Repository filter drivers](#repository-filter-drivers-open-finding-every-host).
+- Git's own configuration applies, except `core.fsmonitor` and submodule ignore settings, which are overridden. Repository filter drivers are not overridden, on any host: see [Repository filter drivers](#repository-filter-drivers-open-finding-every-host).
 - Git's own child `git status` runs inside submodules are part of how Git reads a superproject; they receive the same environment.
 - Real-runtime tests ran on macOS with Git 2.52.0 (alpha.22) and on Windows 11 with Git 2.56.0.windows.2 through a test-side declaration (alpha.24); Windows is not declared in production. Linux is declared but was not exercised. On macOS a real filename that is not valid UTF-8 cannot be created (APFS refuses it), so those bytes are covered at the parser level and by a Linux-only integration test.
 - There is no mutation capability. Any version-control mutation needs a separate Human Review.

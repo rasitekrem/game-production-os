@@ -22,7 +22,7 @@ The adapter answers two questions about one Unity project inside a GPOS project:
 | `tool_family` | `ENGINE` |
 | `adapter_kind` | `CLI` |
 | `state_model` | `STATEFUL` (the adapter manages the live plane's long-lived session; each batch capability is `STATELESS`) |
-| platforms | `MACOS` only in this release |
+| platforms | `MACOS`; `WINDOWS` for the batch plane only (alpha.25; see [Windows](#windows-alpha25)) |
 | network | `TOOL_INHERENT`, with a disclosure |
 | TEST_ONLY | no |
 
@@ -110,7 +110,7 @@ Unity's own project lock is a second, independent layer (alpha.20, Phase 2C-6C).
 | `ORPHAN_UNHELD` | a regular lockfile nobody holds, and `NO_MATCH_PROVEN` before and after the lock query | the run proceeds; `ENGINE_PROJECT_ORPHAN_LOCK` (`INFO`) records that GPOS left the file alone and Unity applied its own project-lock semantics |
 | `LOCK_STATE_UNKNOWN` | anything that cannot be proven, or another platform | `ENGINE_PROJECT_LOCKED`; nothing is launched |
 
-`ENGINE_PROJECT_LOCKED` carries `lock_state` in its details, and the result's data carries `project_lock`. The race between the final proof and the launch remains: Unity arbitrates it with its own project lock, and the second instance it refuses is classified `ENGINE_PROJECT_LOCKED` as before, never retried. Processes of other users are not listed; an Editor of another user that holds the project is still seen through the lock query. The rule is measured on macOS only; no other platform inherits it without its own measurement and review. `unity.live-install-bridge` keeps its closed-project rule: any existing lockfile is `ENGINE_PROJECT_LOCKED`.
+`ENGINE_PROJECT_LOCKED` carries `lock_state` in its details, and the result's data carries `project_lock`. The race between the final proof and the launch remains: Unity arbitrates it with its own project lock, and the second instance it refuses is classified `ENGINE_PROJECT_LOCKED` as before, never retried. Processes of other users are not listed; an Editor of another user that holds the project is still seen through the lock query. The rule is measured on macOS; Windows has its own, separately measured proof with the same outcomes ([Windows](#windows-alpha25)). `unity.live-install-bridge` keeps its closed-project rule: any existing lockfile is `ENGINE_PROJECT_LOCKED`.
 
 ## Results
 
@@ -125,6 +125,7 @@ The NUnit results are read strictly: at most 64 MiB, no document type or entity 
 | no results, the log shows a script compilation failure | `FAILED` | `EXECUTION_FAILED` (cause recorded) | none |
 | no results, the log shows no usable licence | `UNAVAILABLE` | `ENGINE_LICENSE_UNAVAILABLE` | none |
 | no results, Unity refused a second instance | `CONFLICT` | `ENGINE_PROJECT_LOCKED` | none |
+| no results, the Package Manager server could not start (measured on Windows) | `FAILED` | `EXECUTION_FAILED` (cause recorded) | none |
 | no results, anything else | `FAILED` | `EXECUTION_FAILED` (unclassified) | none |
 | timeout | `TIMED_OUT` | `EXECUTION_TIMEOUT` | none; artifacts incomplete |
 
@@ -167,17 +168,45 @@ A dry run validates the project path and layout, the version file, the exact Edi
 
 ## Limitations
 
-- macOS only, validated with Unity 6000.5.8f1; exactly one Hub-installed Editor.
+- macOS, validated with Unity 6000.5.8f1; Windows (batch plane only), validated with Unity 6000.6.4f1; exactly one Hub-installed Editor.
 - The log signatures used for classification are version-specific; an unknown failure is reported as unclassified.
 - A run that stops on a compile error, or is killed by its timeout, leaves `Temp/UnityLockfile` behind; the next run proceeds only when the read-only proof shows it unheld with no Unity process for the project (macOS).
 - The results XML embeds local absolute paths; the Editor log contains machine and session identifiers.
 - Package Manager user-level settings are isolated, but the Unity process tree is not network-confined.
+
+## Windows (alpha.25)
+
+Qualified on Windows 11 Enterprise 10.0.26200 with CPython 3.14.8 x64, local NTFS, and **Unity 6000.6.4f1** for the **batch plane only**: `unity.inspect-project`, `unity.run-editmode-tests` and `unity.run-playmode-tests`. Every other capability — the live plane, Scene, asset, prefab and source authoring, and Build Core — is refused on Windows with `PLATFORM_UNSUPPORTED` (`INCOMPATIBLE`) inside the adapter before anything runs, and the probe reports it unavailable. The live plane needs a revised bridge (Phase 2C-9.3b); Build Core builds macOS players only. The macOS declarations and behaviour are unchanged.
+
+**Discovery and version.** The Hub root is `<Program Files>\Unity\Hub\Editor`, with Program Files taken from the Windows known folder (never an environment variable); the Editor is exactly `<version>\Editor\Unity.exe` beneath it, every component an exact directory entry and none of them a reparse point. PATH is never used: neither the Unity CLI (`unity.exe` under the user's local application data) nor Unity Hub's own `unity.exe` is ever taken for the Editor. `Unity.exe -version` (measured: `6000.6.4f1` and CRLF on its redirected standard output) must print exactly the version folder's name, as on macOS.
+
+**Environment.** The Unity process gets the foundation's Windows allowlist plus exactly ProgramData and LOCALAPPDATA: measured, the Package Manager server does not start without both, and nothing else was needed. The GPOS-owned Package Manager configuration and cache are unchanged. Nothing else of the parent environment is inherited. This is not user-profile isolation: Unity finds the user's folders through Windows itself.
+
+**Project lock (D-U4).** The outcomes are those of macOS — `NO_LOCK`, `ACTIVE_EDITOR`, `ORPHAN_UNHELD`, `LOCK_STATE_UNKNOWN` — and the proof runs, as there, before the workspace is prepared and again immediately before the launch ([`project_lock.py`](../gpos/tools/unity/project_lock.py), [`host_win32.py`](../gpos/tools/unity/host_win32.py)).
+
+What was measured first: Unity opens `Temp/UnityLockfile` exclusively, and **a data handle on it opened by any other process makes a starting Editor abort** ("another Unity instance is running with this project open"). An attributes-only handle does not, but it cannot see the lock. The proof therefore never opens the file at all:
+
+- **process proof:** every `Unity.exe` of one bounded process snapshot is opened once for a limited query, and every fact is read through that one handle, so a reused process id can never mix two processes: still running; the image, which must be the discovered Editor (the CLI and Hub's `unity.exe` are not); the token's user, which must be this user (another user's Editor is still seen by the lock query); and the command line, which must carry exactly one absolute `-projectPath` naming this project. Paths are compared as Windows does — `/` and `\`, letter case — through the file system's own resolution. Import workers carry their own `-projectPath` (with `/`) and count as the project's Editor. A `Unity.exe` that cannot be opened, or whose image, user or command line cannot be read, is `PROCESS_STATE_UNKNOWN`;
+- **lock query:** the lockfile is `lstat`ed (a reparse point or anything but a regular file is unknown) and Restart Manager — its documented, read-only session workflow (`RmStartSession`, `RmRegisterResources` for the one file, `RmGetList`, `RmEndSession`; never `RmShutdown` or `RmRestart`) — lists the processes using it. Each listed owner is opened and must still be running with exactly the start time Restart Manager reported; the file must keep its identity across the query. A verified owner is `HELD`; an owner that cannot be verified, a failed query or a changed file is unknown;
+- **two answers:** after the second process proof the lock is queried again, and `ORPHAN_UNHELD` needs both queries empty for the same file. One empty answer never proves an unheld lockfile (Restart Manager also answers "nobody" for a file that does not exist).
+
+Why Restart Manager, measured: it named the Editor with its exact process start time (equal to the creation time the process handle reports), took 50–60 ms per query while the file was held and about 6 ms otherwise, and 222 queries made while an Editor started over an orphan lockfile did not disturb it. Its one side effect is the session's own transient key under the user's `Software\Microsoft\RestartManager` registry key, removed when the session ends. The command line is read with `NtQueryInformationProcess` (process command-line information, Windows 8.1 and later), which Microsoft documents as subject to change: its failure is unknown, never "no Editor". The whole assessment is time-bounded (20 s). Between the final proof and the launch the race remains, as on macOS: Unity arbitrates it, and the instance it refuses is `ENGINE_PROJECT_LOCKED`.
+
+**Processes.** The batch Editor runs inside the alpha.23 Job Object, unchanged. Measured: a cold run starts several hundred processes (the build backend's compiler steps, the Package Manager server, the shader compiler, import workers — themselves `Unity.exe` — and Unity's own watchdogs), all inside the job; none needed to break away. On a normal exit Unity ends its own children; on a failed or aborted run the foundation terminates what was left (`PROCESS_DESCENDANTS_TERMINATED`, `INFO`); a timeout ends the whole tree. Process identity is never taken from parent process ids, which Windows reuses.
+
+**Licensing.** The Editor connects to the licensing client Unity Hub already runs, over its named channel; that client is not part of the job, and GPOS never starts, stops, configures or inspects it. Licence files are never read, copied or changed by GPOS (the licensing client itself rewrites its entitlement file and logs during ordinary licensing). A run with no licensing client running was not measured.
+
+**Side effects on Windows** (measured; nothing is rolled back): the project's `Library/`, `Temp/`, `Logs/`, `UserSettings/` and generated files; Editor preferences in the registry under the user's `Software\Unity Technologies\Unity Editor 5.x` (a first run writes several dozen values; later runs rewrite the recent-project, connection and session values and `RecompileTracker_Times`, which the test suite accepts — any other change fails it); the compiler cache under the user's local application data `Unity\Caches\bee`; analytics under `AppData\LocalLow\Unity`; compiler warm-up files and `DefaultCompany` and `UnityCBMCrashes` folders in the temporary directory; and the licensing logs. The Editor joins player-connection multicast on the local network in batch mode.
+
+**Provenance.** Windows Git provenance is unavailable in this release: the request's subject revision is recorded as given, and no source or build revision is ever inferred.
 
 ## Tests
 
 ```bash
 python3 tests/test_unity_adapter.py
 python3 tests/mutate_unity_adapter.py
+python -X utf8 tests/test_unity_windows.py
+python -X utf8 tests/mutate_unity_windows.py [--real]
 ```
 
 The suite needs exactly one Hub-installed Unity Editor; otherwise it stops with UNITY_RUNTIME_UNAVAILABLE_FOR_PHASE2C5 and never falls back to mocks. Every Unity project is generated by [`tests/unity_fixture_builder.py`](../tests/unity_fixture_builder.py) inside a temporary GPOS project. Stand-in programs cover only deterministic error cases: several or unconfirmed Editors, licence refusal, a refused second instance, missing, malformed, empty or contradictory results, and a timeout. A module guard fails the suite if any Unity Editor preference other than the accepted keys changes or if the user's Package Manager configuration files change (compared by existence, size and time only). The mutation harness runs the suite in its fast mode (GPOS_UNITY_TEST_FAST=1), which starts no real Unity process.

@@ -23,12 +23,14 @@ COUNTS = ("total", "passed", "failed", "skipped", "inconclusive")
 COMPILE_ERROR = "COMPILE_ERROR"
 LICENSE_UNAVAILABLE = "LICENSE_UNAVAILABLE"
 PROJECT_LOCKED = "PROJECT_LOCKED"
+PACKAGE_MANAGER_UNAVAILABLE = "PACKAGE_MANAGER_UNAVAILABLE"   # alpha.25: measured on Windows 6000.6.4f1
 UNCLASSIFIED = "UNCLASSIFIED"
 SIGNATURES = (
     (LICENSE_UNAVAILABLE, ("No valid Unity Editor license found",)),
     (PROJECT_LOCKED, ("another Unity instance is running with this project open",
                       "Multiple Unity instances cannot open the same project")),
     (COMPILE_ERROR, ("Scripts have compiler errors.",)),
+    (PACKAGE_MANAGER_UNAVAILABLE, ("Failed to start the Unity Package Manager local server process",)),
 )
 
 

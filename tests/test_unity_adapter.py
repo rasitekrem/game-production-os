@@ -106,6 +106,8 @@ def upm_config_state():
 
 
 def setUpModule():
+    if sys.platform == "win32":   # alpha.25: a macOS suite; the Windows batch plane is tests/test_unity_windows.py
+        raise unittest.SkipTest("macOS Unity suite: NOT_RUN on Windows (see tests/test_unity_windows.py)")
     if FAST:
         return
     if len(EDITORS) != 1:
@@ -304,7 +306,8 @@ class A_Registration(UnityCase):
         self.assertEqual(tval.validate_descriptor(FW, d, allow_test_only=False), [])
         self.assertEqual((d.adapter_id, d.tool_family, d.target_tool, d.adapter_kind, d.state_model,
                           d.supported_platforms, d.network, d.test_only),
-                         ("unity", "ENGINE", "Unity Editor", "CLI", "STATEFUL", ("MACOS",), "TOOL_INHERENT", False))
+                         ("unity", "ENGINE", "Unity Editor", "CLI", "STATEFUL", ("MACOS", "WINDOWS"), "TOOL_INHERENT",
+                          False))   # alpha.25: Windows for the batch plane only
         # alpha.16: the adapter manages the live plane's long-lived session; each batch capability stays STATELESS
 
     def test_exactly_three_capabilities(self):

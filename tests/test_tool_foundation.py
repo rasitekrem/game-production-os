@@ -1324,7 +1324,7 @@ class L01_Boundaries(TmpCase):
                                    "player/runtime.py", "process.py", "process_win32.py", "provenance.py",
                                    "redaction.py", "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
                                    "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/assets.py", "unity/authoring.py",
-                                   "unity/bridge_install.py", "unity/build.py",
+                                   "unity/bridge_install.py", "unity/build.py", "unity/host_win32.py",
                                "unity/identity.py", "unity/live.py", "unity/live_ipc.py", "unity/live_status.py",
                                "unity/prefabs.py", "unity/project.py", "unity/project_lock.py",
                                    "unity/results.py", "unity/sources.py", "validation.py"])

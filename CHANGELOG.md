@@ -4,6 +4,33 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.25] — Phase 2C-9.3a: Windows Unity batch qualification
+
+Builds on the frozen Phase-2C-9.2 tree (`v1.0.0-alpha.24`, `c6c27a6`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, no new capability, no change to the Unity Editor bridge (`com.gpos.live-bridge` 1.5.0, `gpos.unity.live/5`, 67 files, digest `b7f4775d…`), to Unity Build Core or to the Player Runtime, and the production registry stays at seven adapters. Projects must pin `gpos_version` `1.0.0-alpha.25`.
+
+Qualified on Windows 11 Enterprise 10.0.26200 with CPython 3.14.8 x64, local NTFS and **Unity 6000.6.4f1**, for the Unity **batch plane only**: `unity.inspect-project`, `unity.run-editmode-tests` and `unity.run-playmode-tests`. Every other Unity capability is refused on Windows. Git and ADB stay unavailable on Windows (alpha.24), and Unity results carry no source revision GPOS did not receive.
+
+### Added
+
+- **The Windows Unity batch plane** (`unity` now declares `MACOS` and `WINDOWS`): the Editor is discovered only at `<Program Files>\Unity\Hub\Editor\<version>\Editor\Unity.exe`, with Program Files from the Windows known folder and no reparse point on the way; PATH, the Unity CLI and Unity Hub's own executable are never used. `Unity.exe -version` must print exactly the installation's version. Every capability other than the three batch ones returns `PLATFORM_UNSUPPORTED` on Windows before anything runs, and the probe reports it unavailable.
+- **The Windows project-lock proof** (`gpos/tools/unity/host_win32.py`, a pinned, read-only Windows module; `project_lock.assess_windows`): the alpha.22 outcomes `NO_LOCK`, `ACTIVE_EDITOR`, `ORPHAN_UNHELD` and `LOCK_STATE_UNKNOWN`, from a process proof (every `Unity.exe` opened once; image, user, liveness, start time and the exact `-projectPath` read through that one handle, import workers included) and Restart Manager's read-only owner query (each owner verified by its exact start time), run as process proof, lock query, process proof, lock query: an unheld lockfile needs two agreeing answers for the same file. The lockfile itself is never opened: measured, a data handle on it makes a starting Editor abort. Restart Manager's shutdown and restart calls are forbidden by the static boundary.
+- **The Windows Unity environment:** the foundation's Windows allowlist plus exactly ProgramData and LOCALAPPDATA, measured as the minimum the Package Manager server needs; the GPOS-owned Package Manager configuration and cache are unchanged.
+- **Tests:** `tests/test_unity_windows.py` (WA gating, WB discovery and version, WC the lock proof against a fake host, WD against the real host without Unity, WE environment, WF classification, WG real batch runs, WH the real project lock and Job behaviour, WI user state) and `tests/mutate_unity_windows.py` (fast mutations, and a bounded set of real-Editor mutations run one Editor at a time; a timeout is inconclusive, never caught); P09 in `tests/test_posix_parity.py`.
+
+### Changed
+
+- **Package Manager failure (every host):** a run whose log shows that the Package Manager server could not start is reported with that cause (`FAILED`, `EXECUTION_FAILED`) instead of as unclassified.
+- `project.py` refuses Windows spellings of the unsupported `file:` forms (UNC, `\` separators, alternate data streams).
+- `tests/unity_fixture_builder.py` reads the bundled packages from the Windows Editor layout too.
+
+### Notes
+
+- The Editor's processes all ran inside the alpha.23 Job Object (a cold run starts several hundred); no breakaway was needed and D9 is unchanged. Process identity is never taken from parent process ids.
+- The Editor uses Unity Hub's already running licensing client; GPOS never starts, stops or inspects it, and never reads or changes licence files. A run without that client was not measured.
+- Windows Editor side effects are documented in [tools/unity-adapter.md](tools/unity-adapter.md#windows-alpha25): registry Editor preferences, the compiler cache, analytics and temporary files; no user-profile isolation is claimed.
+- `NtQueryInformationProcess` (process command lines) is documented by Microsoft as subject to change; its failure fails the proof closed.
+- macOS was not executed for this release. The shared changes (the descriptor, the Package Manager classification) are proven exact by source parity (`tests/test_posix_parity.py` P09), which is not a macOS PASS.
+
 ## [1.0.0-alpha.24] — Phase 2C-9.2: Windows qualification of the production tools
 
 Builds on the frozen Phase-2C-9.1 tree (`v1.0.0-alpha.23`, `a025d51`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, no new capability, no change to the Unity Editor bridge (`com.gpos.live-bridge` 1.5.0, `gpos.unity.live/5`, 67 files, digest `b7f4775d…`), to Unity Build Core or to the Player Runtime, and the production registry stays at seven adapters. Projects must pin `gpos_version` `1.0.0-alpha.24`.

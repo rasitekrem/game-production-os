@@ -87,6 +87,8 @@ from . import project as up
 from . import project_lock as pl
 from . import sources
 from . import results as ur
+if sys.platform == "win32":   # alpha.25: read-only Windows host facts (the Program Files known folder)
+    from . import host_win32
 
 ADAPTER_ID = "unity"
 ADAPTER_VERSION = "1.0.0"
@@ -97,6 +99,13 @@ TEST_PLATFORMS = {EDITMODE: "EditMode", PLAYMODE: "PlayMode"}
 
 HUB_ROOTS = {"darwin": ("/Applications/Unity/Hub/Editor",)}      # alpha.15: macOS only
 EDITOR_IN_VERSION_DIR = {"darwin": ("Unity.app", "Contents", "MacOS", "Unity")}
+if sys.platform == "win32":   # alpha.25: <Program Files>\Unity\Hub\Editor\<version>\Editor\Unity.exe; never PATH
+    EDITOR_IN_VERSION_DIR["win32"] = ("Editor", "Unity.exe")
+# alpha.25: the only capabilities qualified on Windows (the batch plane). Every other one is refused there with
+# PLATFORM_UNSUPPORTED: the live plane needs bridge 1.6.0 (Phase 2C-9.3b) and Build Core builds macOS players only.
+WINDOWS_CAPABILITIES = (INSPECT, EDITMODE, PLAYMODE)
+# alpha.25 (lab-measured): the Package Manager server does not start without these two; nothing else is inherited
+WINDOWS_ENVIRONMENT = ("ProgramData", "LOCALAPPDATA")
 PROBE_TIMEOUT = 120.0
 CAPTURE_BYTES = 1024 * 1024
 RESULTS_NAME = "results.xml"
@@ -463,12 +472,15 @@ CAPABILITIES = (
 
 DESCRIPTOR = model.AdapterDescriptor(
     adapter_id=ADAPTER_ID, adapter_version=ADAPTER_VERSION, tool_family="ENGINE", target_tool="Unity Editor",
-    adapter_kind="CLI", state_model="STATEFUL", supported_platforms=("MACOS",), capabilities=CAPABILITIES,
+    adapter_kind="CLI", state_model="STATEFUL", supported_platforms=("MACOS", "WINDOWS"), capabilities=CAPABILITIES,
     network="TOOL_INHERENT", network_disclosure=NETWORK_DISCLOSURE,
     availability="exactly one Unity Editor installed under the Unity Hub Editor root "
-                  "(/Applications/Unity/Hub/Editor/<version>/Unity.app); PATH is never used",
+                  "(/Applications/Unity/Hub/Editor/<version>/Unity.app on macOS, <Program Files>\\Unity\\Hub\\Editor"
+                  "\\<version>\\Editor\\Unity.exe on Windows); PATH is never used",
     compatibility_notes=(
-        "Alpha.15 supports exactly one usable Hub-installed Editor and macOS only.",
+        "Alpha.15 supports exactly one usable Hub-installed Editor and macOS only. Alpha.25 adds Windows for the "
+        "batch plane only (inspect-project, run-editmode-tests, run-playmode-tests); every other capability is "
+        "refused on Windows (PLATFORM_UNSUPPORTED).",
         "Fixed batch command: no caller executable, argument, method, C#, filter, graphics mode or network setting.",
         "Remote package sources are refused; Package Manager configuration and cache are isolated per project.",
         "One adapter, two planes: the batch plane is process-driven (fixed batch-mode Editor invocations, each "
@@ -507,6 +519,10 @@ class UnityAdapter(model.ToolAdapter):
         self._capture_bytes = capture_bytes
         self._live_seams = dict(live_seams or {})
         self._lock_proof = lock_proof or pl.assess
+        if sys.platform == "win32":   # alpha.25: the Program Files known folder, never an environment variable
+            if hub_roots is None and self._platform == "win32":
+                base = host_win32.program_files()
+                self._hub_roots = (os.path.join(base, "Unity", "Hub", "Editor"),) if base else ()
 
     # ------------------------------------------------------------ discovery and probe
 
@@ -537,9 +553,13 @@ class UnityAdapter(model.ToolAdapter):
                     path = path / part
                 if ok and path.is_file() and not path.is_symlink() and os.access(path, os.X_OK):
                     found.append((version, str(path)))
+        if sys.platform == "win32":   # alpha.25: no component may be a reparse point (junction, link, mount point)
+            found = [(v, p) for v, p in found if not _windows_reparse_on_way(p)]
         return found
 
     def probe(self):
+        if sys.platform == "win32":
+            return self._windows_probe()
         platform = model.current_platform()
         unusable = lambda reason: tuple((c.id, not c.requires_tool, "" if not c.requires_tool else reason)
                                         for c in CAPABILITIES)
@@ -578,10 +598,52 @@ class UnityAdapter(model.ToolAdapter):
                                  platform=platform, detail=f"Unity Editor {version} at {executable}",
                                  capability_availability=tuple((c.id, True, "") for c in CAPABILITIES))
 
+    def _windows_probe(self):
+        """The Windows probe (alpha.25): the alpha.15 probe, with only the batch plane reported usable."""
+        platform = model.current_platform()
+        windows = lambda c: c.id in WINDOWS_CAPABILITIES
+        unusable = lambda reason: tuple((c.id, windows(c) and not c.requires_tool,
+                                         "" if windows(c) and not c.requires_tool else
+                                         (reason if windows(c) else WINDOWS_REFUSAL)) for c in CAPABILITIES)
+        editors = self.discover()
+        if not editors:
+            return model.ProbeResult(ADAPTER_ID, model.UNAVAILABLE, platform=platform,
+                                     detail="no Unity Editor is installed under the Unity Hub Editor root",
+                                     capability_availability=unusable("Unity Editor not found"))
+        if len(editors) > 1:
+            return model.ProbeResult(ADAPTER_ID, model.VERSION_UNSUPPORTED, platform=platform,
+                                     detail=f"{len(editors)} Unity Editors are installed "
+                                            f"({', '.join(v for v, _ in editors)}); this release supports exactly one",
+                                     capability_availability=unusable("more than one Unity Editor installed"))
+        version, executable = editors[0]
+        neutral = str(Path(tempfile.gettempdir()).resolve())
+        try:
+            out = proc.run_process(proc.ToolProcessSpec(executable=executable, argv=("-version",), cwd=neutral,
+                                                        timeout=PROBE_TIMEOUT, env=proc.EnvironmentPolicy()), [neutral])
+        except proc.ProcessSpecError as exc:
+            return model.ProbeResult(ADAPTER_ID, model.UNAVAILABLE, tool_path=executable, platform=platform,
+                                     detail=f"the Unity Editor could not be started: {exc}",
+                                     capability_availability=unusable("Unity Editor could not be started"))
+        printed = bytes(out.raw_stdout).decode("utf-8", errors="replace").strip()
+        if out.timed_out or out.truncated or out.exit_code != 0 or printed != version:
+            return model.ProbeResult(ADAPTER_ID, model.VERSION_UNSUPPORTED, tool_path=executable, platform=platform,
+                                     detail=f"`Unity -version` did not report the installation's version {version} "
+                                            f"(exit {out.exit_code})",
+                                     capability_availability=unusable("Unity Editor version not established"))
+        return model.ProbeResult(ADAPTER_ID, model.AVAILABLE, tool_path=executable, tool_version=version,
+                                 platform=platform, detail=f"Unity Editor {version} at {executable} (Windows: batch "
+                                                           f"plane only)",
+                                 capability_availability=tuple((c.id, windows(c), "" if windows(c) else WINDOWS_REFUSAL)
+                                                               for c in CAPABILITIES))
+
     # ------------------------------------------------------------ execution
 
     def execute(self, request, context):
         cap = request.capability_id
+        if sys.platform == "win32":   # alpha.25: Windows qualifies the batch plane only
+            if cap not in WINDOWS_CAPABILITIES:
+                return AdapterOutcome(ok=True, diagnostics=(dg.make("PLATFORM_UNSUPPORTED", f"{cap}: {WINDOWS_REFUSAL}",
+                                                                    ADAPTER_ID, cap),))
         if cap in live.CAPABILITY_IDS:
             return live.execute(request, context, **self._live_seams)
         if cap in authoring.CAPABILITY_IDS:
@@ -707,6 +769,8 @@ class UnityAdapter(model.ToolAdapter):
                 ADAPTER_ID, cap),), **base)
         detail = ("script compilation failed before the test run started; no results were written"
                   if cause == ur.COMPILE_ERROR else
+                  "Unity's Package Manager server could not start, so the project could not be opened; no results "
+                  "were written" if cause == ur.PACKAGE_MANAGER_UNAVAILABLE else
                   f"Unity exited {outcome.exit_code} without test results; the cause could not be classified from "
                   f"its log")
         return AdapterOutcome(ok=False, exit_code=outcome.exit_code, detail=detail, data=dict(data, cause=cause), **base)
@@ -911,10 +975,34 @@ def test_argv(project, workspace, platform):
 def upm_environment(workspace, cache):
     """The foundation's allowlist plus isolated Package Manager configuration and cache (absolute paths)."""
     workspace = Path(workspace)
+    if sys.platform == "win32":   # alpha.25: plus exactly the two variables the Package Manager server needs
+        return proc.EnvironmentPolicy(
+            inherit=proc.SAFE_ENV_DEFAULTS + proc.WINDOWS_ENV_DEFAULTS + WINDOWS_ENVIRONMENT, overrides=(
+                ("UPM_USER_CONFIG_FILE", str((workspace / UPM_USER_NAME).resolve())),
+                ("UPM_GLOBAL_CONFIG_FILE", str((workspace / UPM_GLOBAL_NAME).resolve())),
+                ("UPM_CACHE_ROOT", str(Path(cache).resolve()))))
     return proc.EnvironmentPolicy(overrides=(
         ("UPM_USER_CONFIG_FILE", str((workspace / UPM_USER_NAME).resolve())),
         ("UPM_GLOBAL_CONFIG_FILE", str((workspace / UPM_GLOBAL_NAME).resolve())),
         ("UPM_CACHE_ROOT", str(Path(cache).resolve()))))
+
+
+WINDOWS_REFUSAL = ("not available on Windows in this release (alpha.25 qualifies the batch plane only: inspect-project, "
+                   "run-editmode-tests, run-playmode-tests)")
+
+
+def _windows_reparse_on_way(executable):
+    """True when the Editor path, or any folder on the way to it, is a reparse point (alpha.25, Windows)."""
+    path = Path(executable)
+    for part in [path, *path.parents]:
+        if part == part.parent:
+            break
+        try:
+            if host_win32.is_reparse(os.lstat(part)):
+                return True
+        except OSError:
+            return True
+    return False
 
 
 LOCK_MESSAGES = {

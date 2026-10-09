@@ -28,7 +28,7 @@ import posix_parity as pp  # noqa: E402
 
 FIXTURE = json.loads((ROOT / "tests" / "fixtures" / "posix-parity-alpha22.json").read_bytes().decode("utf-8"))
 BRIDGE_DIGEST = "b7f4775d4f1e807136df0978d27218eac20dbe5e163fe23618fd84a17a62ea16"
-VERSION_FROZEN, VERSION_NOW = b"1.0.0-alpha.22", b"1.0.0-alpha.24"
+VERSION_FROZEN, VERSION_NOW = b"1.0.0-alpha.22", b"1.0.0-alpha.25"
 
 # The only frozen files alpha.23 and alpha.24 edit. Every other file under core/, schemas/, skills/, workflows/,
 # templates/ and gpos/ is byte-identical to alpha.22.
@@ -37,7 +37,9 @@ EDITED = {"gpos/tools/artifacts.py", "gpos/tools/cli.py", "gpos/tools/diagnostic
           "gpos/tools/synthetic/helper.py", "gpos/tools/unity/project_lock.py",
           # alpha.24 (2C-9.2): Windows discovery guards, D-B1/D-B2/D-B3, D-W1 and the ADB server classification
           "gpos/tools/adb/adapter.py", "gpos/tools/blender/adapter.py", "gpos/tools/ffmpeg/adapter.py",
-          "gpos/tools/ffprobe/adapter.py", "gpos/tools/git/adapter.py"}
+          "gpos/tools/ffprobe/adapter.py", "gpos/tools/git/adapter.py",
+          # alpha.25 (2C-9.3a): the Windows Unity batch plane
+          "gpos/tools/unity/adapter.py", "gpos/tools/unity/project.py", "gpos/tools/unity/results.py"}
 
 # Every alpha.22 unit whose POSIX code changed beyond guarded `if sys.platform == "win32":` statements, and why. The
 # mechanical checks below narrow several of them further; the rest are the shared changes a macOS regression covers.
@@ -85,6 +87,17 @@ DELIBERATE = {
     ("gpos/tools/blender/adapter.py", "def BlenderAdapter.execute"):
         "D-B1: a workspace render path holding `#`, `{` or `}` is refused before Blender starts; it applies on every "
         "host (a macOS regression covers it); the other alpha.24 statements are Windows guards",
+    # alpha.25 (2C-9.3a); P09 proves each is exactly the change named
+    ("gpos/tools/unity/adapter.py", "assign DESCRIPTOR"):
+        "WINDOWS appended to supported_platforms (the batch plane only; every other capability is refused on Windows "
+        "inside execute), the availability text and the first compatibility note name it; MACOS is declared exactly "
+        "as before",
+    ("gpos/tools/unity/adapter.py", "def UnityAdapter._classify"):
+        "one more cause in the no-results message (the Package Manager server could not start); every other branch "
+        "is unchanged and a macOS log without that text is classified exactly as before",
+    ("gpos/tools/unity/results.py", "assign SIGNATURES"):
+        "one more signature appended last (the Package Manager server failure, measured on Windows); the alpha.22 "
+        "signatures keep their order, so a log they match is classified exactly as before",
 }
 IMPORT_CHANGES = {("gpos/tools/unity/project_lock.py", "import fcntl"):
                   "imported in try/except ImportError (fcntl = None on Windows); the macOS-only proofs never run there"}
@@ -100,7 +113,7 @@ class P01_FrozenFilesAreByteIdentical(unittest.TestCase):
                          ("v1.0.0-alpha.22", "92ca10b582f1633201810781c11095a8db1ca21b"))
 
     def test_every_frozen_file_not_deliberately_edited_is_byte_identical_but_for_the_version(self):
-        """A release bumps `1.0.0-alpha.22` to `1.0.0-alpha.24` (tests/validate_framework.py X05). That is the only
+        """A release bumps `1.0.0-alpha.22` to `1.0.0-alpha.25` (tests/validate_framework.py X05). That is the only
         change a frozen file outside EDITED may carry: putting the old version back gives its exact alpha.22 bytes."""
         for rel, digest in FIXTURE["frozen"].items():
             with self.subTest(file=rel):
@@ -125,7 +138,8 @@ class P01_FrozenFilesAreByteIdentical(unittest.TestCase):
                                                               "gpos")
                      for p in (ROOT / d).rglob("*") if p.is_file() and "__pycache__" not in p.parts
                      and p.relative_to(ROOT).as_posix() not in FIXTURE["frozen"])
-        self.assertEqual(new, ["gpos/tools/executables.py", "gpos/tools/paths_win32.py", "gpos/tools/process_win32.py"])
+        self.assertEqual(new, ["gpos/tools/executables.py", "gpos/tools/paths_win32.py", "gpos/tools/process_win32.py",
+                               "gpos/tools/unity/host_win32.py"])
 
 
 class P02_PosixUnitsAreUnchanged(unittest.TestCase):
@@ -269,6 +283,51 @@ class P08_Alpha24SharedChanges(unittest.TestCase):
         self.assertTrue(ast.unparse(statement.body[0]).startswith("return _refuse(cap,"))
         parent.body.remove(statement)
         self.assertAlpha22("gpos/tools/blender/adapter.py", "def BlenderAdapter.execute", node)
+
+
+class P09_Alpha25SharedChanges(unittest.TestCase):
+    """Each alpha.25 shared change is exactly the one named in DELIBERATE: undoing it gives the alpha.22 fingerprint."""
+
+    def node(self, rel, unit):
+        return P08_Alpha24SharedChanges.node(self, rel, unit)
+
+    def assertAlpha22(self, rel, unit, node):
+        P08_Alpha24SharedChanges.assertAlpha22(self, rel, unit, node)
+
+    def test_the_unity_descriptor_only_adds_windows(self):
+        rel = "gpos/tools/unity/adapter.py"
+        node = self.node(rel, "assign DESCRIPTOR")
+        kw = {k.arg: k for k in node.value.keywords}
+        self.assertEqual(ast.literal_eval(kw["supported_platforms"].value), ("MACOS", "WINDOWS"))
+        kw["supported_platforms"].value = ast.parse('("MACOS",)', mode="eval").body
+        kw["availability"].value = ast.parse(
+            '"exactly one Unity Editor installed under the Unity Hub Editor root '
+            '(/Applications/Unity/Hub/Editor/<version>/Unity.app); PATH is never used"', mode="eval").body
+        notes = kw["compatibility_notes"].value
+        self.assertIn("Alpha.25 adds Windows for the batch plane only", ast.literal_eval(notes.elts[0]))
+        notes.elts[0] = ast.parse('"Alpha.15 supports exactly one usable Hub-installed Editor and macOS only."',
+                                  mode="eval").body
+        self.assertAlpha22(rel, "assign DESCRIPTOR", node)
+
+    def test_the_classifier_only_adds_the_package_manager_message(self):
+        rel = "gpos/tools/unity/adapter.py"
+        node = self.node(rel, "def UnityAdapter._classify")
+        hits = [n for n in ast.walk(node) if isinstance(n, ast.IfExp)
+                and "PACKAGE_MANAGER_UNAVAILABLE" in ast.unparse(n.test)]
+        self.assertEqual(len(hits), 1)
+        added = hits[0]
+        for parent in ast.walk(node):
+            if isinstance(parent, ast.IfExp) and parent.orelse is added:
+                parent.orelse = added.orelse            # drop exactly the new branch
+        self.assertAlpha22(rel, "def UnityAdapter._classify", node)
+
+    def test_the_signatures_only_append_the_package_manager_failure(self):
+        rel = "gpos/tools/unity/results.py"
+        node = self.node(rel, "assign SIGNATURES")
+        last = node.value.elts[-1]
+        self.assertEqual(ast.unparse(last.elts[0]), "PACKAGE_MANAGER_UNAVAILABLE")
+        node.value.elts.pop()
+        self.assertAlpha22(rel, "assign SIGNATURES", node)
 
 
 class P07_FrozenBoundaries(unittest.TestCase):

@@ -55,6 +55,11 @@ def compile_and_run(sources, work):
     return ran, ran.stdout + ran.stderr
 
 
+
+def setUpModule():
+    if sys.platform == "win32":   # alpha.25: a macOS suite; the Windows batch plane is tests/test_unity_windows.py
+        raise unittest.SkipTest("macOS Unity suite: NOT_RUN on Windows (see tests/test_unity_windows.py)")
+
 class CoreSuite(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="gpos-live-core-")

@@ -23,6 +23,7 @@ Messages name the rule and the package, never a URL or a path.
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 LAYOUT = ("Assets", "Packages", "ProjectSettings")
@@ -148,6 +149,9 @@ def _local_package(value, packages_dir, root, name):
     raw = value[len("file:"):]
     if not raw or raw.startswith("//") or any(c in raw for c in "?#") or raw.rstrip("/").endswith(".git"):
         raise ProjectProblem("PACKAGE_SOURCE", f"dependency {name!r} uses an unsupported file: form")
+    if sys.platform == "win32":   # alpha.25: the same rules for Windows spellings (UNC, `\\` separators, any case)
+        if raw.startswith(("\\\\", "/\\", "\\/")) or raw.rstrip("/\\").lower().endswith(".git") or ":" in raw[2:]:
+            raise ProjectProblem("PACKAGE_SOURCE", f"dependency {name!r} uses an unsupported file: form")
     target = os.path.realpath(raw if os.path.isabs(raw) else os.path.join(packages_dir, raw))
     if not _inside(target, root):
         raise ProjectProblem("PACKAGE_SOURCE", f"dependency {name!r} resolves outside the GPOS project root")

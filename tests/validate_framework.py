@@ -49,7 +49,7 @@ GATES = REGISTRY["gates"]
 SUBJECTIVE_DISCIPLINE_GATES = sorted(g for g, d in GATES.items() if d["subjective"] and g != "HUMAN_REVIEW")
 TRIGGERS = list(REGISTRY["mandatory_human_review_triggers"])
 CONDITIONS = list(REGISTRY["evidence_conditions"])
-VERSION = "1.0.0-alpha.24"
+VERSION = "1.0.0-alpha.25"
 GATE_OWNERS = [s for s in REGISTRY["skills"] if any(s in d["permitted_owners"] for d in GATES.values())] + ["HUMAN"]
 
 
@@ -862,6 +862,9 @@ def phase_boundary_problems():
 # its reviewed kernel32 functions. Nothing in gpos/ may start a process any other way.
 PROCESS_BACKEND = "gpos/tools/process_win32.py"
 WIN32_FS = "gpos/tools/paths_win32.py"
+# alpha.25: the Unity batch plane's read-only Windows host facts (process facts, the Restart Manager owner query and the
+# Program Files known folder). It starts, signals and terminates nothing and never opens Temp/UnityLockfile.
+UNITY_HOST = "gpos/tools/unity/host_win32.py"
 WIN32_ALLOWED = {
     PROCESS_BACKEND: {"CreateProcessW", "InitializeProcThreadAttributeList", "UpdateProcThreadAttribute",
                       "DeleteProcThreadAttributeList", "CreateJobObjectW", "SetInformationJobObject",
@@ -870,14 +873,22 @@ WIN32_ALLOWED = {
                       "OpenProcess", "CloseHandle"},
     WIN32_FS: {"CreateFileW", "GetFileInformationByHandle", "GetFinalPathNameByHandleW",
                "GetVolumeInformationByHandleW", "GetDriveTypeW", "SetFileInformationByHandle", "CloseHandle"},
+    UNITY_HOST: {"CreateToolhelp32Snapshot", "Process32FirstW", "Process32NextW", "OpenProcess", "CloseHandle",
+                 "GetExitCodeProcess", "QueryFullProcessImageNameW", "GetProcessTimes", "GetCurrentProcess",
+                 "LocalFree", "OpenProcessToken", "GetTokenInformation", "EqualSid", "NtQueryInformationProcess",
+                 "CommandLineToArgvW", "SHGetKnownFolderPath", "CLSIDFromString", "CoTaskMemFree", "RmStartSession",
+                 "RmRegisterResources", "RmGetList", "RmEndSession"},
 }
 WIN32_IMPORTERS = {PROCESS_BACKEND: {"gpos/tools/process.py"},
                    WIN32_FS: {"gpos/tools/paths.py", "gpos/tools/artifacts.py", "gpos/tools/leases.py",
-                              "gpos/tools/execution.py", PROCESS_BACKEND}}
+                              "gpos/tools/execution.py", PROCESS_BACKEND},
+                   UNITY_HOST: {"gpos/tools/unity/adapter.py", "gpos/tools/unity/project_lock.py"}}
 WIN32_FORBIDDEN_NAMES = {"CreateProcessA", "CreateProcessAsUserW", "CreateProcessAsUserA", "CreateProcessWithLogonW",
                          "CreateProcessWithTokenW", "ShellExecuteW", "ShellExecuteA", "ShellExecuteExW",
                          "ShellExecuteExA", "WinExec", "CreateRemoteThread", "startfile", "GenerateConsoleCtrlEvent",
-                         "NtCreateProcess", "NtCreateUserProcess", "RtlCreateUserProcess"}
+                         "NtCreateProcess", "NtCreateUserProcess", "RtlCreateUserProcess",
+                         # alpha.25: Restart Manager is used for its read-only owner query only
+                         "RmShutdown", "RmRestart", "RmAddFilter", "RmRemoveFilter"}
 # Foundation modules whose text I/O must name its encoding (the Windows locale is not UTF-8). The three frozen
 # Player/Unity sites that do not are macOS-only and are fixed with their own Windows phases.
 FOUNDATION_TEXT_IO = ("gpos/tools/process.py", PROCESS_BACKEND, "gpos/tools/paths.py", WIN32_FS, "gpos/tools/leases.py",

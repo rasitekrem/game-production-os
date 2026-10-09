@@ -81,8 +81,12 @@ BROKEN = "public class GposBroken { void M() { int x = ; } }\n"
 
 def bundled_version(editor_executable, package):
     """The version of a package bundled with the installed Editor (read from its own package.json)."""
-    app = Path(editor_executable).parents[2]            # .../Unity.app
-    return json.loads((app / BUILT_IN / package / "package.json").read_text())["version"]
+    exe = Path(editor_executable)
+    if exe.name.lower() == "unity.exe":                 # alpha.25, Windows: <...>\Editor\Unity.exe
+        base = exe.parent / "Data" / "Resources" / "PackageManager" / "BuiltInPackages"
+    else:
+        base = exe.parents[2] / BUILT_IN                # .../Unity.app
+    return json.loads((base / package / "package.json").read_text(encoding="utf-8"))["version"]
 
 
 def manifest(editor_executable):

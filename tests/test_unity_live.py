@@ -957,6 +957,8 @@ def upm_config_state():
 
 
 def setUpModule():
+    if sys.platform == "win32":   # alpha.25: a macOS suite; the Windows batch plane is tests/test_unity_windows.py
+        raise unittest.SkipTest("macOS Unity suite: NOT_RUN on Windows (see tests/test_unity_windows.py)")
     if FAST:
         return
     if len(EDITORS) != 1:

@@ -27,6 +27,23 @@ whole-file write lock. No lock is ever taken, and the file is never written, tru
 
 Between the final proof and the launch there is an unavoidable race; Unity arbitrates it with its own project lock
 (a second Editor refuses the project) and the adapter reports that refusal as ENGINE_PROJECT_LOCKED.
+
+Windows (alpha.25) keeps the same four outcomes and the same order — process proof, lock query, process proof — and
+adds a second lock query, so an unheld lockfile is never concluded from one answer. Unity opens Temp/UnityLockfile
+exclusively, and any data handle another process holds on it makes a starting Editor abort; so the Windows proof never
+opens the file at all (alpha.25 lab measurement):
+
+    process proof   every `Unity.exe` of the snapshot is opened once for a limited query; every fact comes from that
+                    one handle: still running, the image (it must be the discovered Editor), this user's token, and the
+                    command line, which must carry exactly one absolute `-projectPath` (import workers carry their own,
+                    with `/` separators). An unopenable `Unity.exe`, an unreadable image, user or command line is
+                    PROCESS_STATE_UNKNOWN.
+    lock query      the file is lstat'ed (a reparse point or anything but a regular file is unknown); Restart Manager
+                    lists the processes using it; each listed owner is opened, must still be running and must have
+                    exactly the start time Restart Manager reported (a reused pid is unknown); the file must have the
+                    same identity after the query. A verified owner is HELD; an owner that cannot be verified is UNKNOWN.
+
+The native calls live in unity/host_win32.py.
 """
 
 import ctypes
@@ -41,6 +58,8 @@ try:
     import fcntl
 except ImportError:  # alpha.23: Windows has no fcntl; the macOS-only proofs below never run there (Darwin.supported)
     fcntl = None
+if sys.platform == "win32":   # alpha.25: the read-only Windows host facts
+    from . import host_win32
 
 MATCHING_EDITOR, NO_MATCH_PROVEN, PROCESS_STATE_UNKNOWN = "MATCHING_EDITOR", "NO_MATCH_PROVEN", "PROCESS_STATE_UNKNOWN"
 NO_LOCK, ACTIVE_EDITOR, ORPHAN_UNHELD, LOCK_STATE_UNKNOWN = "NO_LOCK", "ACTIVE_EDITOR", "ORPHAN_UNHELD", "LOCK_STATE_UNKNOWN"
@@ -325,6 +344,8 @@ def lock_facts(project, osx=DARWIN):
 
 def assess(project, editor, osx=DARWIN):
     """The project's effective lock state (Assessment). The process proof runs before and after the lock query."""
+    if sys.platform == "win32":   # alpha.25: the Windows proof (a test may inject its own host for `osx`)
+        return assess_windows(project, editor, None if osx is DARWIN else osx)
     project = str(project)
     a = Assessment(state=LOCK_STATE_UNKNOWN)
     first = process_proof(project, editor, osx)
@@ -354,4 +375,163 @@ def assess(project, editor, osx=DARWIN):
     if a.state == ORPHAN_UNHELD:
         a.reasons.append("Temp/UnityLockfile is a regular file nobody holds, and no Unity process of this user has the "
                          "project open")
+    return a
+
+
+# ---------------------------------------------------------------- Windows (alpha.25)
+
+MAX_PROOF_SECONDS = 20.0           # the whole Windows assessment; beyond it the state is unknown
+_PATHS = type("_Paths", (), {"stat": staticmethod(os.stat), "realpath": staticmethod(os.path.realpath)})()
+
+
+def _same_file(a, b):
+    """Case-insensitive identity of two Windows paths (`/` and `\\` are the same separator)."""
+    norm = lambda p: os.path.normcase(os.path.realpath(p))
+    return norm(a) == norm(b)
+
+
+def windows_process_proof(project, editor, host):
+    """(MATCHING_EDITOR | NO_MATCH_PROVEN | PROCESS_STATE_UNKNOWN, reason or None) for this user's Editor processes."""
+    try:
+        listed, problem = host.processes()
+        if problem:
+            return PROCESS_STATE_UNKNOWN, problem
+        matched, candidates = False, 0
+        for pid, name in listed:
+            if name.lower() != "unity.exe":
+                continue
+            process, problem = host.open_process(pid)
+            if process is None:
+                if problem is None:          # gone meanwhile: it holds nothing
+                    continue
+                return PROCESS_STATE_UNKNOWN, f"process {pid} may be a Unity Editor and cannot be inspected ({problem})"
+            with process:
+                running = process.running()
+                if running is False:
+                    continue
+                image = process.image()
+                if running is None or image is None:
+                    return PROCESS_STATE_UNKNOWN, f"Unity process {pid} cannot be inspected"
+                if not _same_file(image, editor):
+                    continue                 # the Unity CLI, Hub's own unity.exe, or another installation
+                user = process.same_user()
+                if user is None:
+                    return PROCESS_STATE_UNKNOWN, f"the user of Unity process {pid} cannot be established"
+                if not user:
+                    continue                 # another user's Editor is still seen through the lock query
+                candidates += 1
+                if candidates > MAX_CANDIDATES:
+                    return PROCESS_STATE_UNKNOWN, "more Unity Editor processes than the proof inspects"
+                argv, problem = process.argv()
+                if argv is None:
+                    return PROCESS_STATE_UNKNOWN, f"the arguments of Unity process {pid} cannot be read ({problem})"
+                verdict, why = _project_of(argv, project, _PATHS)
+                if verdict == PROCESS_STATE_UNKNOWN:
+                    return verdict, f"Unity process {pid}: {why}"
+                matched = matched or verdict == MATCHING_EDITOR
+        return (MATCHING_EDITOR, None) if matched else (NO_MATCH_PROVEN, None)
+    except (OSError, ValueError, AttributeError) as exc:
+        return PROCESS_STATE_UNKNOWN, f"the process proof failed ({type(exc).__name__})"
+
+
+def windows_lock_facts(project, host):
+    """(ABSENT | HELD | UNHELD | UNKNOWN, reason or None, identity or None) of Temp/UnityLockfile. The file is never
+    opened: Restart Manager names the processes using it."""
+    temp = os.path.join(project, LOCKFILE[0])
+    lock = os.path.join(temp, LOCKFILE[1])
+    try:
+        st = os.lstat(temp)
+    except FileNotFoundError:
+        return ABSENT, None, None
+    except OSError as exc:
+        return UNKNOWN, f"Temp/ cannot be examined ({type(exc).__name__})", None
+    if host_win32.is_reparse(st) or not stat.S_ISDIR(st.st_mode):
+        return UNKNOWN, "Temp/ is a reparse point or not a folder", None
+    try:
+        before = os.lstat(lock)
+    except FileNotFoundError:
+        return ABSENT, None, None
+    except OSError as exc:
+        return UNKNOWN, f"the lockfile cannot be examined ({type(exc).__name__})", None
+    if host_win32.is_reparse(before) or not stat.S_ISREG(before.st_mode):
+        return UNKNOWN, "the lockfile is a reparse point or not a regular file", None
+    identity = (before.st_dev, before.st_ino)
+    try:
+        owners, problem = host.lock_owners(lock)
+    except (OSError, ValueError) as exc:
+        return UNKNOWN, f"the lock query failed ({type(exc).__name__})", None
+    if problem:
+        return UNKNOWN, problem, None
+    try:
+        after = os.lstat(lock)
+    except FileNotFoundError:
+        return UNKNOWN, "the lockfile disappeared while it was examined", None
+    except OSError as exc:
+        return UNKNOWN, f"the lockfile cannot be examined ({type(exc).__name__})", None
+    if (after.st_dev, after.st_ino) != identity or host_win32.is_reparse(after):
+        return UNKNOWN, "the lockfile changed while it was examined", None
+    for pid, started in owners:
+        process, problem = host.open_process(pid)
+        if process is None:
+            return UNKNOWN, (f"process {pid} uses the lockfile and cannot be verified ({problem})" if problem else
+                             f"process {pid} used the lockfile and has exited"), None
+        with process:
+            if process.running() is not True or process.created() != started:
+                return UNKNOWN, f"the lockfile user {pid} is not the process Restart Manager reported", None
+        return HELD, f"process {pid} has Temp/UnityLockfile open", identity
+    return UNHELD, None, identity
+
+
+def assess_windows(project, editor, host=None):
+    """The Windows assessment: process proof, lock query, process proof, lock query — the two lock answers must agree."""
+    import time
+    host = host or host_win32
+    project = str(project)
+    deadline = time.monotonic() + MAX_PROOF_SECONDS
+    a = Assessment(state=LOCK_STATE_UNKNOWN)
+
+    def late():
+        if time.monotonic() > deadline:
+            a.state = LOCK_STATE_UNKNOWN
+            a.reasons.append("the project-lock proof exceeded its time bound")
+            return True
+        return False
+
+    first = windows_process_proof(project, editor, host)
+    a.processes.append(first)
+    if first[0] == MATCHING_EDITOR:
+        a.state = ACTIVE_EDITOR
+        a.reasons.append("a Unity process of this user has this project open")
+        return a
+    lock, why, identity = windows_lock_facts(project, host)
+    a.lock = lock
+    if lock == HELD:
+        a.state = ACTIVE_EDITOR
+        a.reasons.append(why)
+        return a
+    if lock == UNKNOWN or first[0] != NO_MATCH_PROVEN or late():
+        a.reasons.extend(r for r in (why, first[1]) if r)
+        return a
+    final = windows_process_proof(project, editor, host)
+    a.processes.append(final)
+    if final[0] == MATCHING_EDITOR:
+        a.state = ACTIVE_EDITOR
+        a.reasons.append("a Unity process of this user opened this project during the proof")
+        return a
+    if final[0] != NO_MATCH_PROVEN:
+        a.reasons.append(final[1])
+        return a
+    again, why, identity_again = windows_lock_facts(project, host)
+    if again == HELD:
+        a.state, a.lock = ACTIVE_EDITOR, HELD
+        a.reasons.append(why)
+        return a
+    if again != lock or identity_again != identity or late():
+        a.lock = UNKNOWN
+        a.reasons.append(why or "the lockfile changed during the proof")
+        return a
+    a.state = NO_LOCK if lock == ABSENT else ORPHAN_UNHELD
+    if a.state == ORPHAN_UNHELD:
+        a.reasons.append("Temp/UnityLockfile is a regular file nobody holds (two Restart Manager queries agree), and no "
+                         "Unity process of this user has the project open")
     return a

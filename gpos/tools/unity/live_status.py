@@ -22,6 +22,7 @@ never authoritative on its own: it counts only together with a process proven go
 
 import datetime
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -158,3 +159,43 @@ def classify(holder, state, lease_editor, bridge_editor, now_epoch=None):
 def _epoch(text):
     t = parse_utc(text)
     return t.timestamp() if t else None
+
+
+if sys.platform == "win32":   # alpha.26 (Phase 2C-9.3b): the Windows Editor identity
+    # The bridge publishes editor_started_utc as Process.GetCurrentProcess().StartTime in .NET round-trip form: the
+    # operating system's creation time of the Editor process (GetProcessTimes), not the bridge's start, with seven
+    # fractional digits (100 ns, FILETIME resolution). R2 measured it equal to GetProcessTimes through the same
+    # process handle. The Windows proof compares the exact FILETIME: no truncation to microseconds, no tolerance.
+    from . import project_lock as _pl
+
+    FILETIME_UTC = re.compile(r"^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)\.(\d{7})Z$")
+    _EPOCH_1601 = datetime.datetime(1601, 1, 1, tzinfo=datetime.timezone.utc)
+
+    def filetime_of(text):
+        """The exact FILETIME (100 ns since 1601-01-01 UTC) of a .NET round-trip UTC timestamp, or None."""
+        m = FILETIME_UTC.match(text) if isinstance(text, str) else None
+        if not m:
+            return None
+        try:
+            moment = datetime.datetime(*map(int, m.groups()[:6]), tzinfo=datetime.timezone.utc)
+        except ValueError:
+            return None
+        delta = moment - _EPOCH_1601
+        return (delta.days * 86400 + delta.seconds) * 10_000_000 + int(m.group(7))
+
+    def _hub_editor(version):
+        """The one discovered Hub Editor executable for this version, or None."""
+        from .adapter import UnityAdapter
+        found = [path for v, path in UnityAdapter().discover() if v == version]
+        return found[0] if len(found) == 1 else None
+
+    def windows_identity(pid, recorded_start, version, project, host=None, editor=None):
+        """ALIVE | GONE | REUSED | UNKNOWN for the Editor process a bridge or SESSION lease records."""
+        recorded = filetime_of(recorded_start)
+        if recorded is None:
+            return UNKNOWN
+        editor = editor or _hub_editor(version)
+        if editor is None:
+            return UNKNOWN
+        return _pl.windows_editor_identity(pid, recorded, editor, project, host)
+

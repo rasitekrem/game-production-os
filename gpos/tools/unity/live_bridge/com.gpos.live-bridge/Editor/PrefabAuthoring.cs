@@ -39,7 +39,13 @@ namespace Gpos.LiveBridge
 {
     internal static class PrefabAuthoring
     {
+#if UNITY_EDITOR_WIN
+        // bridge 1.6.0: no libc on Windows; the commands that use these are not served there (Protocol.WindowsCommands)
+        static Refusal NotServed() { return new Refusal("UNKNOWN_COMMAND", "not served by the bridge on Windows (bridge 1.6.0)"); }
+        static int mkdir(string path, int mode) { throw NotServed(); }
+#else
         [DllImport("libc", SetLastError = true)] static extern int mkdir(string path, int mode);
+#endif
 
         static Request current;
 

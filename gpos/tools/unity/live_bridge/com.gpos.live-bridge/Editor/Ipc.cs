@@ -25,10 +25,14 @@ namespace Gpos.LiveBridge
         static readonly Regex RequestName = new Regex("^[0-9a-f]{32}\\.json\\z");
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false, true);
 
+#if UNITY_EDITOR_WIN
+        // bridge 1.6.0: no libc on Windows; every file step goes through WindowsFiles (kernel32.dll!MoveFileExW only).
+#else
         [DllImport("libc", SetLastError = true)] static extern int rename(string from, string to);
         [DllImport("libc", SetLastError = true)] static extern int link(string existing, string created);
         [DllImport("libc", SetLastError = true)] static extern int unlink(string path);
         [DllImport("libc", SetLastError = true)] static extern int chmod(string path, int mode);
+#endif
 
         public static string Live, Requests, Claimed, Responses, Withdrawn, Rejected;
 
@@ -45,8 +49,12 @@ namespace Gpos.LiveBridge
                 Directory.CreateDirectory(d);
                 if (Identity.IsLink(d)) return false;
             }
+#if UNITY_EDITOR_WIN
+            return true;   // bridge 1.6.0: no chmod; the folder inherits the GPOS runtime area's Windows permissions
+#else
             chmod(Live, Convert.ToInt32("700", 8));
             return true;
+#endif
         }
 
         static void WriteNew(string path, string text)
@@ -61,6 +69,31 @@ namespace Gpos.LiveBridge
 
         static string Temp(string dir) { return Path.Combine(dir, ".tmp-" + Guid.NewGuid().ToString("N")); }
 
+#if UNITY_EDITOR_WIN
+        // bridge 1.6.0: MoveFileExW(REPLACE_EXISTING | WRITE_THROUGH), retried while a reader holds the target.
+        public static void AtomicReplace(string path, string text)
+        {
+            string tmp = Temp(Path.GetDirectoryName(path));
+            WriteNew(tmp, text);
+            int error = WindowsFiles.Replace(tmp, path);
+            if (error != 0)
+            {
+                WindowsFiles.Delete(tmp);
+                throw new IOException("replace failed: " + error);
+            }
+        }
+
+        // bridge 1.6.0: a move that never replaces (ERROR_ALREADY_EXISTS when answered), so a response is published at
+        // most once and never replaced; no hard link is ever made.
+        public static bool PublishOnce(string path, string text)
+        {
+            string tmp = Temp(Path.GetDirectoryName(path));
+            WriteNew(tmp, text);
+            int error = WindowsFiles.MoveNoReplaceRetried(tmp, path);
+            if (error != 0) WindowsFiles.Delete(tmp);
+            return error == 0;
+        }
+#else
         public static void AtomicReplace(string path, string text)
         {
             string tmp = Temp(Path.GetDirectoryName(path));
@@ -81,6 +114,7 @@ namespace Gpos.LiveBridge
             unlink(tmp);
             return rc == 0;
         }
+#endif
 
         public static void Event(string what)
         {
@@ -89,7 +123,11 @@ namespace Gpos.LiveBridge
             {
                 string path = Path.Combine(Live, "events.jsonl");
                 if (File.Exists(path) && new FileInfo(path).Length > MaxEventsBytes)
+#if UNITY_EDITOR_WIN
+                    WindowsFiles.Replace(path, Path.Combine(Live, "events.1.jsonl"));
+#else
                     rename(path, Path.Combine(Live, "events.1.jsonl"));
+#endif
                 File.AppendAllText(path, Json.Write(new Dictionary<string, object> {
                     { "utc", DateTime.UtcNow.ToString("o") }, { "boot_id", LiveBridge.BootId },
                     { "generation", LiveBridge.Generation }, { "event", what } }) + "\n");
@@ -109,7 +147,15 @@ namespace Gpos.LiveBridge
                 r["status"] = "FAILED"; r["code"] = "RESPONSE_TOO_LARGE"; r["message"] = "the response exceeded its bound"; r["data"] = null;
                 text = Json.Write(r);
             }
+#if UNITY_EDITOR_WIN
+            // bridge 1.6.0: answering never throws, so a command whose effect is committed (a bind) is never followed by
+            // a second, FAILED answer; an answer that cannot be published is missing, which GPOS reports as UNKNOWN.
+            bool published;
+            try { published = PublishOnce(Path.Combine(Responses, id + ".json"), text); }
+            catch (Exception) { published = false; }
+#else
             bool published = PublishOnce(Path.Combine(Responses, id + ".json"), text);
+#endif
             Event((published ? "responded:" : "response-exists:") + id + ":" + status + (code == null ? "" : ":" + code));
         }
 
@@ -129,7 +175,11 @@ namespace Gpos.LiveBridge
 
         static void Quarantine(string path, string reason)
         {
+#if UNITY_EDITOR_WIN
+            WindowsFiles.MoveNoReplace(path, Path.Combine(Rejected, reason + "-" + Guid.NewGuid().ToString("N")));
+#else
             rename(path, Path.Combine(Rejected, reason + "-" + Guid.NewGuid().ToString("N")));
+#endif
             Event("rejected:" + reason);
         }
 
@@ -153,6 +203,36 @@ namespace Gpos.LiveBridge
                     continue;
                 }
                 string claim = Path.Combine(Claimed, name);
+#if UNITY_EDITOR_WIN
+                // bridge 1.6.0: RENAME -> PIN -> VERIFY -> DECIDE. A rename alone decides nothing on NTFS (GPOS's
+                // withdrawal may land after it); only the pin does, and only a won claim is ever executed.
+                byte[] bytes;
+                var taken = WindowsFiles.TakeRequest(f, claim, Protocol.MaxRequestBytes, WindowsFiles.PinBudgetMs, out bytes);
+                if (taken == WindowsFiles.Take.NotTaken) continue;                              // not this tick
+                if (taken == WindowsFiles.Take.Lost) { Event("claim-lost:" + id); continue; }   // GPOS's: untouched
+                if (taken == WindowsFiles.Take.Undecided)
+                {
+                    Event("claim-undecided:" + id);
+                    Respond(id, "INTERRUPTED", "NOT_REPLAYED",
+                            "the claim could not be confirmed (another process holds the request); it was never executed and never will be",
+                            null);
+                    continue;
+                }
+                Event("claimed:" + id);
+                if (taken == WindowsFiles.Take.Unreadable)
+                {
+                    Respond(id, "FAILED", "BRIDGE_INTERNAL_ERROR", "the claimed request could not be read", null);
+                    continue;
+                }
+                if (bytes.Length > Protocol.MaxRequestBytes)
+                {
+                    Respond(id, "REFUSED", "REQUEST_TOO_LARGE", "the request exceeds " + Protocol.MaxRequestBytes + " bytes", null);
+                    continue;
+                }
+                handle(id, bytes);
+            }
+        }
+#else
                 if (rename(f, claim) != 0) continue;   // withdrawn by GPOS or already taken: never both
                 Event("claimed:" + id);
                 byte[] bytes;
@@ -173,6 +253,7 @@ namespace Gpos.LiveBridge
                 handle(id, bytes);
             }
         }
+#endif
 
         public static string Text(byte[] bytes)
         {
@@ -182,6 +263,33 @@ namespace Gpos.LiveBridge
 
         // Bounded retention: nothing older than RetentionMinutes, and at most MaxFilesPerFolder per folder. The journal,
         // not these files, guarantees at-most-once, so deleting old files never re-opens a request.
+#if UNITY_EDITOR_WIN
+        // bridge 1.6.0: as on macOS, but one file that cannot be removed now (a reader holds it) does not stop the rest,
+        // and the bridge's own interrupted state-file temporaries in the live folder are removed too.
+        public static void Retention()
+        {
+            DateTime cutoff = DateTime.UtcNow.AddMinutes(-RetentionMinutes);
+            foreach (var d in new[] { Claimed, Responses, Withdrawn, Rejected })
+            {
+                List<FileInfo> files;
+                try { files = new DirectoryInfo(d).GetFiles().OrderBy(fi => fi.LastWriteTimeUtc).ToList(); }
+                catch { continue; }
+                int excess = files.Count - MaxFilesPerFolder;
+                foreach (var fi in files)
+                {
+                    if (fi.LastWriteTimeUtc >= cutoff && excess <= 0) continue;
+                    WindowsFiles.TryDelete(fi.FullName);
+                    excess--;
+                }
+            }
+            try
+            {
+                foreach (var fi in new DirectoryInfo(Live).GetFiles(".tmp-*"))
+                    if (fi.LastWriteTimeUtc < cutoff) WindowsFiles.TryDelete(fi.FullName);
+            }
+            catch { }
+        }
+#else
         public static void Retention()
         {
             DateTime cutoff = DateTime.UtcNow.AddMinutes(-RetentionMinutes);
@@ -201,5 +309,6 @@ namespace Gpos.LiveBridge
                 catch { }
             }
         }
+#endif
     }
 }

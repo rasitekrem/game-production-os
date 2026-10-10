@@ -33,9 +33,9 @@ FAST = [
         (ADAPTER, "            if cap not in WINDOWS_CAPABILITIES:\n                return AdapterOutcome(ok=True, "
                   "diagnostics=(dg.make(\"PLATFORM_UNSUPPORTED\"",
          "            if False:\n                return AdapterOutcome(ok=True, diagnostics=(dg.make(\"PLATFORM_UNSUPPORTED\"")]),
-    ("a live capability joins the Windows batch plane", [
-        (ADAPTER, "WINDOWS_CAPABILITIES = (INSPECT, EDITMODE, PLAYMODE)",
-         "WINDOWS_CAPABILITIES = (INSPECT, EDITMODE, PLAYMODE, live.STATUS)")]),
+    ("an unqualified live capability joins the Windows set", [
+        (ADAPTER, "authoring.INSPECT_OBJECT, authoring.CREATE, authoring.SET_TRANSFORM, authoring.SAVE_SCENE)",
+         "authoring.INSPECT_OBJECT, authoring.CREATE, authoring.SET_TRANSFORM, authoring.SAVE_SCENE, live.ENTER)")]),
     ("the Windows probe reports every capability usable", [
         (ADAPTER, "                                 capability_availability=tuple((c.id, windows(c), \"\" if windows(c) else "
                   "WINDOWS_REFUSAL)",

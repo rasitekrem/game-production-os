@@ -230,6 +230,7 @@ namespace Gpos.LiveBridge
 
         // ------------------------------------------------------------ protocol
 
+#if !UNITY_EDITOR_WIN   // every command of the protocol; the Windows view serves an allowlist (WindowsCoreTests.cs)
         static void AssetCommandsHaveExactArguments()
         {
             var specs = new Dictionary<string, string[]> {
@@ -257,5 +258,6 @@ namespace Gpos.LiveBridge
                                             "set-importer", "apply-prefab", "reserialize" })
                 Equal("UNKNOWN_COMMAND", Code(() => Parse(Id(++n), AuthorReq(Id(n), generic, "{}"))), generic);
         }
+#endif
     }
 }

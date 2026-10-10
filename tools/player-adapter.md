@@ -1,6 +1,6 @@
 # Player runtime adapter (Phase 2C-8)
 
-Status: GPOS `1.0.0-alpha.25` · implementation in [`gpos/tools/player/`](../gpos/tools/player/__init__.py) · macOS only
+Status: GPOS `1.0.0-alpha.26` · implementation in [`gpos/tools/player/`](../gpos/tools/player/__init__.py) · macOS only
 
 The `player` adapter runs exactly one already-built game on this host and observes it — launch, status, an exact-window
 screenshot, a short silent exact-window video, stop — without generic process or desktop control. It is engine-neutral:

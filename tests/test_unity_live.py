@@ -245,7 +245,7 @@ class C_Manifest(unittest.TestCase):
         self.assertEqual(gen.main(["--check"]), 0)
         manifest = bi.verify_source()
         self.assertEqual((manifest["package_id"], manifest["bridge_version"], manifest["protocol"]),
-                         ("com.gpos.live-bridge", "1.5.0", "gpos.unity.live/5"))   # alpha.21: package only
+                         ("com.gpos.live-bridge", "1.6.0", "gpos.unity.live/5"))   # alpha.26: package only
         paths = {e["path"] for e in manifest["files"]}
         self.assertIn("package.json", paths)
         self.assertTrue(all(p + ".meta" in paths for p in paths if not p.endswith(".meta")))

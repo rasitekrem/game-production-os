@@ -21,6 +21,13 @@ namespace Gpos.LiveBridge
     {
         public const int MaxAscent = 16;
 
+#if UNITY_EDITOR_WIN
+        // bridge 1.6.0: the on-disk spelling GPOS uses, or null (WindowsPaths); no native call.
+        public static string RealPath(string path) { return WindowsPaths.Canonical(path); }
+
+        // bridge 1.6.0: fails closed — attributes that cannot be read count as a link (a missing path is not one).
+        public static bool IsLink(string path) { return WindowsPaths.IsReparse(path); }
+#else
         [DllImport("libc", SetLastError = true)] static extern IntPtr realpath(string path, IntPtr resolved);
         [DllImport("libc")] static extern void free(IntPtr pointer);
 
@@ -37,6 +44,7 @@ namespace Gpos.LiveBridge
             try { return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0; }
             catch { return false; }
         }
+#endif
 
         static bool RealDirectory(string path) { return Directory.Exists(path) && !IsLink(path); }
 
@@ -71,8 +79,13 @@ namespace Gpos.LiveBridge
                 dir = Path.GetDirectoryName(dir);
             }
             if (root == null) return null;
+#if UNITY_EDITOR_WIN
+            string rel = WindowsPaths.Relative(root, project);   // bridge 1.6.0: '\' on disk, '/' in the project key
+            if (rel == null) return null;
+#else
             string rel = project == root ? "." : project.Substring(root.Length).TrimStart('/');
             if (rel != "." && (rel.Length == 0 || project.Substring(0, root.Length + 1) != root + "/")) return null;
+#endif
             string key = ProjectKey(rel);
             string runtime = Path.Combine(root, ".game", "gpos-runtime");
             string[] chain = { runtime, Path.Combine(runtime, "unity"), Path.Combine(runtime, "unity", "live"),

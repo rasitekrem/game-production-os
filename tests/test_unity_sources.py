@@ -516,7 +516,7 @@ class D_Release(LiveCase):
                          ("1.3.0", "gpos.unity.live/4", FROZEN_DIGEST_13, 54))
         self.assertEqual(bi.PREVIOUS["1.3.0"], ("gpos.unity.live/4", FROZEN_DIGEST_13))
         # alpha.21: 1.4.0 (this phase's release) is now pinned history; the current package is 1.5.0 on protocol /5
-        self.assertEqual((bi.BRIDGE_VERSION, bi.PROTOCOL), ("1.5.0", "gpos.unity.live/5"))
+        self.assertEqual((bi.BRIDGE_VERSION, bi.PROTOCOL), ("1.6.0", "gpos.unity.live/5"))   # alpha.26
         current = json.loads((bi.HISTORY / "1.4.0.json").read_bytes())
         self.assertEqual((current["bridge_version"], current["protocol"], len(current["files"])), ("1.4.0", "gpos.unity.live/5", 60))
         names = {e["path"] for e in current["files"]}

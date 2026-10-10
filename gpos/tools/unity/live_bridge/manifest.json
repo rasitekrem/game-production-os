@@ -1,5 +1,5 @@
 {
-  "bridge_version": "1.5.0",
+  "bridge_version": "1.6.0",
   "files": [
     {
       "path": "Editor.meta",
@@ -18,8 +18,8 @@
     },
     {
       "path": "Editor/AssetAuthoring.cs",
-      "sha256": "73e04b5e348a8670fe86bc06c39c39b6ebd6ccf9f9c121394369bb9f47856aa3",
-      "size": 57528
+      "sha256": "db7f912ea2a9066fa31b8557aaade6f9cadbe12e820346ecc3a2423b51d861e7",
+      "size": 57958
     },
     {
       "path": "Editor/AssetAuthoring.cs.meta",
@@ -103,8 +103,8 @@
     },
     {
       "path": "Editor/Commands.cs",
-      "sha256": "5c2387a2618f9312a78b3cfe6cbf505ff9f29c9593a8f0a418478862278ba7da",
-      "size": 21797
+      "sha256": "7386605692add5a9e8f1e3f82de9fde4326c315ca318e890534e1599a0e724ba",
+      "size": 23068
     },
     {
       "path": "Editor/Commands.cs.meta",
@@ -208,8 +208,8 @@
     },
     {
       "path": "Editor/Core/Protocol.cs",
-      "sha256": "21901ab613f71c592f6466310969860ded5ce91ed486f875f57818a59ff4cf81",
-      "size": 16710
+      "sha256": "4ba3c36cadab91fe60182df00e676115942685cb3dac81aa3a5fe397c213c2c1",
+      "size": 17734
     },
     {
       "path": "Editor/Core/Protocol.cs.meta",
@@ -247,6 +247,26 @@
       "size": 59
     },
     {
+      "path": "Editor/Core/WindowsFiles.cs",
+      "sha256": "06be7f6066a07e7f21e4459bc04753c915f96b4c2ad52aefdec581c4fc5c0968",
+      "size": 9815
+    },
+    {
+      "path": "Editor/Core/WindowsFiles.cs.meta",
+      "sha256": "b19fa4588acb2b4567307353c59edd4e158ddb5b57ae5bb37ca3dcb65938bd88",
+      "size": 59
+    },
+    {
+      "path": "Editor/Core/WindowsPaths.cs",
+      "sha256": "14892c3392c1f851adc755832caef64da940127d0407e5927f407299f29fc19f",
+      "size": 3601
+    },
+    {
+      "path": "Editor/Core/WindowsPaths.cs.meta",
+      "sha256": "2c770317affc915afb7e29f48062d23820d224a7b818ed8c41613d9deeb11a28",
+      "size": 59
+    },
+    {
       "path": "Editor/Gpos.LiveBridge.Editor.asmdef",
       "sha256": "bc1bf2f0363f5842798c934a27b02823702b5ca696cbd14ae25a4ca0f85539fb",
       "size": 326
@@ -258,8 +278,8 @@
     },
     {
       "path": "Editor/Identity.cs",
-      "sha256": "d670e86ed26401086d10a437f0bc7919af21de646ad0ab41e30da0d045625864",
-      "size": 4621
+      "sha256": "545d1bc902de4c7fd36c4d95c441a01d86434a7d4eda1dba13303314920e1146",
+      "size": 5245
     },
     {
       "path": "Editor/Identity.cs.meta",
@@ -268,8 +288,8 @@
     },
     {
       "path": "Editor/Ipc.cs",
-      "sha256": "c908c36c550df77752fb510e83890be944f551b3a69459d05b9033528967c9b8",
-      "size": 9545
+      "sha256": "5b93f202e8c2bbc51e124e0517fc6ce8781217caf180a9eb891aa307e5ef9694",
+      "size": 14524
     },
     {
       "path": "Editor/Ipc.cs.meta",
@@ -278,8 +298,8 @@
     },
     {
       "path": "Editor/PrefabAuthoring.cs",
-      "sha256": "bacdeb733ed7150df62df837830cec59160de617bab5d156b32961aefb959610",
-      "size": 81587
+      "sha256": "05b2bf57e8e0cc01b5e1b39ea81442f69b8973d7f7c1197287c1c9b6b2d1b22b",
+      "size": 81945
     },
     {
       "path": "Editor/PrefabAuthoring.cs.meta",
@@ -288,8 +308,8 @@
     },
     {
       "path": "Editor/PrefabResolver.cs",
-      "sha256": "333f7155a833e69fd0d63cc6308cda53a5a9a588218810ce7f25861ef3e69662",
-      "size": 21578
+      "sha256": "7d68a2715ea96bc220510cd7e78dac7d05db3ce01c58b0b76fb86e171b4a08c7",
+      "size": 21937
     },
     {
       "path": "Editor/PrefabResolver.cs.meta",
@@ -328,7 +348,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "a09e057fcc0b9ba505fc925dfa0cc4127dbc0178879833a9ea5769d390bf37b5",
+      "sha256": "d0d44f89b6dc7fa144a810e7dd2c57d8a159d2768f878704735d531788d38913",
       "size": 356
     },
     {
@@ -337,7 +357,7 @@
       "size": 163
     }
   ],
-  "package_digest": "b7f4775d4f1e807136df0978d27218eac20dbe5e163fe23618fd84a17a62ea16",
+  "package_digest": "883d1e31751ad158f0c3d82f90a1b18a173a54ad46799a39834929315e4a0400",
   "package_id": "com.gpos.live-bridge",
   "protocol": "gpos.unity.live/5",
   "schema": "gpos.unity.live-bridge.manifest/1"

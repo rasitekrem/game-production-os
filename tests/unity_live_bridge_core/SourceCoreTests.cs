@@ -210,6 +210,7 @@ namespace Gpos.LiveBridge
             Check(clipped, "clipped is reported");
         }
 
+#if !UNITY_EDITOR_WIN   // every command of the protocol; the Windows view serves an allowlist (WindowsCoreTests.cs)
         static void SourceCommandsHaveExactArgumentsAndClassification()
         {
             Equal("sources,deleted", string.Join(",", Parse(Id(20), Req(Id(20), "sync-sources", "{\"sources\":[],\"deleted\":[]}", Sid)).Args.Keys), "sync args");
@@ -225,5 +226,6 @@ namespace Gpos.LiveBridge
             foreach (var c in new[] { "compile", "request-compilation", "refresh", "import", "import-folder", "write-source", "delete-source", "execute" })
                 Equal("UNKNOWN_COMMAND", Code(() => Parse(Id(25), Req(Id(25), c, "{}", Sid))), "no " + c + " command");
         }
+#endif
     }
 }

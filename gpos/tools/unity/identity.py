@@ -14,6 +14,8 @@ directories (same device and inode) as the request's.
 
 import hashlib
 import os
+import stat
+import sys
 from pathlib import Path
 
 from .. import paths as tp
@@ -80,8 +82,22 @@ def gpos_root_of(unity_project):
         config = game / "gpos" / "project-config.json"
         if (game.is_dir() and not game.is_symlink() and (game / "gpos").is_dir() and not (game / "gpos").is_symlink()
                 and config.is_file() and not config.is_symlink()):
+            if sys.platform == "win32":   # alpha.26: a junction (or any reparse point) is a link here too, as for the bridge
+                if any(_reparse(p) for p in (game, game / "gpos", config)):
+                    return None
             return d
         if d.parent == d:
             return None
         d = d.parent
     return None
+
+
+if sys.platform == "win32":   # alpha.26
+    def _reparse(path):
+        """True for a reparse point, or when its attributes cannot be read (fail closed, as the bridge does)."""
+        try:
+            return bool(os.lstat(path).st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return True

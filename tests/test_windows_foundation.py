@@ -903,11 +903,16 @@ class W07_PlatformRefusals(Case):
             result = reg.probe(adapter_id)
             self.assertEqual(result.status, "UNAVAILABLE")
             self.assertIn("PLATFORM_UNSUPPORTED", {d.code for d in result.diagnostics})
-        # alpha.25: Unity declares WINDOWS for its batch plane only; it is probed here, and offers nothing else
+        # alpha.25: Unity declares WINDOWS for its batch plane; alpha.26 adds the live session and the Scene-authoring
+        # slice. It is probed here, and offers nothing else
         unity = reg.probe("unity")
         self.assertNotIn("PLATFORM_UNSUPPORTED", {d.code for d in unity.diagnostics})
         offered = {c for c, ok, _ in unity.capability_availability if ok}
-        self.assertLessEqual(offered, {"unity.inspect-project", "unity.run-editmode-tests", "unity.run-playmode-tests"})
+        self.assertLessEqual(offered, {"unity.inspect-project", "unity.run-editmode-tests", "unity.run-playmode-tests",
+                                       "unity.live-install-bridge", "unity.live-status", "unity.live-attach",
+                                       "unity.live-inspect", "unity.live-detach", "unity.live-object-inspect",
+                                       "unity.live-create-gameobject", "unity.live-set-transform",
+                                       "unity.live-save-scene"})
 
     def run_transform(self, request_id, project):
         r = ToolRegistry(FW, allow_test_only=True)

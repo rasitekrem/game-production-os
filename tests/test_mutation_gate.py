@@ -164,9 +164,9 @@ class G02_ByteExactEdits(unittest.TestCase):
 
 
 class G03_EveryHarnessIsGated(unittest.TestCase):
-    def test_there_are_seventeen_harnesses(self):
-        # alpha.25 added mutate_unity_windows.py
-        self.assertEqual(len(HARNESSES), 17, [p.name for p in HARNESSES])
+    def test_there_are_eighteen_harnesses(self):
+        # alpha.25 added mutate_unity_windows.py, alpha.26 mutate_unity_windows_live.py
+        self.assertEqual(len(HARNESSES), 18, [p.name for p in HARNESSES])
 
     def test_every_main_returns_the_gate_and_counts_nothing_itself(self):
         for path in HARNESSES:

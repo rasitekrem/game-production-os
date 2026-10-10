@@ -230,6 +230,7 @@ namespace Gpos.LiveBridge
 
         static string AuthorReq(string id, string command, string args) { return Req(id, command, args, Sid); }
 
+#if !UNITY_EDITOR_WIN   // every command of the protocol; the Windows view serves an allowlist (WindowsCoreTests.cs)
         static void AuthoringCommandsHaveExactArguments()
         {
             var specs = new Dictionary<string, string[]> {
@@ -265,9 +266,10 @@ namespace Gpos.LiveBridge
             }
             Check(!Protocol.IsAuthoring("inspect") && !Protocol.IsAuthoring("pause"), "the alpha.16 commands are not authoring");
             Equal("gpos.unity.live/5", Protocol.Name, "protocol");
-            Equal("1.5.0", Protocol.BridgeVersion, "version");   // alpha.21: the package gains the batch-only build entry; protocol /5 unchanged
+            Equal("1.6.0", Protocol.BridgeVersion, "version");   // alpha.26: the package gains Windows; protocol /5 unchanged
             foreach (var generic in new[] { "execute", "eval", "invoke", "menu", "reflect", "save-scene-as", "apply-prefab", "set-asset" })
                 Equal("UNKNOWN_COMMAND", Code(() => Parse(Id(++n), AuthorReq(Id(n), generic, "{}"))), generic);
         }
+#endif
     }
 }

@@ -101,9 +101,13 @@ HUB_ROOTS = {"darwin": ("/Applications/Unity/Hub/Editor",)}      # alpha.15: mac
 EDITOR_IN_VERSION_DIR = {"darwin": ("Unity.app", "Contents", "MacOS", "Unity")}
 if sys.platform == "win32":   # alpha.25: <Program Files>\Unity\Hub\Editor\<version>\Editor\Unity.exe; never PATH
     EDITOR_IN_VERSION_DIR["win32"] = ("Editor", "Unity.exe")
-# alpha.25: the only capabilities qualified on Windows (the batch plane). Every other one is refused there with
-# PLATFORM_UNSUPPORTED: the live plane needs bridge 1.6.0 (Phase 2C-9.3b) and Build Core builds macOS players only.
-WINDOWS_CAPABILITIES = (INSPECT, EDITMODE, PLAYMODE)
+# The only capabilities qualified on Windows: the batch plane (alpha.25) and, with bridge 1.6.0, the live session and
+# the Scene-authoring slice (alpha.26). Every other one is refused there with PLATFORM_UNSUPPORTED before anything
+# runs (the bridge separately serves only these commands on Windows): Play Mode, the other Scene edits, assets,
+# prefabs, sources and Build Core are not qualified on Windows.
+WINDOWS_CAPABILITIES = (INSPECT, EDITMODE, PLAYMODE,
+                        live.INSTALL, live.STATUS, live.ATTACH, live.INSPECT, live.DETACH,
+                        authoring.INSPECT_OBJECT, authoring.CREATE, authoring.SET_TRANSFORM, authoring.SAVE_SCENE)
 # alpha.25 (lab-measured): the Package Manager server does not start without these two; nothing else is inherited
 WINDOWS_ENVIRONMENT = ("ProgramData", "LOCALAPPDATA")
 PROBE_TIMEOUT = 120.0
@@ -479,8 +483,10 @@ DESCRIPTOR = model.AdapterDescriptor(
                   "\\<version>\\Editor\\Unity.exe on Windows); PATH is never used",
     compatibility_notes=(
         "Alpha.15 supports exactly one usable Hub-installed Editor and macOS only. Alpha.25 adds Windows for the "
-        "batch plane only (inspect-project, run-editmode-tests, run-playmode-tests); every other capability is "
-        "refused on Windows (PLATFORM_UNSUPPORTED).",
+        "batch plane only (inspect-project, run-editmode-tests, run-playmode-tests); alpha.26 adds, with bridge "
+        "1.6.0, the live session (install-bridge, status, attach, inspect, detach) and the Scene-authoring slice "
+        "(object-inspect, create-gameobject, set-transform, save-scene); every other capability is refused on "
+        "Windows (PLATFORM_UNSUPPORTED).",
         "Fixed batch command: no caller executable, argument, method, C#, filter, graphics mode or network setting.",
         "Remote package sources are refused; Package Manager configuration and cache are isolated per project.",
         "One adapter, two planes: the batch plane is process-driven (fixed batch-mode Editor invocations, each "
@@ -987,8 +993,10 @@ def upm_environment(workspace, cache):
         ("UPM_CACHE_ROOT", str(Path(cache).resolve()))))
 
 
-WINDOWS_REFUSAL = ("not available on Windows in this release (alpha.25 qualifies the batch plane only: inspect-project, "
-                   "run-editmode-tests, run-playmode-tests)")
+WINDOWS_REFUSAL = ("not available on Windows in this release (Windows qualifies the batch plane, alpha.25, and the live "
+                   "session with the Scene-authoring slice, alpha.26: inspect-project, run-editmode-tests, "
+                   "run-playmode-tests, live-install-bridge, live-status, live-attach, live-inspect, live-detach, "
+                   "live-object-inspect, live-create-gameobject, live-set-transform, live-save-scene)")
 
 
 def _windows_reparse_on_way(executable):

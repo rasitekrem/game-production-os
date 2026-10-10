@@ -8,7 +8,8 @@ Fast groups (no Unity process; a stand-in Editor under a temporary Hub root play
     A  the two capability declarations (Unity 45 -> 47) and the closed surface
     B  request rules: no build_id, a canonical build_revision, MACOS only, the token, the build request-id grammar
     C  the one fixed command: argv shape, the executeMethod string, nothing from a request reaches it
-    D  the bridge release: 1.5.0 on protocol /5, history/1.4.0.json is the frozen alpha.20 manifest, the entry needs EXACT
+    D  the bridge release: 1.5.0 on protocol /5 (now pinned history; alpha.26 ships 1.6.0), history/1.4.0.json is the
+       frozen alpha.20 manifest, the entry needs EXACT
     E  source scans: the batch-only build entry's allowlist, the frozen lifecycle, no Git and no directory artifact
     F  the stand-in matrix: every response, refusal, pre-entry failure, post-check and payload failure and how it is reported
     G  the payload tree digest: golden vectors, ordering, links, special files and every bound
@@ -473,7 +474,7 @@ class D_Release(BuildCase):
     install = False
 
     def test_1_5_0_keeps_protocol_5_and_pins_1_4_0(self):
-        self.assertEqual((bi.BRIDGE_VERSION, bi.PROTOCOL), ("1.5.0", "gpos.unity.live/5"))
+        self.assertEqual((bi.BRIDGE_VERSION, bi.PROTOCOL), ("1.6.0", "gpos.unity.live/5"))   # alpha.26
         frozen = ta.git("show", f"{FROZEN_TAG_14}:gpos/tools/unity/live_bridge/manifest.json", binary=True)
         self.assertEqual((bi.HISTORY / "1.4.0.json").read_bytes(), frozen)
         release = json.loads(frozen)
@@ -481,8 +482,11 @@ class D_Release(BuildCase):
                          ("1.4.0", "gpos.unity.live/5", FROZEN_DIGEST_14, 60))
         self.assertEqual(bi.PREVIOUS["1.4.0"], ("gpos.unity.live/5", FROZEN_DIGEST_14))
         current = bi.verify_source()
-        self.assertEqual((current["bridge_version"], current["protocol"], len(current["files"])), ("1.5.0", "gpos.unity.live/5", 67))
-        added = {e["path"] for e in current["files"]} - {e["path"] for e in release["files"]}
+        self.assertEqual((current["bridge_version"], current["protocol"], len(current["files"])), ("1.6.0", "gpos.unity.live/5", 71))
+        # alpha.26: 1.5.0 (this phase's release) is pinned history; what it added over 1.4.0 is unchanged
+        release_15 = json.loads((bi.HISTORY / "1.5.0.json").read_bytes())
+        self.assertEqual(bi.PREVIOUS["1.5.0"], ("gpos.unity.live/5", release_15["package_digest"]))
+        added = {e["path"] for e in release_15["files"]} - {e["path"] for e in release["files"]}
         self.assertEqual(added, {"Editor/Build.meta", "Editor/Build/BuildEntry.cs", "Editor/Build/BuildEntry.cs.meta",
                                  "Editor/Build/BuildConfiguration.cs", "Editor/Build/BuildConfiguration.cs.meta",
                                  "Editor/Core/BuildRules.cs", "Editor/Core/BuildRules.cs.meta"})
@@ -495,9 +499,10 @@ class D_Release(BuildCase):
         new = (bi.SOURCE / "Editor" / "Bridge.cs").read_text()
         strip = lambda text: [line for line in text.splitlines() if not line.startswith("//")]
         self.assertEqual(strip(old), strip(new))
+        import posix_parity as pp   # alpha.26: the macOS view (Windows branches dropped) is what stays frozen
         for name in ("Commands.cs", "Ipc.cs", "Identity.cs", "SourceSync.cs", "Compilation.cs"):
             self.assertEqual(ta.git("show", f"{FROZEN_TAG_14}:gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/{name}"),
-                             (bi.SOURCE / "Editor" / name).read_text(), name)
+                             pp.macos_view((bi.SOURCE / "Editor" / name).read_text()), name)
 
     def test_an_exact_1_4_0_bridge_is_upgraded(self):
         target = self.game / "Packages" / bi.PACKAGE_ID
@@ -659,7 +664,7 @@ class F_Matrix(BuildCase):
         self.assertEqual(m["scenes"], configuration()["scenes"])
         self.assertEqual(m["unity_build"]["guid"], "5d473f7636a9422a89bac4a6c737bd5b")
         self.assertEqual((m["build_entry"]["version"], m["build_entry"]["method"], m["build_entry"]["package_digest"]),
-                         ("1.5.0", ub.BUILD_ENTRY_METHOD, bi.verify_source()["package_digest"]))
+                         ("1.6.0", ub.BUILD_ENTRY_METHOD, bi.verify_source()["package_digest"]))
         self.assertEqual((m["payload"]["path"], m["payload"]["kind"], m["payload"]["bundle_identifier"],
                           m["payload"]["executable"], m["payload"]["bundle_version"]),
                          ("payload/Player.app", "MACOS_APP_BUNDLE", "com.DefaultCompany.Game", "Game", "1.0"))

@@ -191,6 +191,47 @@ def make_authoring_project(path, editor_version, editor_executable):
     return path
 
 
+# ---------------------------------------------------------------- Phase 2C-9.3b: the Windows live demo fixture
+
+DEMO_SCENE = "Assets/Scenes/Demo.unity"
+DEMO_NAME = "GposDemoRoot"
+DEMO_POSITION, DEMO_ROTATION, DEMO_SCALE = (1.5, 2.0, -3.0), (0.0, 0.70710677, 0.0, 0.70710677), (2.0, 2.0, 2.0)
+DEMO_PERSISTENCE_TEST = """using System.Linq;
+using NUnit.Framework;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+// alpha.26: run by the batch plane after the live session: what the live Editor saved is on disk.
+public class GposEditModeTests
+{
+    [Test] public void TheSavedDemoRootIsAnEmptyGameObjectWithItsTransform()
+    {
+        var scene = EditorSceneManager.OpenScene("%(scene)s", OpenSceneMode.Single);
+        var all = Object.FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        var found = all.Where(g => g.name == "%(name)s").ToArray();
+        Assert.AreEqual(1, found.Length, "exactly one %(name)s");
+        var go = found[0];
+        Assert.AreEqual(scene, go.scene, "in the demo Scene");
+        Assert.IsNull(go.transform.parent, "a Scene root");
+        Assert.AreEqual(1, go.GetComponents<Component>().Length, "an empty GameObject: only its Transform");
+        Assert.AreEqual(1, scene.rootCount, "nothing else was added to the Scene");
+        Assert.AreEqual(new Vector3(%(px)sf, %(py)sf, %(pz)sf), go.transform.localPosition);
+        Assert.AreEqual(new Vector3(%(sx)sf, %(sy)sf, %(sz)sf), go.transform.localScale);
+        Assert.Less(Quaternion.Angle(new Quaternion(%(rx)sf, %(ry)sf, %(rz)sf, %(rw)sf), go.transform.localRotation), 0.01f);
+    }
+}
+""" % dict(scene=DEMO_SCENE, name=DEMO_NAME, px=DEMO_POSITION[0], py=DEMO_POSITION[1], pz=DEMO_POSITION[2],
+           sx=DEMO_SCALE[0], sy=DEMO_SCALE[1], sz=DEMO_SCALE[2], rx=DEMO_ROTATION[0], ry=DEMO_ROTATION[1],
+           rz=DEMO_ROTATION[2], rw=DEMO_ROTATION[3])
+
+
+def make_live_demo_project(path, editor_version, editor_executable):
+    """The `pass` project whose EditMode test checks, from disk, the GposDemoRoot a live session saved into the demo
+    Scene. The Scene itself is made by the testkit (`demo-scene`) in the lab Editor before GPOS attaches."""
+    path = make_project(path, "pass", editor_version, editor_executable)
+    (path / "Assets/Tests/Editor/GposEditModeTests.cs").write_text(DEMO_PERSISTENCE_TEST)
+    return path
+
+
 # ---------------------------------------------------------------- Phase 2C-6B2A: the asset fixture
 
 def png(width, height, rgba):

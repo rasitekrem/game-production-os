@@ -32,7 +32,7 @@ namespace Gpos.LiveBridge
         public const string Name = "gpos.unity.live/5";
         public const string RequestSchema = "gpos.unity.live.request/5";
         public const string ResponseSchema = "gpos.unity.live.response/5";
-        public const string BridgeVersion = "1.5.0";   // 1.5.0 adds the batch-only BuildEntry; the live protocol is unchanged
+        public const string BridgeVersion = "1.6.0";   // 1.6.0 adds Windows; the live protocol is unchanged
         public const string PackageId = "com.gpos.live-bridge";
         public const int MaxRequestBytes = 64 * 1024;
         public const int MaxResponseBytes = 256 * 1024;
@@ -152,6 +152,16 @@ namespace Gpos.LiveBridge
         public static bool IsAsset(string command) { return command.StartsWith("asset-", StringComparison.Ordinal) || Array.IndexOf(AssetMutations, command) >= 0; }
 
         static readonly string[] AssetMutations = { "create-material", "set-material-property", "create-scriptable-object", "set-asset-property" };
+#if UNITY_EDITOR_WIN
+
+        // bridge 1.6.0: the commands a Windows Editor serves — the session (status, attach approval and binding,
+        // stale-session recovery grants, unbind, inspect) and the Scene-authoring slice qualified on Windows. Every
+        // other command is UNKNOWN_COMMAND here before it is admitted, journaled or dispatched.
+        public static readonly string[] WindowsCommands = { "status", "propose-attach", "attach-status", "abandon-proposal", "bind",
+                                                            "propose-recovery", "recovery-status", "consume-recovery", "unbind",
+                                                            "inspect", "object-inspect", "create-gameobject", "set-transform",
+                                                            "save-scene" };
+#endif
 
         // Parses and validates one request. Throws Refusal with a stable code; never executes anything.
         public static Request Parse(string fileId, string text, long nowTicks, string bootId)
@@ -186,6 +196,10 @@ namespace Gpos.LiveBridge
             Spec spec;
             if (r.Command == null || !Specs.TryGetValue(r.Command, out spec))
                 throw new Refusal("UNKNOWN_COMMAND", "the command is not in the closed allowlist");
+#if UNITY_EDITOR_WIN
+            if (Array.IndexOf(WindowsCommands, r.Command) < 0)
+                throw new Refusal("UNKNOWN_COMMAND", "the command is not in the closed allowlist of this platform (Windows)");
+#endif
             r.Args = d["args"] as Dictionary<string, object>;
             if (r.Args == null || r.Args.Count != spec.Args.Length)
                 throw new Refusal("BAD_ARGUMENTS", "the arguments are exactly " + string.Join(",", spec.Args));

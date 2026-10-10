@@ -141,6 +141,7 @@ namespace Gpos.LiveBridge
                 Equal("CREATE_INCOMPLETE", Refused(() => CreateTxn.Parse(text, Txn, TxnKey)), "refused: " + (text.Length > 90 ? text.Substring(0, 90) : text));
         }
 
+#if !UNITY_EDITOR_WIN   // every command of the protocol; the Windows view serves an allowlist (WindowsCoreTests.cs)
         static void PrefabCommandsHaveExactArgumentsAndClassification()
         {
             var specs = new Dictionary<string, string[]> {
@@ -180,5 +181,6 @@ namespace Gpos.LiveBridge
                                              "save-prefab-stage", "create-prefab-child", "delete-prefab-child", "prefab-utility", "edit-model-prefab" })
                 Equal("UNKNOWN_COMMAND", Code(() => Parse(Id(++n), AuthorReq(Id(n), deferred, "{}"))), deferred);
         }
+#endif
     }
 }

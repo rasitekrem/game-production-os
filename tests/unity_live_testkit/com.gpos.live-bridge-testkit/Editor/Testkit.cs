@@ -117,6 +117,7 @@ namespace Gpos.LiveBridge.Testkit
                 if (name == "reload") EditorUtility.RequestScriptReload();
                 else if (name == "refresh") AssetDatabase.Refresh();
                 else if (name == "quit") EditorApplication.Exit(0);
+                else if (name == "crash") System.Diagnostics.Process.GetCurrentProcess().Kill();   // alpha.26: an abrupt end
                 else if (name.StartsWith("block-", StringComparison.Ordinal)) System.Threading.Thread.Sleep(int.Parse(name.Substring(6)));
                 else if (name.StartsWith("op-", StringComparison.Ordinal) && name.EndsWith(".json", StringComparison.Ordinal))
                 {
@@ -167,6 +168,14 @@ namespace Gpos.LiveBridge.Testkit
         {
             switch (o.op)
             {
+                case "demo-scene":       // alpha.26: the disposable fixture's saved, empty Scene (File > New Scene, Save)
+                {
+                    Directory.CreateDirectory(Path.Combine(Application.dataPath, "Scenes"));
+                    var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                    if (!EditorSceneManager.SaveScene(scene, "Assets/Scenes/Demo.unity"))
+                        throw new InvalidOperationException("testkit: the demo Scene was not saved");
+                    return Ok("scene", Q(scene.path), "roots", scene.rootCount.ToString(CultureInfo.InvariantCulture));
+                }
                 case "setup":
                 {
                     // A saved Scene with one prefab instance (Crate: root + Child with a BoxCollider), opened alone.

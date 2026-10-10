@@ -1,6 +1,6 @@
 # Game Production OS
 
-Version `1.0.0-alpha.25` · Phase 2C-9.3a (Windows Unity batch qualification: Unity 6000.6.4f1 inspect, EditMode and PlayMode tests on Windows) on the frozen Phase-2C-9.2 Windows production tools, Phase-2C-9.1 Windows Foundation Core, Phase-2C-8 Runtime / Deploy / Capture Core (the macOS player runtime adapter), Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation, Phase-2C-1 Git provenance adapter, Phase-2C-2 media evidence adapters, Phase-2C-3 Android ADB adapter, Phase-2C-4 Blender DCC adapter, Phase-2C-5 Unity batch plane, Phase-2C-6A Unity live session foundation, Phase-2C-6B1 Unity live Scene authoring core, Phase-2C-6B2A Unity live asset authoring core, Phase-2C-6B2B Unity live prefab authoring core, Phase-2C-6C Unity source, compile and diagnostics core and Phase-2C-7 Unity Build Core · all skills `DRAFT`
+Version `1.0.0-alpha.26` · Phase 2C-9.3b (Windows live bridge 1.6.0: the live session and Scene authoring — inspect, create an empty GameObject, set its Transform, save — on Windows) on the frozen Phase-2C-9.3a Windows Unity batch plane, Phase-2C-9.2 Windows production tools, Phase-2C-9.1 Windows Foundation Core, Phase-2C-8 Runtime / Deploy / Capture Core (the macOS player runtime adapter), Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation, Phase-2C-1 Git provenance adapter, Phase-2C-2 media evidence adapters, Phase-2C-3 Android ADB adapter, Phase-2C-4 Blender DCC adapter, Phase-2C-5 Unity batch plane, Phase-2C-6A Unity live session foundation, Phase-2C-6B1 Unity live Scene authoring core, Phase-2C-6B2A Unity live asset authoring core, Phase-2C-6B2B Unity live prefab authoring core, Phase-2C-6C Unity source, compile and diagnostics core and Phase-2C-7 Unity Build Core · all skills `DRAFT`
 
 A model-independent production framework for AI-assisted professional game development. It makes AI agents work like a disciplined, multidisciplinary game studio — with clear creative authority, specialist ownership, independent quality gates and typed evidence — instead of like a generic software agent that calls a feature done once the tests pass.
 
@@ -152,13 +152,14 @@ Each game keeps its own authority in a `.game/` directory built from `templates/
 | Windows Foundation Core: the tool adapter foundation on native Windows — Job Object process containment, handle-based NTFS containment and leases, process integrity at every boundary; qualified on Windows 11 with CPython 3.14.8 x64 ([tools/adapter-foundation.md § Windows](tools/adapter-foundation.md#windows-alpha23)) | 2C-9.1 |
 | Windows qualification of the production tools: PATH-only `.exe` discovery; FFmpeg and ffprobe 9.0.2 ([media § Windows](tools/media-adapters.md#windows-alpha24)) and Blender 5.2.2 with private temporary and data directories and verified cleanup ([Blender § Windows](tools/blender-adapter.md#windows-alpha24)) qualified; Git ([open finding D-G1](tools/git-adapter.md#repository-filter-drivers-open-finding-every-host)) and ADB ([server lifecycle deferred](tools/adb-adapter.md#windows-alpha24)) not declared on Windows | 2C-9.2 |
 | Windows Unity batch plane: Unity 6000.6.4f1 discovered from the Hub layout only, a non-interfering Windows project-lock proof (Restart Manager owner query and per-handle process facts), EditMode and PlayMode tests inside the Job Object; live, authoring and build capabilities refused on Windows ([Unity § Windows](tools/unity-adapter.md#windows-alpha25)) | 2C-9.3a |
+| Windows live bridge 1.6.0: the live session (install, status, attach, inspect, detach with Human-approved recovery) and Scene authoring (object inspection, an empty GameObject, its Transform, save) on Windows; claim and withdrawal decided by a delete-excluding pin, the exact Editor creation-time identity ([Unity § Windows live bridge](tools/unity-adapter.md#windows-live-bridge-alpha26)) | 2C-9.3b |
 
 **Platforms.** Windows is the primary development and production platform. macOS keeps its existing behaviour and is used mainly for Apple-specific work (iOS builds, signing, Xcode). Only tested interpreter and operating-system combinations are qualified.
 
 **Next critical path (Windows first):**
 
 1. Human decisions on the Git repository-filter finding (D-G1) and on a GPOS-owned ADB server lifecycle, then Git and ADB on Windows.
-2. Unity 6.6 on Windows: the live Editor bridge (bridge 1.6.0) and authoring (2C-9.3b); the batch plane is qualified (2C-9.3a).
+2. Unity 6.6 on Windows: a Human-attended Scene-authoring demonstration, then the remaining live capabilities (Play Mode, components and properties, assets, prefabs, sources) one qualified slice at a time; the batch plane (2C-9.3a) and the live session with Scene authoring (2C-9.3b) are qualified.
 3. Windows Unity Build Core.
 4. Windows Player Runtime with exact-window capture (`TARGET_RUNTIME` reconsidered only when that runtime qualification justifies it).
 5. The first genuine autonomous game-production pilot, under Human Review and the Golden Gameplay Cell quality gates; pilot-driven hardening and skill maturity follow it.
@@ -171,7 +172,7 @@ Adapter and tool boundaries: [adapters/README.md](adapters/README.md), [tools/RE
 
 ## Versioning
 
-Semantic Versioning, currently `1.0.0-alpha.25` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
+Semantic Versioning, currently `1.0.0-alpha.26` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
 
 | Bump | When |
 |---|---|

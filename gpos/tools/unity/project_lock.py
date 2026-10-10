@@ -535,3 +535,47 @@ def assess_windows(project, editor, host=None):
         a.reasons.append("Temp/UnityLockfile is a regular file nobody holds (two Restart Manager queries agree), and no "
                          "Unity process of this user has the project open")
     return a
+
+
+def windows_editor_identity(pid, recorded, editor, project, host=None):
+    """ALIVE | GONE | REUSED | UNKNOWN (live_status vocabulary) of the Editor a live bridge or SESSION lease names
+    (alpha.26). `recorded` is the creation FILETIME (100 ns since 1601, UTC) the bridge published; every fact is read
+    through one limited-query handle, which also keeps the process id from being reused while it is open:
+
+        ALIVE    running, created exactly at `recorded`, the discovered Hub Editor image, this user, and an exact
+                 single absolute -projectPath naming `project`
+        GONE     no such process, or it has exited
+        REUSED   a process created after `recorded` holds the id (the recorded Editor is gone)
+        UNKNOWN  anything else (unreadable facts, a creation time before `recorded`, or an exact creation time whose
+                 image, user or project contradicts it): never inferred from the process id or name alone
+    """
+    host = host or host_win32
+    if (not isinstance(pid, int) or isinstance(pid, bool) or pid <= 4 or not isinstance(recorded, int)
+            or isinstance(recorded, bool) or not editor):
+        return "UNKNOWN"
+    try:
+        process, problem = host.open_process(pid)
+        if process is None:
+            return "GONE" if problem is None else "UNKNOWN"
+        with process:
+            running = process.running()
+            if running is None:
+                return "UNKNOWN"
+            if not running:
+                return "GONE"
+            created = process.created()
+            if not isinstance(created, int):
+                return "UNKNOWN"
+            if created != recorded:
+                return "REUSED" if created > recorded else "UNKNOWN"
+            image = process.image()
+            if image is None or not _same_file(image, editor) or process.same_user() is not True:
+                return "UNKNOWN"
+            argv, _ = process.argv()
+            if argv is None:
+                return "UNKNOWN"
+            verdict, _ = _project_of(argv, project, _PATHS)
+            return "ALIVE" if verdict == MATCHING_EDITOR else "UNKNOWN"
+    except (OSError, ValueError, AttributeError):
+        return "UNKNOWN"
+

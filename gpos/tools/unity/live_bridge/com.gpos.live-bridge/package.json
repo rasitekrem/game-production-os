@@ -1,6 +1,6 @@
 {
   "name": "com.gpos.live-bridge",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "displayName": "GPOS Live Bridge",
   "description": "Fixed GPOS-owned Editor bridge for the GPOS live session, Scene authoring, asset authoring, prefab authoring and source synchronization, and the batch-only GPOS build entry. Installed and verified by GPOS; do not edit.",
   "unity": "6000.5"

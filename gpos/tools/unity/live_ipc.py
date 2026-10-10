@@ -17,8 +17,12 @@ Exactly one of that rename and the bridge's claim can succeed, so:
 """
 
 import datetime
+import hashlib
 import json
 import os
+import re
+import stat
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -83,6 +87,8 @@ def strict_json(data):
 def read_bounded(path, limit=MAX_STATE_BYTES):
     """A small JSON object file the bridge wrote, or None when it does not exist. Never follows a link."""
     path = Path(path)
+    if sys.platform == "win32":   # alpha.26: pinned ancestry, no reparse point, one link, never blocks the bridge
+        return _windows_read_bounded(path, limit)
     if path.is_symlink():
         raise ChannelProblem(f"{path.name} is a symbolic link")
     try:
@@ -106,6 +112,9 @@ class Channel:
         for p in [self.root] + [self.root / f for f in FOLDERS]:
             if p.is_symlink():
                 raise ChannelProblem(f"{p} is a symbolic link")
+            if sys.platform == "win32":   # alpha.26: a junction (or any reparse point) is a link here too
+                if _windows_reparse(p):
+                    raise ChannelProblem(f"{p} is a reparse point (a junction or link)")
         self.requests, self.claimed = self.root / "requests", self.root / "claimed"
         self.responses, self.withdrawn = self.root / "responses", self.root / "withdrawn"
 
@@ -133,6 +142,8 @@ def publish(channel, command, args, owner, boot_id, session_id=None, start_secon
                       sort_keys=True).encode("utf-8")
     if len(body) > MAX_REQUEST_BYTES:
         raise ValueError("the request is larger than the protocol bound")
+    if sys.platform == "win32":   # alpha.26: a rename that never replaces (no hard link), the file identity recorded
+        return _windows_publish(channel, rid, body)
     tmp = channel.requests / f".tmp-{uuid.uuid4().hex}"
     with open(tmp, "xb") as fh:
         fh.write(body)
@@ -147,6 +158,8 @@ def publish(channel, command, args, owner, boot_id, session_id=None, start_secon
 
 def withdraw(channel, rid):
     """Take an unclaimed request back. True means the bridge never had it and never will."""
+    if sys.platform == "win32":   # alpha.26: RENAME -> PIN -> VERIFY -> DECIDE (None: undecided, never WITHDRAWN)
+        return _windows_withdraw(channel, rid)
     try:
         os.rename(channel.requests / f"{rid}.json", channel.withdrawn / f"{rid}.json")
         return True
@@ -184,6 +197,9 @@ class CallResult:
 def call(channel, command, args, owner, boot_id, session_id=None, wait=30.0, start_seconds=DEFAULT_START_SECONDS,
          sleep=time.sleep, monotonic=time.monotonic, poll=0.05):
     """Publish, wait up to `wait` seconds, then withdraw or report UNKNOWN. Never publishes twice."""
+    if sys.platform == "win32":   # alpha.26: once published, an unreadable answer is an unknown outcome, never an error
+        return _windows_call(channel, command, args, owner, boot_id, session_id, wait, start_seconds, sleep, monotonic,
+                             poll)
     rid = publish(channel, command, args, owner, boot_id, session_id, start_seconds)
     end = monotonic() + wait
     while True:
@@ -197,3 +213,187 @@ def call(channel, command, args, owner, boot_id, session_id=None, wait=30.0, sta
         return CallResult(WITHDRAWN, None, rid)
     response = read_response(channel, rid)
     return CallResult(RESPONDED, response, rid) if response is not None else CallResult(UNKNOWN, None, rid)
+
+
+if sys.platform == "win32":   # alpha.26 (Phase 2C-9.3b): the Windows live IPC
+    # On NTFS two renames of one file at the same moment can both succeed (measured, N1-C5): a rename opens the source
+    # by name and renames through the handle, and the last rename decides where the file rests. So on Windows a
+    # rename decides nothing. Each side decides by a pin: after its own rename it opens the file at its destination
+    # with a share mode that excludes delete (GPOS: paths_win32.open_file_for_read(deny_writers=True), FILE_SHARE_READ
+    # only; the bridge: FileShare.Read). NTFS cannot grant that while any rename handle on the file is open, and once
+    # granted the file can no longer be reached through requests/, so the decision holds after the pin is closed
+    # (N1-B: 28 fault-injection scenarios and 3900 cross-process races). GPOS returns WITHDRAWN only when its pin
+    # holds exactly the file it published (volume and file id recorded at publication, and the same bytes); anything
+    # less is undecided, which `call` reports as RESPONDED or UNKNOWN, never as WITHDRAWN.
+    from .. import paths_win32 as _pw
+
+    RETRY_SECONDS = 0.25          # bounded waits for a sharing violation (another process holds the file)
+    STALE_TEMP_SECONDS = 600      # a publication temp this old was interrupted; GPOS removes its own temps only
+    MAX_PUBLISHED = 256
+    _TEMP = re.compile(r"^\.tmp-[0-9a-f]{32}$")
+    _PUBLISHED = {}               # request id -> (volume, file id, sha256) of the request this process published
+
+    def _windows_reparse(path):
+        """True for a reparse point, or when the attributes of an existing path cannot be read (fail closed)."""
+        try:
+            return bool(os.lstat(path).st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return True
+
+    def _read_fd(fd, limit):
+        chunks, total = [], 0
+        while total <= limit:
+            chunk = os.read(fd, min(65536, limit + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+        return b"".join(chunks)
+
+    def _windows_open(path, deny_writers):
+        """(fd, pins), None when nothing exists there, or raises ChannelProblem; sharing violations are retried."""
+        end = time.monotonic() + RETRY_SECONDS
+        while True:
+            try:
+                fd, _, pins = _pw.open_file_for_read(str(path), deny_writers=deny_writers)
+                return fd, pins
+            except FileNotFoundError:
+                return None
+            except PermissionError:
+                if time.monotonic() >= end:
+                    raise ChannelProblem(f"{path.name} is held by another process") from None
+                time.sleep(0.002)
+            except _pw.PathRefused as exc:
+                if not os.path.lexists(path):
+                    return None
+                raise ChannelProblem(f"{path.name}: {exc.reason}") from None
+            except OSError as exc:
+                raise ChannelProblem(f"{path.name} cannot be read ({exc.strerror})") from None
+
+    def _windows_read_bounded(path, limit):
+        opened = _windows_open(path, deny_writers=False)
+        if opened is None:
+            return None
+        fd, pins = opened
+        try:
+            data = _read_fd(fd, limit)
+        finally:
+            os.close(fd)
+            _pw.close_all(pins)
+        if len(data) > limit:
+            raise ChannelProblem(f"{path.name} is larger than {limit} bytes")
+        value = strict_json(data)
+        if not isinstance(value, dict):
+            raise ChannelProblem(f"{path.name} is not a JSON object")
+        return value
+
+    def _sweep_temps(folder):
+        """Remove interrupted GPOS publication temps (.tmp-<32 hex>) older than STALE_TEMP_SECONDS; nothing else."""
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            return
+        now = time.time()
+        for name in names:
+            if _TEMP.match(name):
+                try:
+                    if now - os.lstat(folder / name).st_mtime > STALE_TEMP_SECONDS:
+                        os.unlink(folder / name)
+                except OSError:
+                    pass
+
+    def _windows_publish(channel, rid, body):
+        _sweep_temps(channel.requests)
+        tmp = channel.requests / f".tmp-{uuid.uuid4().hex}"
+        with open(tmp, "xb") as fh:
+            fh.write(body)
+            fh.flush()
+            os.fsync(fh.fileno())
+            st = os.fstat(fh.fileno())          # the file id survives the rename: it names exactly this file
+        end = time.monotonic() + RETRY_SECONDS
+        while True:
+            try:
+                os.rename(tmp, channel.requests / f"{rid}.json")   # MoveFileExW without flags: never replaces
+                break
+            except PermissionError:             # another process (a scanner) holds the temp without sharing delete
+                if time.monotonic() >= end:
+                    _discard(tmp)
+                    raise ChannelProblem("the request could not be published: its temporary file is held by "
+                                         "another process") from None
+                time.sleep(0.002)
+            except OSError as exc:
+                _discard(tmp)
+                raise ChannelProblem(f"the request could not be published ({exc.strerror})") from None
+        while len(_PUBLISHED) >= MAX_PUBLISHED:
+            _PUBLISHED.pop(next(iter(_PUBLISHED)))
+        _PUBLISHED[rid] = (st.st_dev, st.st_ino, hashlib.sha256(body).hexdigest())
+        return rid
+
+    def _discard(tmp):
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass                                # left for the sweep: a dot-temp is never read as a request
+
+    def _windows_withdraw(channel, rid):
+        """True: WITHDRAWN (pinned and verified). False: the request is no longer at requests/ or was moved away
+        from withdrawn/ (the bridge has it, or someone moved it). None: undecided (a sharing violation outlasted the
+        bound, or the pinned file is not exactly the request GPOS published). Only True means it never ran."""
+        identity = _PUBLISHED.pop(rid, None)
+        src, dst = channel.requests / f"{rid}.json", channel.withdrawn / f"{rid}.json"
+        end = time.monotonic() + RETRY_SECONDS
+        while True:
+            try:
+                os.rename(src, dst)
+                break
+            except FileNotFoundError:
+                return False
+            except PermissionError:             # held without FILE_SHARE_DELETE: it may still be claimed later
+                if time.monotonic() >= end:
+                    return None
+                time.sleep(0.002)
+            except OSError:
+                return None
+        try:
+            opened = _windows_open(dst, deny_writers=True)
+        except ChannelProblem:
+            return None
+        if opened is None:
+            return False                        # the bridge's rename landed after ours: the request is the bridge's
+        fd, pins = opened
+        try:
+            st = os.fstat(fd)
+            data = _read_fd(fd, MAX_REQUEST_BYTES)
+        finally:
+            os.close(fd)
+            _pw.close_all(pins)
+        if identity is None or (st.st_dev, st.st_ino) != identity[:2] or hashlib.sha256(data).hexdigest() != identity[2]:
+            return None
+        return True
+
+    def _windows_call(channel, command, args, owner, boot_id, session_id, wait, start_seconds, sleep, monotonic, poll):
+        """`call` on Windows. A response that cannot be read (held past the bound, or not of the protocol shape) after
+        the request was published is not an error that ends the call: the request may have run, so it is waited for
+        like a missing response and is finally UNKNOWN. Never publishes twice; never WITHDRAWN without the pin."""
+        rid = publish(channel, command, args, owner, boot_id, session_id, start_seconds)
+
+        def answered():
+            try:
+                return read_response(channel, rid)
+            except ChannelProblem:
+                return None
+
+        end = monotonic() + wait
+        while True:
+            response = answered()
+            if response is not None:
+                return CallResult(RESPONDED, response, rid)
+            if monotonic() >= end:
+                break
+            sleep(poll)
+        if withdraw(channel, rid):
+            return CallResult(WITHDRAWN, None, rid)
+        response = answered()
+        return CallResult(RESPONDED, response, rid) if response is not None else CallResult(UNKNOWN, None, rid)

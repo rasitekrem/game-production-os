@@ -1,6 +1,7 @@
 """The fixed GPOS live bridge package: release manifest, verification, the closed-project installer and the
 crash-recoverable upgrade from an earlier released bridge (Phase 2C-6A, upgrade Phase 2C-6B1; 1.2.0 in 2C-6B2A; 1.3.0 in
-2C-6B2B; 1.4.0 in 2C-6C; 1.5.0 in 2C-7, which adds the batch-only build entry and keeps protocol /5).
+2C-6B2B; 1.4.0 in 2C-6C; 1.5.0 in 2C-7, which adds the batch-only build entry and keeps protocol /5; 1.6.0 in 2C-9.3b,
+which adds Windows and keeps protocol /5).
 
 The bridge is GPOS release content: `live_bridge/com.gpos.live-bridge/` holds every file of the Unity package,
 including fixed `.meta` files, and `live_bridge/manifest.json` records each file's size and SHA-256 plus the
@@ -42,13 +43,14 @@ import os
 import re
 import shutil
 import stat
+import sys
 import uuid
 from pathlib import Path
 
 from .. import paths as tp
 
 PACKAGE_ID = "com.gpos.live-bridge"
-BRIDGE_VERSION = "1.5.0"
+BRIDGE_VERSION = "1.6.0"
 PROTOCOL = "gpos.unity.live/5"
 MANIFEST_SCHEMA = "gpos.unity.live-bridge.manifest/1"
 HERE = Path(__file__).resolve().parent
@@ -64,6 +66,8 @@ PREVIOUS = {
     "1.3.0": ("gpos.unity.live/4", "acdbb1c84e9be9e8fbd10bb6b2c09e4dbfae3e4d4e28ad74c4f5cc708a4f3f47"),
     # 1.5.0 keeps the live protocol: it only adds the batch-only build entry, so 1.4.0 shares protocol /5.
     "1.4.0": ("gpos.unity.live/5", "90dedd4089e602728c3402557b232fcb8a865a423a0a3f11e52e02e3c6c88422"),
+    # 1.6.0 (alpha.26) keeps the live protocol too: it adds the Windows file layer, so 1.5.0 shares protocol /5.
+    "1.5.0": ("gpos.unity.live/5", "b7f4775d4f1e807136df0978d27218eac20dbe5e163fe23618fd84a17a62ea16"),
 }
 MAX_FILE_BYTES = 1024 * 1024
 ABSENT, EXACT, PREVIOUS_STATE, UNTRUSTED = "ABSENT", "EXACT", "PREVIOUS", "UNTRUSTED"
@@ -114,6 +118,10 @@ def tree(directory):
         for name in sorted(os.listdir(d)):
             path, relpath = d / name, f"{rel}{name}"
             st = os.lstat(path)
+            if sys.platform == "win32":   # alpha.26: a junction (or any reparse point) is a link here too
+                if st.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                    problems.append(f"{relpath}: a reparse point (junction or link)")
+                    continue
             if stat.S_ISLNK(st.st_mode):
                 problems.append(f"{relpath}: a symbolic link")
             elif stat.S_ISDIR(st.st_mode):
@@ -205,6 +213,9 @@ def inspect_target(unity_project, manifest):
         st = os.lstat(target)
     except FileNotFoundError:
         return ABSENT, []
+    if sys.platform == "win32":   # alpha.26: a junction (or any reparse point) is a link here too
+        if st.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            return UNTRUSTED, [f"Packages/{PACKAGE_ID} is a reparse point (junction or link)"]
     if stat.S_ISLNK(st.st_mode):
         return UNTRUSTED, [f"Packages/{PACKAGE_ID} is a symbolic link"]
     if not stat.S_ISDIR(st.st_mode):
@@ -288,6 +299,9 @@ def runtime_path(root, *parts):
             break
         if stat.S_ISLNK(st.st_mode) or not stat.S_ISDIR(st.st_mode):
             raise OSError(f"{current} is not a real directory")
+        if sys.platform == "win32":   # alpha.26: a junction (or any reparse point) is a link here too
+            if st.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                raise OSError(f"{current} is not a real directory")
     return path
 
 
@@ -323,6 +337,9 @@ def install(root, unity_project, manifest, source=SOURCE):
     packages = Path(unity_project) / "Packages"
     if packages.is_symlink() or not packages.is_dir():
         raise OSError(f"{packages} is not a real directory")
+    if sys.platform == "win32":   # alpha.26: a junction (or any reparse point) is a link here too
+        if os.lstat(packages).st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise OSError(f"{packages} is not a real directory")
     staging = runtime_path(root, *STAGING, uuid.uuid4().hex)
     try:
         staged = _stage(root, manifest, source, staging)
@@ -420,6 +437,9 @@ def upgrade(root, unity_project, key, rel, manifest, source=SOURCE):
     packages = Path(unity_project) / "Packages"
     if packages.is_symlink() or not packages.is_dir():
         raise OSError(f"{packages} is not a real directory")
+    if sys.platform == "win32":   # alpha.26: a junction (or any reparse point) is a link here too
+        if os.lstat(packages).st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise OSError(f"{packages} is not a real directory")
     txn_id = uuid.uuid4().hex
     places = txn_places(root, unity_project, txn_id)
     staged = _stage(root, manifest, source, places["staging"].parent)

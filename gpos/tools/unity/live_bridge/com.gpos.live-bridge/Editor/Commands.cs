@@ -195,7 +195,22 @@ namespace Gpos.LiveBridge
             SessionState.SetString(LiveBridge.KOwner, r.Owner);
             SessionState.SetString(LiveBridge.KBound, Now.ToString());
             SessionState.SetString(LiveBridge.KProposal, prop);
+#if UNITY_EDITOR_WIN
+            // bridge 1.6.0: a binding that cannot be published is undone before the FAILED answer, so a FAILED bind is
+            // always a known unbound Editor. The grant stays consumed: the Human approval can never be used twice.
+            try { LiveBridge.WriteSession("ATTACHED", sid, r.Owner, prop); }
+            catch
+            {
+                SessionState.EraseString(LiveBridge.KSession);
+                SessionState.EraseString(LiveBridge.KOwner);
+                SessionState.EraseString(LiveBridge.KBound);
+                SessionState.EraseString(LiveBridge.KProposal);
+                Ipc.Event("bind-undone:" + sid);
+                throw;
+            }
+#else
             LiveBridge.WriteSession("ATTACHED", sid, r.Owner, prop);
+#endif
             LiveBridge.PublishBridge("READY");
             LiveBridge.Heartbeat(true);   // the binding is visible at once, not at the next beat
             Ipc.Event("bound:" + sid);
@@ -223,8 +238,18 @@ namespace Gpos.LiveBridge
             string resource = "EDITOR_PROJECT:" + LiveBridge.Place.GposRoot;
             string key = Identity.Sha256(Encoding.UTF8.GetBytes("unity\0" + resource)).Substring(0, 32);
             string path = Path.Combine(LiveBridge.Place.GposRoot, ".game", "gpos-runtime", "leases", key + ".json");
+#if UNITY_EDITOR_WIN
+            // bridge 1.6.0: read sharing every mode, so this reader never blocks GPOS replacing or releasing the lease
+            if (!File.Exists(path) || Identity.IsLink(path)) return null;
+            byte[] bytes = WindowsFiles.ReadShared(path, Protocol.MaxRequestBytes);
+            if (bytes == null || bytes.Length > Protocol.MaxRequestBytes) return null;
+            string text = Ipc.Text(bytes);
+            if (text == null) return null;
+            var lease = Json.Parse(text) as Dictionary<string, object>;
+#else
             if (!File.Exists(path) || Identity.IsLink(path) || new FileInfo(path).Length > Protocol.MaxRequestBytes) return null;
             var lease = Json.Parse(File.ReadAllText(path)) as Dictionary<string, object>;
+#endif
             if (lease == null || lease.ContainsKey("resource_id") && (lease["resource_id"] as string) != resource) return null;
             return lease;
         }

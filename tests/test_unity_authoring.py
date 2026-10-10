@@ -63,6 +63,8 @@ FROZEN_TAG_13 = "v1.0.0-alpha.19"
 FROZEN_DIGEST_13 = "acdbb1c84e9be9e8fbd10bb6b2c09e4dbfae3e4d4e28ad74c4f5cc708a4f3f47"
 FROZEN_TAG_14 = "v1.0.0-alpha.20"
 FROZEN_DIGEST_14 = "90dedd4089e602728c3402557b232fcb8a865a423a0a3f11e52e02e3c6c88422"
+FROZEN_TAG_15 = "v1.0.0-alpha.21"   # alpha.26: 1.5.0 is pinned history (unchanged through v1.0.0-alpha.25)
+FROZEN_DIGEST_15 = "b7f4775d4f1e807136df0978d27218eac20dbe5e163fe23618fd84a17a62ea16"
 ID = "GlobalObjectId_V1-2-0123456789abcdef0123456789abcdef-{}-0"
 T = "0" * 31 + "1"
 T2 = "0" * 31 + "2"
@@ -551,7 +553,8 @@ class D_Upgrade(LiveCase):
                 "1.1.0": (FROZEN_TAG_11, "gpos.unity.live/2", FROZEN_DIGEST_11),
                 "1.2.0": (FROZEN_TAG_12, "gpos.unity.live/3", FROZEN_DIGEST_12),
                 "1.3.0": (FROZEN_TAG_13, "gpos.unity.live/4", FROZEN_DIGEST_13),
-                "1.4.0": (FROZEN_TAG_14, "gpos.unity.live/5", FROZEN_DIGEST_14)}   # alpha.21 keeps protocol /5
+                "1.4.0": (FROZEN_TAG_14, "gpos.unity.live/5", FROZEN_DIGEST_14),   # alpha.21 keeps protocol /5
+                "1.5.0": (FROZEN_TAG_15, "gpos.unity.live/5", FROZEN_DIGEST_15)}   # alpha.26 keeps protocol /5
         for version, (tag, protocol, pinned) in pins.items():
             with self.subTest(version):
                 frozen = git("show", f"{tag}:gpos/tools/unity/live_bridge/manifest.json", binary=True)
@@ -566,7 +569,7 @@ class D_Upgrade(LiveCase):
                 self.assertNotEqual(bi.verify_source()["package_digest"], pinned)
         self.assertEqual(bi.PREVIOUS, {v: (protocol, pinned) for v, (_, protocol, pinned) in pins.items()})
         self.assertEqual(sorted(p.name for p in bi.HISTORY.iterdir()),
-                         ["1.0.0.json", "1.1.0.json", "1.2.0.json", "1.3.0.json", "1.4.0.json"])
+                         ["1.0.0.json", "1.1.0.json", "1.2.0.json", "1.3.0.json", "1.4.0.json", "1.5.0.json"])
 
     def test_an_exact_1_1_0_bridge_is_upgraded(self):
         frozen_package(self.target, FROZEN_TAG_11)
@@ -810,7 +813,7 @@ class D_Upgrade(LiveCase):
         old.symlink_to(elsewhere, target_is_directory=True)
         self.assertStatus(self.run_cap(live.INSTALL), tdg.CONFLICT, "LIVE_BRIDGE_UNTRUSTED")
         self.assertTrue(old.is_symlink())
-        self.assertEqual(set(bi.PREVIOUS), {"1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"})   # only earlier releases; never a downgrade target
+        self.assertEqual(set(bi.PREVIOUS), {"1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"})   # only earlier releases; never a downgrade target
 
 
 def ident_key(case):

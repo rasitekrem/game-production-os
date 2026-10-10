@@ -315,19 +315,23 @@ class WA_Gating(UnityCase):
         d = ua.DESCRIPTOR
         self.assertEqual(tval.validate_descriptor(FW, d, allow_test_only=False), [])
         self.assertEqual(d.supported_platforms, ("MACOS", "WINDOWS"))
-        self.assertEqual(ua.WINDOWS_CAPABILITIES, (ua.INSPECT, ua.EDITMODE, ua.PLAYMODE))
+        from gpos.tools.unity import authoring, live
+        self.assertEqual(ua.WINDOWS_CAPABILITIES, (ua.INSPECT, ua.EDITMODE, ua.PLAYMODE,     # alpha.26: + the live slice
+                                                   live.INSTALL, live.STATUS, live.ATTACH, live.INSPECT, live.DETACH,
+                                                   authoring.INSPECT_OBJECT, authoring.CREATE, authoring.SET_TRANSFORM,
+                                                   authoring.SAVE_SCENE))
         self.assertEqual(ua.WINDOWS_ENVIRONMENT, ("ProgramData", "LOCALAPPDATA"))
         self.assertEqual(len(d.capabilities), 47)
 
     def test_every_other_capability_is_refused_on_windows_before_anything_runs(self):
         others = [c.id for c in ua.DESCRIPTOR.capabilities if c.id not in ua.WINDOWS_CAPABILITIES]
-        self.assertEqual(len(others), 44)
+        self.assertEqual(len(others), 35)                 # alpha.26: 12 qualified on Windows
         with Recorder() as rec:
             for cap in others:
                 with self.subTest(capability=cap):
                     outcome = UnityAdapter().execute(types.SimpleNamespace(capability_id=cap), None)
                     self.assertEqual({d.code for d in outcome.diagnostics}, {"PLATFORM_UNSUPPORTED"})
-                    self.assertIn("batch plane only", outcome.diagnostics[0].message)
+                    self.assertIn("not available on Windows in this release", outcome.diagnostics[0].message)
         self.assertEqual(rec.specs, [])
 
     def test_a_refused_capability_reaches_no_tool_through_the_foundation(self):
@@ -349,8 +353,8 @@ class WA_Gating(UnityCase):
         available = sorted(c for c, ok, _ in probe.capability_availability if ok)
         self.assertEqual(available, sorted(ua.WINDOWS_CAPABILITIES))
         refused = [why for c, ok, why in probe.capability_availability if not ok]
-        self.assertEqual(len(refused), 44)
-        self.assertTrue(all("batch plane only" in why for why in refused))
+        self.assertEqual(len(refused), 35)
+        self.assertTrue(all("not available on Windows in this release" in why for why in refused))
 
 
 # ---------------------------------------------------------------- WB  discovery and version
@@ -412,8 +416,11 @@ class WB_Discovery(UnityCase):
             with self.subTest(case=name):
                 probe = StandIn(self.tmp / name.replace(" ", "-"), **config).adapter().probe()
                 self.assertEqual(probe.status, "VERSION_UNSUPPORTED")
-                # only the tool-free static inspection stays usable, as on macOS
-                self.assertEqual([c for c, ok, _ in probe.capability_availability if ok], [ua.INSPECT])
+                # only the tool-free capabilities stay usable, as on macOS: the static inspection and (alpha.26) the
+                # live slice, which never starts the Editor executable
+                self.assertEqual([c for c, ok, _ in probe.capability_availability if ok],
+                                 [c.id for c in ua.CAPABILITIES if c.id in ua.WINDOWS_CAPABILITIES and not c.requires_tool])
+                self.assertIn(ua.INSPECT, [c for c, ok, _ in probe.capability_availability if ok])
 
     def test_a_project_for_another_editor_version_is_not_run(self):
         stand_in = StandIn(self.tmp)
@@ -619,8 +626,8 @@ class WC_LockProofLogic(UnityCase):
         tree = ast.parse((ROOT / "gpos/tools/unity/project_lock.py").read_text(encoding="utf-8"))
         windows = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith(("windows_",
                                                                                                     "assess_windows"))]
-        self.assertEqual(sorted(n.name for n in windows), ["assess_windows", "windows_lock_facts",
-                                                           "windows_process_proof"])
+        self.assertEqual(sorted(n.name for n in windows), ["assess_windows", "windows_editor_identity",
+                                                           "windows_lock_facts", "windows_process_proof"])
         for node in windows:
             calls = {ast.unparse(c.func) for c in ast.walk(node) if isinstance(c, ast.Call)}
             self.assertFalse({c for c in calls if c in ("open", "os.open", "osx.open_readonly", "io.open")

@@ -49,8 +49,15 @@ namespace Gpos.LiveBridge
         public const int TypesPage = 200;
         public const int ShadersPage = 10;
 
+#if UNITY_EDITOR_WIN
+        // bridge 1.6.0: no libc on Windows; the commands that use these are not served there (Protocol.WindowsCommands)
+        static Refusal NotServed() { return new Refusal("UNKNOWN_COMMAND", "not served by the bridge on Windows (bridge 1.6.0)"); }
+        static int mkdir(string path, int mode) { throw NotServed(); }
+        static int access(string path, int mode) { throw NotServed(); }
+#else
         [DllImport("libc", SetLastError = true)] static extern int mkdir(string path, int mode);
         [DllImport("libc", SetLastError = true)] static extern int access(string path, int mode);
+#endif
 
         // TEST SEAM: called after each named step with the asset path. Only the test-only testkit sets it (to write
         // files at an exact point, or to stop the Editor process); a request cannot reach it.

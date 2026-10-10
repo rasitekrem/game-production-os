@@ -4,6 +4,32 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [1.0.0-alpha.26] — Phase 2C-9.3b: Windows live bridge and Scene authoring
+
+Builds on the frozen Phase-2C-9.3a tree (`v1.0.0-alpha.25`, `8f98be7`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, to the SESSION contract, to Unity Build Core or to the Player Runtime; the production registry stays at seven adapters. Projects must pin `gpos_version` `1.0.0-alpha.26`.
+
+Qualified on Windows 11 Enterprise 10.0.26200 with CPython 3.14.8 x64, local NTFS and Unity 6000.6.4f1, with **bridge 1.6.0** (`com.gpos.live-bridge`, protocol `gpos.unity.live/5` unchanged). Windows offers 12 Unity capabilities and refuses 35. Approval in the qualification was synthetic (the test-only testkit); no Human-attended session was run.
+
+### Added
+
+- **The live session and the Scene-authoring slice on Windows:** `unity.live-install-bridge`, `unity.live-status`, `unity.live-attach`, `unity.live-inspect`, `unity.live-detach` (with Human-approved recovery), `unity.live-object-inspect`, `unity.live-create-gameobject`, `unity.live-set-transform` and `unity.live-save-scene`. Play Mode, the other Scene edits, assets, prefabs, sources and Build Core stay refused on Windows (`PLATFORM_UNSUPPORTED`); the bridge serves only the 14 commands of this slice there and answers any other `UNKNOWN_COMMAND`.
+- **Bridge 1.6.0**, one package for both platforms: Windows branches (`#if UNITY_EDITOR_WIN`) with exactly one native function, `kernel32.dll!MoveFileExW` (no-replace moves and atomic state-file replacement), managed Windows path spelling and reparse refusal, and the macOS view of every changed file byte for byte the frozen 1.5.0 source but for the version. The frozen 1.5.0 manifest is pinned as `live_bridge/history/1.5.0.json` (`b7f4775d…`); an exact 1.5.0 is upgraded with the existing transaction.
+- **Claim and withdrawal decided by a pin** (RENAME → PIN → VERIFY → DECIDE): measured on NTFS, two renames of one file at the same moment can both succeed (N1), so each side decides only by opening the file at its own destination with a share mode excluding delete; GPOS reports `WITHDRAWN` only for exactly the file it published (file id and bytes). Qualified first in N1-B (28 fault-injection scenarios and 3900 cross-process races, no violation) and repeated against the production code (tests/test_unity_windows_live.py WLC).
+- **The Windows Editor identity:** the exact creation time (`editor_started_utc` equals `GetProcessTimes` to the 100 ns tick, measured on every Editor start of the qualification), the Hub Editor image, the user, liveness and the exact project, through the alpha.25 `host_win32` handle; no tolerance, no proof from a process id.
+- **SESSION reconciliations on Windows:** a bind whose `session.json` cannot be published is undone before its `FAILED` answer (a failed bind is a known unbound Editor; the grant stays consumed); answering never throws; an unreadable answer after publication is `UNKNOWN`, never an error. The frozen contract is unchanged.
+- **Tests:** `tests/test_unity_windows_live.py` (WLA–WLE without Unity; WLR1–WLR5 with one lab Editor at a time in its own Job), `tests/mutate_unity_windows_live.py`, `tests/unity_live_ipc_harness/IpcHarness.cs`, `tests/unity_live_bridge_core/WindowsCoreTests.cs`, P10 in `tests/test_posix_parity.py`, the live-demo fixture in `tests/unity_fixture_builder.py`, and two test-only testkit additions (the `demo-scene` op, the `crash` trigger).
+
+### Changed
+
+- `gpos/tools/unity/live_ipc.py`, `live_status.py`, `live.py`, `identity.py`, `bridge_install.py`, `project_lock.py` and `adapter.py`: Windows guards only, apart from the bridge version and its history pin (P10 proves each shared change). `live_ipc.py` may use the foundation's `paths_win32.open_file_for_read` (D-L4; tests/validate_framework.py).
+- The macOS Unity suites' release pins move to bridge 1.6.0 (and compare the macOS view of the live lifecycle with the frozen source); they are NOT_RUN on Windows.
+
+### Notes
+
+- macOS was not executed for this release: bridge 1.6.0's macOS runtime is NOT_RUN; its macOS source view is proven equal to 1.5.0 (P10), which is not a macOS PASS.
+- No Human-attended demonstration was run; the testkit's approvals are synthetic and never evidence of a Human approval.
+- Directory fsync is a no-op on Windows (NTFS journals its metadata); the live folder inherits the GPOS runtime area's Windows permissions. Git provenance stays unavailable on Windows.
+
 ## [1.0.0-alpha.25] — Phase 2C-9.3a: Windows Unity batch qualification
 
 Builds on the frozen Phase-2C-9.2 tree (`v1.0.0-alpha.24`, `c6c27a6`). No change to gate, evidence, authority, routing, lifecycle, validator or agent-adapter semantics, no new capability, no change to the Unity Editor bridge (`com.gpos.live-bridge` 1.5.0, `gpos.unity.live/5`, 67 files, digest `b7f4775d…`), to Unity Build Core or to the Player Runtime, and the production registry stays at seven adapters. Projects must pin `gpos_version` `1.0.0-alpha.25`.

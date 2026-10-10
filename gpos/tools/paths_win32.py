@@ -1,6 +1,8 @@
 """Windows file-system containment for the tool foundation (alpha.23). Private to the foundation.
 
-Only gpos/tools/paths.py, artifacts.py, leases.py, execution.py and process_win32.py import this module. It is not
+Only gpos/tools/paths.py, artifacts.py, leases.py, execution.py and process_win32.py import this module, and (alpha.26,
+D-L4) the engine adapter's live-bridge IPC client, which reads and pins bridge files with open_file_for_read only
+(tests/validate_framework.py names it). It is not
 a general file API: every function serves one reviewed foundation operation, takes an absolute path the
 foundation already decided to touch, and refuses rather than falls back.
 

@@ -73,3 +73,28 @@ def units(source):
                 key, n = f"{_key(node)} #{n}", n + 1
             out[key] = {"stmt": _h(node)}
     return out
+
+
+def macos_view(text):
+    """alpha.26: the C# source a macOS Editor compiles — every `#if UNITY_EDITOR_WIN` branch dropped, its `#else` branch
+    kept, every `#if !UNITY_EDITOR_WIN` block kept, and the directive lines removed."""
+    out, stack = [], []
+    for line in text.splitlines(keepends=True):
+        s = line.strip()
+        if s.startswith("#if UNITY_EDITOR_WIN"):
+            stack.append(["win", False])
+            continue
+        if s.startswith("#if !UNITY_EDITOR_WIN"):
+            stack.append(["notwin", True])
+            continue
+        if s == "#else" and stack:
+            stack[-1][1] = not stack[-1][1]
+            continue
+        if s == "#endif" and stack:
+            stack.pop()
+            continue
+        if all(keep for _, keep in stack):
+            out.append(line)
+    if stack:
+        raise ValueError("unbalanced #if")
+    return "".join(out)

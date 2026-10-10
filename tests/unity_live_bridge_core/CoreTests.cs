@@ -69,6 +69,7 @@ namespace Gpos.LiveBridge
 
         // ------------------------------------------------------------ Protocol
 
+#if !UNITY_EDITOR_WIN   // every command of the protocol; the Windows view serves an allowlist (WindowsCoreTests.cs)
         static void ProtocolAcceptsAValidRequest()
         {
             var r = Parse(Id(1), Req(Id(1)));
@@ -77,7 +78,9 @@ namespace Gpos.LiveBridge
             var s = Parse(Id(2), Req(Id(2), "pause", "{}", Sid));
             Equal(Sid, s.SessionId, "session");
         }
+#endif
 
+#if !UNITY_EDITOR_WIN   // every command of the protocol; the Windows view serves an allowlist (WindowsCoreTests.cs)
         static void ProtocolRefusalsHaveStableCodes()
         {
             Equal("MALFORMED_REQUEST", Code(() => Parse(Id(1), "{\"schema\":1")), "garbled");
@@ -100,6 +103,7 @@ namespace Gpos.LiveBridge
             Check(!Protocol.Commands.Any(c => c.Contains("method") || c.Contains("menu") || c.Contains("eval") || c.Contains("approve")),
                   "no generic command");
         }
+#endif
 
         // ------------------------------------------------------------ Journal
 

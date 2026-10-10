@@ -19,6 +19,7 @@ answers a closed protocol over local files (live_ipc). None of these capabilitie
 is the Editor's state, never TARGET_RUNTIME, and SUCCESS establishes no player-loop, frame or gameplay progress.
 """
 
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -164,6 +165,8 @@ class Live:
         return ls.read_state(self.live_dir)
 
     def editor(self, pid, started):
+        if sys.platform == "win32":   # alpha.26: exact creation time, image, user and project through one handle
+            return ls.windows_identity(pid, started, self.summary["editor_version"], self.project)
         return ls.identity(self._facts(pid), started)
 
     def holder(self):

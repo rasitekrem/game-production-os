@@ -69,7 +69,13 @@ namespace Gpos.LiveBridge
 
     internal static class PrefabResolver
     {
+#if UNITY_EDITOR_WIN
+        // bridge 1.6.0: no libc on Windows; the commands that use these are not served there (Protocol.WindowsCommands)
+        static Refusal NotServed() { return new Refusal("UNKNOWN_COMMAND", "not served by the bridge on Windows (bridge 1.6.0)"); }
+        static int access(string path, int mode) { throw NotServed(); }
+#else
         [DllImport("libc", SetLastError = true)] static extern int access(string path, int mode);
+#endif
 
         // TEST SEAM: the test-only testkit sets it to stand in for an active version-control provider. It can only make
         // the version-control guard refuse; a request cannot reach it.

@@ -35,6 +35,7 @@ import os
 import plistlib
 import re
 import stat
+import sys
 from pathlib import Path
 
 from .. import redaction
@@ -91,6 +92,8 @@ RULES = ("TARGET_MODULE_MISSING", "TARGET_NOT_ACTIVE", "EDITOR_NOT_SETTLED", "SC
          "PROFILE_FIELD_UNREADABLE", "PROFILE_PLAYER_SETTINGS_OVERRIDE", "SUBTARGET_NOT_PLAYER", "BACKEND_NOT_MONO",
          "DEBUG_STATE_UNSUPPORTED", "DEVELOPMENT_AMBIGUOUS", "OUTPUT_NOT_PLAYER_APP", "NO_SCENES", "SCENE_INVALID",
          "TOO_MANY_SCENES", "FILE_UNREADABLE", "CONFIGURATION_CHANGED")
+if sys.platform == "win32":
+    RULES += ("WINDOWS_PROFILE_UNSUPPORTED", "WINDOWS_OUTPUT_UNREADABLE", "WINDOWS_VERSION_UNSUPPORTED")
 
 LIMITATIONS = (
     "build_revision is caller-supplied provenance: this build did not read Git. The Git-to-build binding is the "
@@ -155,6 +158,12 @@ def token_of(configuration):
 # ---------------------------------------------------------------- the response
 
 def _read_bounded(path, bound):
+    if sys.platform == "win32":
+        from . import build_win32 as wb
+        try:
+            return wb.read_json(path, bound)
+        except wb.VALIDATION_ERRORS as exc:
+            raise ResponseProblem(str(exc)) from None
     st = os.lstat(path)
     if not stat.S_ISREG(st.st_mode):
         raise ResponseProblem(f"{Path(path).name} is not a regular file")
@@ -183,6 +192,12 @@ def _is(value, kind):
 
 def read_response(workspace, request_id, operation):
     """The build entry's answer, checked strictly; raises ResponseProblem when it cannot be trusted."""
+    if sys.platform == "win32":
+        from . import build_win32 as wb
+        try:
+            return wb.read_response(workspace, request_id, operation)
+        except wb.VALIDATION_ERRORS as exc:
+            raise ResponseProblem(str(exc)) from None
     path = Path(workspace) / RESPONSE_NAME
     if not os.path.lexists(path):
         raise ResponseProblem("the build entry wrote no response")
@@ -235,6 +250,10 @@ def _check_build(b):
         return   # BuildPlayer returned no report: the outcome is unknown, decided by the caller
     keys = {"result", "guid", "platform", "output_path", "total_errors", "total_warnings", "total_size", "duration_ms",
             "development_observed", "options_text", "messages", "error_message_count"}
+    if sys.platform == "win32":
+        keys = keys | {"files"}
+        if not isinstance(b, dict) or not isinstance(b.get("files"), list) or len(b["files"]) > MAX_ENTRIES:
+            raise ResponseProblem("unbounded Windows BuildReport files")
     if not isinstance(b, dict) or set(b) != keys:
         raise ResponseProblem("the build report facts are malformed")
     for k in ("total_errors", "total_warnings", "total_size", "duration_ms", "error_message_count"):
@@ -451,6 +470,9 @@ def revalidate(workspace):
     A pure check for tests and for later consumers: the manifest must exist and be well-formed, its build id must be
     this workspace's, and the payload tree digest, entry count and byte count must be recomputed identically.
     """
+    if sys.platform == "win32":
+        from . import build_win32 as wb
+        return wb.revalidate(workspace)
     workspace = Path(workspace)
     path = workspace / MANIFEST_NAME
     try:

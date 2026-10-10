@@ -1,6 +1,6 @@
 # Production Lifecycle
 
-Status: normative · GPOS `1.0.0-alpha.26`
+Status: normative · GPOS `1.0.0-alpha.27`
 
 Machine-readable source: [`registry.json`](registry.json) → `lifecycle_stages`.
 

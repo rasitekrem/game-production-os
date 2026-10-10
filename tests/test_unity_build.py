@@ -474,7 +474,7 @@ class D_Release(BuildCase):
     install = False
 
     def test_1_5_0_keeps_protocol_5_and_pins_1_4_0(self):
-        self.assertEqual((bi.BRIDGE_VERSION, bi.PROTOCOL), ("1.6.0", "gpos.unity.live/5"))   # alpha.26
+        self.assertEqual((bi.BRIDGE_VERSION, bi.PROTOCOL), ("1.7.0", "gpos.unity.live/5"))   # alpha.26
         frozen = ta.git("show", f"{FROZEN_TAG_14}:gpos/tools/unity/live_bridge/manifest.json", binary=True)
         self.assertEqual((bi.HISTORY / "1.4.0.json").read_bytes(), frozen)
         release = json.loads(frozen)
@@ -482,7 +482,7 @@ class D_Release(BuildCase):
                          ("1.4.0", "gpos.unity.live/5", FROZEN_DIGEST_14, 60))
         self.assertEqual(bi.PREVIOUS["1.4.0"], ("gpos.unity.live/5", FROZEN_DIGEST_14))
         current = bi.verify_source()
-        self.assertEqual((current["bridge_version"], current["protocol"], len(current["files"])), ("1.6.0", "gpos.unity.live/5", 71))
+        self.assertEqual((current["bridge_version"], current["protocol"], len(current["files"])), ("1.7.0", "gpos.unity.live/5", 71))
         # alpha.26: 1.5.0 (this phase's release) is pinned history; what it added over 1.4.0 is unchanged
         release_15 = json.loads((bi.HISTORY / "1.5.0.json").read_bytes())
         self.assertEqual(bi.PREVIOUS["1.5.0"], ("gpos.unity.live/5", release_15["package_digest"]))
@@ -664,7 +664,7 @@ class F_Matrix(BuildCase):
         self.assertEqual(m["scenes"], configuration()["scenes"])
         self.assertEqual(m["unity_build"]["guid"], "5d473f7636a9422a89bac4a6c737bd5b")
         self.assertEqual((m["build_entry"]["version"], m["build_entry"]["method"], m["build_entry"]["package_digest"]),
-                         ("1.6.0", ub.BUILD_ENTRY_METHOD, bi.verify_source()["package_digest"]))
+                         ("1.7.0", ub.BUILD_ENTRY_METHOD, bi.verify_source()["package_digest"]))
         self.assertEqual((m["payload"]["path"], m["payload"]["kind"], m["payload"]["bundle_identifier"],
                           m["payload"]["executable"], m["payload"]["bundle_version"]),
                          ("payload/Player.app", "MACOS_APP_BUNDLE", "com.DefaultCompany.Game", "Game", "1.0"))

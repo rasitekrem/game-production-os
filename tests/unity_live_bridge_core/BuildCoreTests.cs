@@ -28,6 +28,11 @@ namespace Gpos.LiveBridge
             f.Files["ProjectSettings/ProjectSettings.asset"] = H64;
             f.Scenes.Add(new SceneFact { Path = "Assets/Scenes/Main.unity", Guid = G32, ResolvedGuid = G32, Sha256 = H64, Exists = true });
             f.SceneCount = 1;
+#if UNITY_EDITOR_WIN
+            f.UnityVersion = "6000.6.4f1";
+            f.ActiveTarget = "StandaloneWindows64";
+            f.WindowsOutputReadable = true;
+#endif
             return f;
         }
 
@@ -79,14 +84,27 @@ namespace Gpos.LiveBridge
         static void TheCanonicalConfigurationIsPythonsBytes()
         {
             var c = BuildRules.Configuration(Classic());
+            #if UNITY_EDITOR_WIN
+            Equal("{\"active_target\":\"StandaloneWindows64\",\"application_identifier\":\"com.Gpos.Golden\",\"debug\":{\"allow_debugging\":false,\"code_coverage\":false,\"connect_profiler\":false,\"deep_profiling\":false,\"wait_for_managed_debugger\":false,\"wait_for_player_connection\":false},\"development\":false,\"files\":{\"Packages/manifest.json\":\"abababababababababababababababababababababababababababababababab\",\"Packages/packages-lock.json\":\"ABSENT\",\"ProjectSettings/EditorBuildSettings.asset\":\"abababababababababababababababababababababababababababababababab\",\"ProjectSettings/ProjectSettings.asset\":\"abababababababababababababababababababababababababababababababab\"},\"mode\":\"CLASSIC\",\"output\":{\"architecture\":\"x64\",\"copy_pdb\":false,\"create_solution\":false,\"install_in_build_folder\":false,\"readable\":true},\"profile\":null,\"scenes\":[{\"guid\":\"0123456789abcdef0123456789abcdef\",\"path\":\"Assets/Scenes/Main.unity\",\"sha256\":\"abababababababababababababababababababababababababababababababab\"}],\"schema\":\"gpos.unity.build-config/2\",\"scripting_backend\":\"Mono2x\",\"standalone_subtarget\":\"Player\",\"unity_version\":\"6000.6.4f1\"}",BuildRules.Canonical(c),"Windows Python golden");
+            Equal("35fdf6b73e859fd9ce2316d9a4ed6a6357bc49436073a41a1a77e0ca55120634",BuildRules.TokenOf(c),"Windows golden token");
+#else
             Equal(GoldenCanonical, BuildRules.Canonical(c), "canonical configuration");
             Equal(GoldenToken, BuildRules.TokenOf(c), "golden token");
+#endif
             var escapes = new Dictionary<string, object> { { "k", "é\"\\\n\r\t\b\f\u0001\u007f/\U0001F600" }, { "a", new List<object> { 1L, -2L, true, null } } };
             Equal("{\"a\":[1,-2,true,null],\"k\":\"\\u00e9\\\"\\\\\\n\\r\\t\\b\\f\\u0001\\u007f/\\ud83d\\ude00\"}", BuildRules.Canonical(escapes), "escapes");
         }
 
         static void TheTokenBindsEveryBuildRelevantFact()
         {
+#if UNITY_EDITOR_WIN
+            string original=BuildRules.TokenOf(BuildRules.Configuration(Classic()));
+            foreach (var change in new Action<BuildFacts>[] {f=>f.CreateSolution=true,f=>f.CopyPdb=true,f=>f.WindowsOutputReadable=false,
+                f=>f.ActiveTarget="WebGL",f=>f.Backend="IL2CPP",f=>f.Development=true,f=>f.Scenes[0].Sha256="cd"+H64.Substring(2),
+                f=>f.Files["ProjectSettings/ProjectSettings.asset"]="cd"+H64.Substring(2)})
+            {var f=Classic();change(f);Check(original!=BuildRules.TokenOf(BuildRules.Configuration(f)),"Windows token failed to bind fact");} return;
+#else
+
             string baseline = BuildRules.TokenOf(BuildRules.Configuration(Classic()));
             var changes = new List<Action<BuildFacts>> {
                 f => f.Development = true, f => f.ActiveTarget = "WebGL", f => f.StandaloneSubtarget = "Server", f => f.Backend = "IL2CPP",
@@ -118,19 +136,36 @@ namespace Gpos.LiveBridge
             var busy = Classic();
             busy.Compiling = true;
             Equal(baseline, BuildRules.TokenOf(BuildRules.Configuration(busy)), "compiling is not configuration");
+#endif
         }
 
         static void ASupportedClassicConfigurationIsBuildable()
         {
+#if UNITY_EDITOR_WIN
+            var f = Classic(); Equal(0, Rules(f).Length, "Windows classic");
+            f.Development = true; Equal("DEBUG_STATE_UNSUPPORTED",Rules(f).Single(),"development refused");
+            return;
+#else
+
             Equal(0, Rules(Classic()).Length, "classic");
             var dev = Classic();
             dev.Development = true;
             Equal(0, Rules(dev).Length, "development is the one supported debug dimension");
             Equal(0, Rules(WithProfile()).Length, "a macOS Player profile");
+#endif
         }
 
         static void TheRulesAreClosedAndOrdered()
         {
+#if UNITY_EDITOR_WIN
+            var f=Classic();f.TargetSupported=false;f.ActiveTarget="WebGL";f.Backend="IL2CPP";
+            Equal("TARGET_MODULE_MISSING,TARGET_NOT_ACTIVE,BACKEND_NOT_MONO",string.Join(",",Rules(f)),"Windows order");
+            foreach(var change in new Action<BuildFacts>[] {x=>x.CopyPdb=true,x=>x.CreateSolution=true,x=>x.InstallInBuildFolder=true})
+            {var x=Classic();change(x);Equal("OUTPUT_NOT_PLAYER_APP",Rules(x).Single(),"sidecar output refused");}
+            var unread=Classic();unread.WindowsOutputReadable=false;Equal("WINDOWS_OUTPUT_UNREADABLE",Rules(unread).Single(),"fail closed");
+            var wrongVersion=Classic();wrongVersion.UnityVersion="6000.6.3f1";Equal("WINDOWS_VERSION_UNSUPPORTED",Rules(wrongVersion).Single(),"version pin"); return;
+#else
+
             var f = Classic();
             f.ActiveTarget = "WebGL";
             f.TargetSupported = false;
@@ -152,10 +187,17 @@ namespace Gpos.LiveBridge
             var install = Classic();
             install.InstallInBuildFolder = true;
             Equal("OUTPUT_NOT_PLAYER_APP", Rules(install).Single(), "install in build folder");
+#endif
         }
 
         static void DebugAndProfilerStateIsRefusedInBothModes()
-        {   // D-B
+        {
+#if UNITY_EDITOR_WIN
+            foreach (var change in new Action<BuildFacts>[] {f=>f.Development=true,f=>f.ConnectProfiler=true,
+                f=>f.AllowDebugging=true,f=>f.DeepProfiling=true,f=>f.WaitForManagedDebugger=true,f=>f.CodeCoverage=true,f=>f.WaitForPlayerConnection=true})
+            {var f=Classic();change(f);Equal("DEBUG_STATE_UNSUPPORTED",Rules(f).Single(),"Windows debug refused");} return;
+#else
+   // D-B
             var classic = new List<Action<BuildFacts>> { x => x.ConnectProfiler = true, x => x.AllowDebugging = true, x => x.DeepProfiling = true,
                                                          x => x.WaitForManagedDebugger = true, x => x.CodeCoverage = true, x => x.WaitForPlayerConnection = true };
             foreach (var c in classic)
@@ -178,10 +220,15 @@ namespace Gpos.LiveBridge
             var ignored = WithProfile();
             ignored.ConnectProfiler = true;   // with a profile active its own values decide, never the classic ones
             Equal(0, Rules(ignored).Length, "profile mode reads the profile's own flags");
+#endif
         }
 
         static void ProfilesAreMacOSPlayerOnlyWithoutOverrides()
-        {   // D2 and D-A
+        {
+#if UNITY_EDITOR_WIN
+            Equal("WINDOWS_PROFILE_UNSUPPORTED",Rules(WithProfile()).First(),"all custom profiles refused"); return;
+#else
+   // D2 and D-A
             var cases = new Dictionary<string, Action<ProfileFact>> {
                 { "PROFILE_PLAYER_SETTINGS_OVERRIDE", x => x.PlayerSettingsOverrides = 3 },
                 { "PROFILE_FIELD_UNREADABLE", x => x.Readable = false },
@@ -207,6 +254,7 @@ namespace Gpos.LiveBridge
             agreed.Profile.Development = true;
             Equal(0, Rules(agreed).Length, "the profile's development state, agreed by the Editor, is buildable");
             Equal("PROFILE", BuildRules.Configuration(agreed)["mode"], "profile mode");
+#endif
         }
 
         static void BuildScenesMustBeKnownAssetsBelowAssets()

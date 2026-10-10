@@ -106,6 +106,9 @@ namespace Gpos.LiveBridge.Build
                 return Refused(answer, "CONFIGURATION_CHANGED", "the build configuration no longer matches the inspected configuration token");
 
             string output = Path.Combine(workspace, BuildRules.StagingName, BuildRules.PayloadName);
+#if UNITY_EDITOR_WIN
+            output = Path.Combine(output, "Player.exe");
+#endif
             WriteOnce(started, Json.Write(new Dictionary<string, object> {
                 { "schema", BuildRules.StartedSchema }, { "request_id", request.RequestId }, { "build_id", request.BuildId },
                 { "utc", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ") } }));
@@ -114,7 +117,11 @@ namespace Gpos.LiveBridge.Build
                       buildProfile = profile, locationPathName = output, options = BuildOptions.None })
                 : BuildPipeline.BuildPlayer(new BuildPlayerOptions {
                       scenes = facts.Scenes.Select(s => s.Path).ToArray(), locationPathName = output,
+#if UNITY_EDITOR_WIN
+                      target = BuildTarget.StandaloneWindows64, targetGroup = BuildTargetGroup.Standalone,
+#else
                       target = BuildTarget.StandaloneOSX, targetGroup = BuildTargetGroup.Standalone,
+#endif
                       subtarget = (int)StandaloneBuildSubtarget.Player,
                       options = facts.Development ? BuildOptions.Development : BuildOptions.None });
 
@@ -147,21 +154,43 @@ namespace Gpos.LiveBridge.Build
                                                                       { "type", m.type.ToString() },
                                                                       { "text", BuildRules.Clip(m.content, BuildRules.MaxMessageChars) } });
                 }
+#if UNITY_EDITOR_WIN
+            var normalized = new Dictionary<string, object> {
+#else
             return new Dictionary<string, object> {
+#endif
                 { "result", s.result.ToString() }, { "guid", s.guid.ToString() }, { "platform", s.platform.ToString() },
                 { "output_path", s.outputPath }, { "total_errors", (long)s.totalErrors }, { "total_warnings", (long)s.totalWarnings },
                 { "total_size", (long)s.totalSize }, { "duration_ms", (long)s.totalTime.TotalMilliseconds },
                 { "development_observed", (s.options & BuildOptions.Development) != 0 },
                 { "options_text", BuildRules.Clip(s.options.ToString(), BuildRules.MaxOptionsChars) },
                 { "messages", messages }, { "error_message_count", total } };
+#if UNITY_EDITOR_WIN
+            var files = report.GetFiles();
+            if (files.Length > 20000) return null;
+            normalized["files"] = files.Select(f => (object)new Dictionary<string, object> {
+                { "path", f.path }, { "size", (long)f.size } }).ToList();
+            return normalized;
+#endif
         }
 
         // Written once: a temporary file in the same directory, then one rename that never replaces an existing file.
         static void WriteOnce(string path, string text)
         {
             string temporary = path + ".tmp";
+#if UNITY_EDITOR_WIN
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+            {
+                var bytes = new UTF8Encoding(false).GetBytes(text);
+                stream.Write(bytes, 0, bytes.Length);
+                stream.Flush(true);
+            }
+            if (WindowsFiles.MoveNoReplaceRetried(temporary, path) != 0) throw new IOException("build record publication failed");
+            return;
+#else
             File.WriteAllText(temporary, text, new UTF8Encoding(false));
             File.Move(temporary, path);
+#endif
         }
     }
 }

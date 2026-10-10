@@ -74,7 +74,7 @@ def main(argv):
             if check:
                 problems.append(f"{rel}: not the generated .meta")
             else:
-                path.write_text(text, encoding="utf-8")
+                path.write_bytes(text.encode("utf-8"))
     for p in stale:
         problems.append(f"{p.relative_to(bi.SOURCE)}: a .meta file for nothing")
     manifest = json.dumps(manifest_for(bi.SOURCE), indent=2, sort_keys=True) + "\n"
@@ -83,7 +83,7 @@ def main(argv):
         if check:
             problems.append("manifest.json: not the manifest of the committed package")
         else:
-            bi.MANIFEST.write_text(manifest, encoding="utf-8")
+            bi.MANIFEST.write_bytes(manifest.encode("utf-8"))
     if problems:
         print("\n".join(problems))
         return 1

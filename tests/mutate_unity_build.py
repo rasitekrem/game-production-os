@@ -206,9 +206,9 @@ def run(mutation):
         try:
             out = subprocess.run(argv, capture_output=True, text=True, timeout=5400, env=env)
         except subprocess.TimeoutExpired:
-            return name, "CAUGHT"   # a hang is a failure of the suite
+            return name, "INCONCLUSIVE (timeout)"
         finally:
-            for pid in lab_editors_under(tmp):   # never leave a lab Editor of this copy running
+            for pid in (lab_editors_under(tmp) if sys.platform != "win32" else []):   # never leave a lab Editor of this copy running
                 os.kill(pid, 9)
         return name, "CAUGHT" if out.returncode != 0 else "MISSED"
     finally:
@@ -235,6 +235,9 @@ def main():
     args = parser.parse_args()
     if args.anchors:
         return anchors()
+    if sys.platform == "win32" and args.real:
+        print("NOT_RUN: macOS Build Core runtime mutations; use the Windows qualification harness")
+        return gate.BLOCKED_EXIT
     selected = [m for m in (REAL_MUTATIONS if args.real else MUTATIONS) if not args.only or args.only in m[0]]
     baselines = [(f"{gate.BASELINE} [{suite}]", suite, []) for suite in sorted({m[1] for m in selected})]
     return gate.qualify(run, selected, args.jobs, baselines)

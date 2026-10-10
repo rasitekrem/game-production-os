@@ -784,6 +784,9 @@ class UnityAdapter(model.ToolAdapter):
     # ------------------------------------------------------------ the build plane (alpha.21)
 
     def _run_build(self, cap, request, context, root, project, summary):
+        if sys.platform == "win32":
+            from . import build_windows as windows_build
+            return windows_build.run(self, cap, request, context, root, project, summary)
         building = cap == ub.BUILD
         rid = request.request_id
         token = (request.inputs or {}).get("expected_configuration_token")
@@ -852,6 +855,9 @@ class UnityAdapter(model.ToolAdapter):
 
     def _classify_build(self, cap, request, context, outcome, record, workspace, summary):
         """What the fixed build entry's one response (never the Editor log, once the entry ran) establishes."""
+        if sys.platform == "win32":
+            from . import build_windows as windows_build
+            return windows_build.classify(self, cap, request, context, outcome, record, workspace, summary)
         building, rid = cap == ub.BUILD, request.request_id
         log_path = workspace / ub.LOG_NAME
         log = tuple(ArtifactSpec("editor-log", "LOG", str(log_path), media_type="text/plain",

@@ -49,7 +49,7 @@ GATES = REGISTRY["gates"]
 SUBJECTIVE_DISCIPLINE_GATES = sorted(g for g, d in GATES.items() if d["subjective"] and g != "HUMAN_REVIEW")
 TRIGGERS = list(REGISTRY["mandatory_human_review_triggers"])
 CONDITIONS = list(REGISTRY["evidence_conditions"])
-VERSION = "1.0.0-alpha.26"
+VERSION = "1.0.0-alpha.27"
 GATE_OWNERS = [s for s in REGISTRY["skills"] if any(s in d["permitted_owners"] for d in GATES.values())] + ["HUMAN"]
 
 
@@ -865,7 +865,9 @@ WIN32_FS = "gpos/tools/paths_win32.py"
 # alpha.25: the Unity batch plane's read-only Windows host facts (process facts, the Restart Manager owner query and the
 # Program Files known folder). It starts, signals and terminates nothing and never opens Temp/UnityLockfile.
 UNITY_HOST = "gpos/tools/unity/host_win32.py"
+UNITY_BUILD_STREAMS = "gpos/tools/unity/build_win32.py"
 WIN32_ALLOWED = {
+    UNITY_BUILD_STREAMS: {"FindFirstStreamW", "FindNextStreamW", "FindClose"},
     PROCESS_BACKEND: {"CreateProcessW", "InitializeProcThreadAttributeList", "UpdateProcThreadAttribute",
                       "DeleteProcThreadAttributeList", "CreateJobObjectW", "SetInformationJobObject",
                       "QueryInformationJobObject", "TerminateJobObject", "IsProcessInJob", "ResumeThread",
@@ -879,11 +881,12 @@ WIN32_ALLOWED = {
                  "CommandLineToArgvW", "SHGetKnownFolderPath", "CLSIDFromString", "CoTaskMemFree", "RmStartSession",
                  "RmRegisterResources", "RmGetList", "RmEndSession"},
 }
-WIN32_IMPORTERS = {PROCESS_BACKEND: {"gpos/tools/process.py"},
+WIN32_IMPORTERS = {UNITY_BUILD_STREAMS: {"gpos/tools/unity/build.py", "gpos/tools/unity/build_windows.py"},
+                   PROCESS_BACKEND: {"gpos/tools/process.py"},
                    WIN32_FS: {"gpos/tools/paths.py", "gpos/tools/artifacts.py", "gpos/tools/leases.py",
                               "gpos/tools/execution.py", PROCESS_BACKEND,
                               # alpha.26 (D-L4): the live IPC reads and pins bridge files with the audited primitive
-                              "gpos/tools/unity/live_ipc.py"},
+                              "gpos/tools/unity/live_ipc.py", UNITY_BUILD_STREAMS},
                    UNITY_HOST: {"gpos/tools/unity/adapter.py", "gpos/tools/unity/project_lock.py"}}
 WIN32_FORBIDDEN_NAMES = {"CreateProcessA", "CreateProcessAsUserW", "CreateProcessAsUserA", "CreateProcessWithLogonW",
                          "CreateProcessWithTokenW", "ShellExecuteW", "ShellExecuteA", "ShellExecuteExW",

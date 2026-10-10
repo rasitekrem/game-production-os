@@ -295,9 +295,12 @@ class Harness:
                        str(HARNESS)], work)
         if rc:
             raise AssertionError(out)
-        self.p = subprocess.Popen([str(MONO), str(exe)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+        self.p = subprocess.Popen([str(MONO), str(exe)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding="utf-8-sig",
                                   cwd=str(work))
-        assert self.p.stdout.readline().startswith("READY")
+        greeting = self.p.stdout.readline()
+        if not greeting.startswith("READY"):
+            self.p.stdin.close(); self.p.wait(30); self.p.stdout.close()
+            raise AssertionError("IPC harness greeting: " + repr(greeting))
 
     def send(self, *parts):
         self.p.stdin.write("\t".join(map(str, parts)) + "\n")
@@ -654,9 +657,12 @@ class WLE_CallOutcomes(unittest.TestCase):
         box = {}
 
         def answer():
-            while not os.listdir(self.tmp / "requests"):
-                time.sleep(0.005)
-            name = os.listdir(self.tmp / "requests")[0]
+            # Only the published request is claimable; .tmp-* is a writer's private staging file.
+            names = []
+            while not names:
+                names = [n for n in os.listdir(self.tmp / "requests") if re.fullmatch(r"[0-9a-f]{32}\.json", n)]
+                if not names: time.sleep(0.005)
+            name = names[0]
             os.rename(self.tmp / "requests" / name, self.tmp / "claimed" / name)        # claimed ...
             (self.tmp / "responses" / name).write_text("{not json")                     # ... and garbled
             box["done"] = True
@@ -1026,24 +1032,24 @@ class WLR1_Install(RealCase):
         self.ok(again, "LIVE_BRIDGE_ALREADY_INSTALLED")
         self.assertFalse(again.mutation_performed)
 
-    def test_02_an_exact_1_5_0_bridge_is_upgraded_and_then_runs_as_1_6_0(self):
+    def test_02_an_exact_1_6_0_bridge_is_upgraded_and_then_runs_as_1_7_0(self):
         self.p = real_project("upgrade", demo=False, testkit=True)
         target = self.p / "Game" / "Packages" / bi.PACKAGE_ID
         import io
         import zipfile
-        archive = subprocess.run(["git", "-C", str(ROOT), "archive", "--format=zip", "v1.0.0-alpha.25",
+        archive = subprocess.run(["git", "-C", str(ROOT), "archive", "--format=zip", "v1.0.0-alpha.26",
                                   "gpos/tools/unity/live_bridge/com.gpos.live-bridge"], capture_output=True,
                                  check=True).stdout
-        extract = self.p.parent / "frozen-1.5.0"
+        extract = self.p.parent / "frozen-1.6.0"
         zipfile.ZipFile(io.BytesIO(archive)).extractall(extract)
         shutil.copytree(extract / "gpos/tools/unity/live_bridge/com.gpos.live-bridge", target)
-        history = bi.history()["1.5.0"]
-        self.assertEqual(bi.differences(target, history), [])          # byte for byte the frozen 1.5.0 bridge
+        history = bi.history()["1.6.0"]
+        self.assertEqual(bi.differences(target, history), [])          # byte for byte the frozen 1.6.0 bridge
         self.assertEqual(bi.inspect_target(self.p / "Game", bi.verify_source())[0], bi.PREVIOUS_STATE)
-        self.assertEqual(bi.installed_version(self.p / "Game"), "1.5.0")
+        self.assertEqual(bi.installed_version(self.p / "Game"), "1.6.0")
         r = self.run_cap(live.INSTALL)
         data = self.ok(r, "LIVE_BRIDGE_UPGRADED")
-        self.assertEqual(data["upgraded_from"], "1.5.0")
+        self.assertEqual(data["upgraded_from"], "1.6.0")
         self.assertEqual(bi.inspect_target(self.p / "Game", bi.verify_source())[0], bi.EXACT)
         self.assertIsNone(bi.read_record(self.p, ident.project_key(ident.relative(self.p, self.p / "Game"))))
         self.editor = LabEditor(self.p, self.p / "Game")
@@ -1051,7 +1057,7 @@ class WLR1_Install(RealCase):
         try:
             manifest = bi.verify_source()
             self.assertEqual((b["bridge_version"], b["protocol"], b["package_digest"], b["editor_version"]),
-                             ("1.6.0", "gpos.unity.live/5", manifest["package_digest"], EDITOR_VERSION))
+                             ("1.7.0", "gpos.unity.live/5", manifest["package_digest"], EDITOR_VERSION))
             locked = self.run_cap(live.INSTALL)                          # an open project is never written
             self.ok(locked, "ENGINE_PROJECT_LOCKED", None)
             self.assertFalse(locked.mutation_performed)
@@ -1484,6 +1490,6 @@ class WLR5_ApprovalAndRecovery(RealCase):
 
 if __name__ == "__main__":
     result = unittest.main(verbosity=1, exit=False).result
-    print("GPOS Windows live bridge tests (bridge 1.6.0, protocol gpos.unity.live/5; approval in the real groups is "
+    print("GPOS Windows live bridge tests (bridge 1.7.0, protocol gpos.unity.live/5; approval in the real groups is "
           "synthetic)")
     sys.exit(0 if result.wasSuccessful() else 1)

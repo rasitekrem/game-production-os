@@ -1,5 +1,5 @@
 {
-  "bridge_version": "1.7.0",
+  "bridge_version": "1.6.0",
   "files": [
     {
       "path": "Editor.meta",
@@ -73,8 +73,8 @@
     },
     {
       "path": "Editor/Build/BuildConfiguration.cs",
-      "sha256": "113b21a5924ac8d83b13c944747e159e8f39191355c3ac039b8247ea77e45531",
-      "size": 11049
+      "sha256": "24774c4e01cb5a33736bca887140e5aa000540c34024b639cbedf66e797c8c0d",
+      "size": 9093
     },
     {
       "path": "Editor/Build/BuildConfiguration.cs.meta",
@@ -83,8 +83,8 @@
     },
     {
       "path": "Editor/Build/BuildEntry.cs",
-      "sha256": "575c379447ea2fef49847354915dbe878e11dadddb87a857e35c5cef3f7e1bc9",
-      "size": 11217
+      "sha256": "54df09efd83fb2f40976736a3b28b68718c51eb20484ebd8141f5eda346bb7f5",
+      "size": 10091
     },
     {
       "path": "Editor/Build/BuildEntry.cs.meta",
@@ -138,8 +138,8 @@
     },
     {
       "path": "Editor/Core/BuildRules.cs",
-      "sha256": "3ac56c6f20cf02d0c026b441edec0c13799eff04a67f6827623981f94f9d190b",
-      "size": 23439
+      "sha256": "83f5a8423f30db59dca203e086dea88eb13d2bc45e3eab360c0aa969d2200406",
+      "size": 20200
     },
     {
       "path": "Editor/Core/BuildRules.cs.meta",
@@ -208,7 +208,7 @@
     },
     {
       "path": "Editor/Core/Protocol.cs",
-      "sha256": "57fdcec90358b4ef9b2a340e7fa12194562ab283ca4f986d9e9f11a4980b44fc",
+      "sha256": "4ba3c36cadab91fe60182df00e676115942685cb3dac81aa3a5fe397c213c2c1",
       "size": 17734
     },
     {
@@ -348,7 +348,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "4cce65ec348403375d170bdeb8707f067d16c0ea5c6e8adc0f9a56c2736653c1",
+      "sha256": "d0d44f89b6dc7fa144a810e7dd2c57d8a159d2768f878704735d531788d38913",
       "size": 356
     },
     {
@@ -357,7 +357,7 @@
       "size": 163
     }
   ],
-  "package_digest": "90266a2d9ffb32c915ab2d1917043da18816c684d4cac65112a69de881b597b4",
+  "package_digest": "883d1e31751ad158f0c3d82f90a1b18a173a54ad46799a39834929315e4a0400",
   "package_id": "com.gpos.live-bridge",
   "protocol": "gpos.unity.live/5",
   "schema": "gpos.unity.live-bridge.manifest/1"

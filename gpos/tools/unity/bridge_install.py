@@ -50,7 +50,7 @@ from pathlib import Path
 from .. import paths as tp
 
 PACKAGE_ID = "com.gpos.live-bridge"
-BRIDGE_VERSION = "1.6.0"
+BRIDGE_VERSION = "1.7.0"
 PROTOCOL = "gpos.unity.live/5"
 MANIFEST_SCHEMA = "gpos.unity.live-bridge.manifest/1"
 HERE = Path(__file__).resolve().parent
@@ -60,6 +60,7 @@ HISTORY = HERE / "live_bridge" / "history"
 # Every earlier released bridge this release upgrades from: version -> (protocol, package digest). The manifest of
 # each is kept byte for byte under live_bridge/history/; both must agree with the frozen release that shipped it.
 PREVIOUS = {
+    "1.6.0": ("gpos.unity.live/5", "883d1e31751ad158f0c3d82f90a1b18a173a54ad46799a39834929315e4a0400"),
     "1.0.0": ("gpos.unity.live/1", "546b3cfbe4d41234d10450efacbb3397812d106a813dee5b3284903624a68c66"),
     "1.1.0": ("gpos.unity.live/2", "00af2b3afccaea2700b6de3fedb5e1c2cae11b990c9640b68d7133b49f383394"),
     "1.2.0": ("gpos.unity.live/3", "042379a6413c8b55ce3d6deada529fbdbe609c96b9dace56f256d94428c782ce"),

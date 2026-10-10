@@ -266,7 +266,7 @@ namespace Gpos.LiveBridge
             }
             Check(!Protocol.IsAuthoring("inspect") && !Protocol.IsAuthoring("pause"), "the alpha.16 commands are not authoring");
             Equal("gpos.unity.live/5", Protocol.Name, "protocol");
-            Equal("1.6.0", Protocol.BridgeVersion, "version");   // alpha.26: the package gains Windows; protocol /5 unchanged
+            Equal("1.7.0", Protocol.BridgeVersion, "version");   // alpha.26: the package gains Windows; protocol /5 unchanged
             foreach (var generic in new[] { "execute", "eval", "invoke", "menu", "reflect", "save-scene-as", "apply-prefab", "set-asset" })
                 Equal("UNKNOWN_COMMAND", Code(() => Parse(Id(++n), AuthorReq(Id(n), generic, "{}"))), generic);
         }

@@ -21,8 +21,13 @@ namespace Gpos.LiveBridge.Build
             var f = new BuildFacts();
             f.UnityVersion = Application.unityVersion;
             f.ActiveTarget = EditorUserBuildSettings.activeBuildTarget.ToString();
+#if UNITY_EDITOR_WIN
+            f.TargetSupported = BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows64);
+            WindowsOutput(f);
+#else
             f.TargetSupported = BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Standalone, BuildTarget.StandaloneOSX);
             f.MacModuleInstalled = BuildProfile.GetInstalledPlatformModules().Any(m => m.platformGuid.ToString() == BuildRules.MacModuleGuid);
+#endif
             f.StandaloneSubtarget = EditorUserBuildSettings.standaloneBuildSubtarget.ToString();
             f.Backend = PlayerSettings.GetScriptingBackend(NamedBuildTarget.Standalone).ToString();
             f.ApplicationIdentifier = PlayerSettings.GetApplicationIdentifier(NamedBuildTarget.Standalone);
@@ -45,7 +50,12 @@ namespace Gpos.LiveBridge.Build
             EditorBuildSettingsScene[] scenes;
             if (activeProfile != null)
             {
+#if UNITY_EDITOR_WIN
+                // Active custom profiles are categorically refused; do not read macOS-only fields.
+                f.Profile = new ProfileFact { Path = AssetDatabase.GetAssetPath(activeProfile), Readable = false };
+#else
                 f.Profile = Profile(projectPath, activeProfile);
+#endif
                 scenes = activeProfile.GetScenesForBuild();
             }
             else scenes = EditorBuildSettings.scenes;
@@ -54,6 +64,31 @@ namespace Gpos.LiveBridge.Build
             foreach (var s in enabled.Take(BuildRules.MaxScenes)) f.Scenes.Add(Scene(projectPath, s));
             return f;
         }
+#if UNITY_EDITOR_WIN
+
+        static void WindowsOutput(BuildFacts f)
+        {
+            // Fixed read-only getter used by Unity's own native settings API. No setter/create/activation invocation.
+            // Version qualification requires these exact fields; missing fields fail closed.
+            try
+            {
+                var type = typeof(BuildProfile).Assembly.GetType("UnityEditor.Build.Profile.BuildProfileContext");
+                var method = type == null ? null : type.GetMethod("GetActiveOrClassicBuildProfile",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                var profile = method == null ? null : method.Invoke(null, new object[] {
+                    BuildTarget.StandaloneWindows64, StandaloneBuildSubtarget.Player, null }) as BuildProfile;
+                if (profile == null) return;
+                var so = new SerializedObject(profile);
+                var architecture = Long(so, "m_PlatformBuildProfile.m_Architecture");
+                var solution = Flag(so, "m_PlatformBuildProfile.m_CreateSolution");
+                var pdb = Flag(so, "m_PlatformBuildProfile.m_CopyPDBFiles");
+                f.WindowsOutputReadable = architecture.HasValue && solution.HasValue && pdb.HasValue && architecture.Value == 0;
+                f.CreateSolution = solution ?? true;
+                f.CopyPdb = pdb ?? true;
+            }
+            catch (Exception) { f.WindowsOutputReadable = false; }
+        }
+#endif
 
         static SceneFact Scene(string projectPath, EditorBuildSettingsScene s)
         {

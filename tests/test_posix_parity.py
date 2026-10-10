@@ -28,11 +28,14 @@ import posix_parity as pp  # noqa: E402
 
 FIXTURE = json.loads((ROOT / "tests" / "fixtures" / "posix-parity-alpha22.json").read_bytes().decode("utf-8"))
 BRIDGE_DIGEST = "b7f4775d4f1e807136df0978d27218eac20dbe5e163fe23618fd84a17a62ea16"
-VERSION_FROZEN, VERSION_NOW = b"1.0.0-alpha.22", b"1.0.0-alpha.26"
+VERSION_FROZEN, VERSION_NOW = b"1.0.0-alpha.22", b"1.0.0-alpha.27"
 
 # The only frozen files alpha.23 and alpha.24 edit. Every other file under core/, schemas/, skills/, workflows/,
 # templates/ and gpos/ is byte-identical to alpha.22.
-EDITED = {"gpos/tools/artifacts.py", "gpos/tools/cli.py", "gpos/tools/diagnostics.py", "gpos/tools/execution.py",
+EDITED = {"gpos/tools/unity/build.py",
+          "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Build/BuildEntry.cs",
+          "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Build/BuildConfiguration.cs",
+          "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/BuildRules.cs","gpos/tools/artifacts.py", "gpos/tools/cli.py", "gpos/tools/diagnostics.py", "gpos/tools/execution.py",
           "gpos/tools/leases.py", "gpos/tools/paths.py", "gpos/tools/process.py", "gpos/tools/registry.py",
           "gpos/tools/synthetic/helper.py", "gpos/tools/unity/project_lock.py",
           # alpha.24 (2C-9.2): Windows discovery guards, D-B1/D-B2/D-B3, D-W1 and the ADB server classification
@@ -163,12 +166,12 @@ class P01_FrozenFilesAreByteIdentical(unittest.TestCase):
                                                               "gpos")
                      for p in (ROOT / d).rglob("*") if p.is_file() and "__pycache__" not in p.parts
                      and p.relative_to(ROOT).as_posix() not in FIXTURE["frozen"])
-        self.assertEqual(new, ["gpos/tools/executables.py", "gpos/tools/paths_win32.py", "gpos/tools/process_win32.py",
+        self.assertEqual(new, sorted(["gpos/tools/unity/build_win32.py", "gpos/tools/unity/build_windows.py", "gpos/tools/unity/live_bridge/history/1.6.0.json","gpos/tools/executables.py", "gpos/tools/paths_win32.py", "gpos/tools/process_win32.py",
                                "gpos/tools/unity/host_win32.py",
                                # alpha.26: the Windows core of bridge 1.6.0 and the pinned 1.5.0 release manifest
                                "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/WindowsFiles.cs", "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/WindowsFiles.cs.meta",
                                "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/WindowsPaths.cs", "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/WindowsPaths.cs.meta",
-                               "gpos/tools/unity/live_bridge/history/1.5.0.json"])
+                               "gpos/tools/unity/live_bridge/history/1.5.0.json"]))
 
 
 class P02_PosixUnitsAreUnchanged(unittest.TestCase):
@@ -395,10 +398,13 @@ class P10_Alpha26SharedChanges(unittest.TestCase):
     def test_the_bridge_version_and_its_history_pin(self):
         rel = "gpos/tools/unity/bridge_install.py"
         node = self.node(rel, "assign BRIDGE_VERSION")
-        self.assertEqual(ast.literal_eval(node.value), "1.6.0")
+        self.assertEqual(ast.literal_eval(node.value), "1.7.0")
         node.value = ast.parse('"1.5.0"', mode="eval").body
         self.assertAlpha22(rel, "assign BRIDGE_VERSION", node)
         node = self.node(rel, "assign PREVIOUS")
+        self.assertEqual(ast.literal_eval(node.value.keys[0]), "1.6.0")
+        self.assertEqual(ast.literal_eval(node.value.values[0]), ("gpos.unity.live/5", "883d1e31751ad158f0c3d82f90a1b18a173a54ad46799a39834929315e4a0400"))
+        node.value.keys.pop(0); node.value.values.pop(0)
         self.assertEqual(ast.literal_eval(node.value.keys[-1]), "1.5.0")
         self.assertEqual(ast.literal_eval(node.value.values[-1]), ("gpos.unity.live/5", BRIDGE_DIGEST))
         node.value.keys.pop()
@@ -413,19 +419,19 @@ class P10_Alpha26SharedChanges(unittest.TestCase):
         changed = [rel for rel in EDITED if rel.startswith(self.BRIDGE) and rel.endswith(".cs")]
         self.assertEqual(sorted(changed), sorted(self.BRIDGE + "Editor/" + n for n in (
             "AssetAuthoring.cs", "Commands.cs", "Core/Protocol.cs", "Identity.cs", "Ipc.cs", "PrefabAuthoring.cs",
-            "PrefabResolver.cs")))
+            "PrefabResolver.cs", "Build/BuildEntry.cs", "Build/BuildConfiguration.cs", "Core/BuildRules.cs")))
         for rel in changed:
             with self.subTest(file=rel):
                 view = self.macos_view((ROOT / rel).read_bytes().decode("utf-8"))
                 if rel.endswith("Core/Protocol.cs"):
-                    now = '        public const string BridgeVersion = "1.6.0";   // 1.6.0 adds Windows; the live protocol is unchanged\n'
+                    now = '        public const string BridgeVersion = "1.7.0";   // 1.7.0 adds Windows; the live protocol is unchanged\n'
                     then = ('        public const string BridgeVersion = "1.5.0";   // 1.5.0 adds the batch-only BuildEntry; '
                             'the live protocol is unchanged\n')
                     self.assertEqual(view.count(now), 1)
                     view = view.replace(now, then)
                 self.assertEqual(hashlib.sha256(view.encode("utf-8")).hexdigest(), FIXTURE["frozen"][rel])
         package = (ROOT / self.BRIDGE / "package.json").read_bytes()
-        self.assertEqual(hashlib.sha256(package.replace(b'"version": "1.6.0"', b'"version": "1.5.0"')).hexdigest(),
+        self.assertEqual(hashlib.sha256(package.replace(b'"version": "1.7.0"', b'"version": "1.5.0"')).hexdigest(),
                          FIXTURE["frozen"][self.BRIDGE + "package.json"])
 
     def test_the_new_windows_core_files_hold_no_macos_code(self):
@@ -446,7 +452,7 @@ class P07_FrozenBoundaries(unittest.TestCase):
         self.assertEqual(json.loads(history.decode("utf-8"))["package_digest"], BRIDGE_DIGEST)
         manifest = json.loads((ROOT / "gpos/tools/unity/live_bridge/manifest.json").read_bytes().decode("utf-8"))
         self.assertEqual((manifest["bridge_version"], manifest["protocol"], len(manifest["files"])),
-                         ("1.6.0", "gpos.unity.live/5", 71))
+                         ("1.7.0", "gpos.unity.live/5", 71))
         lines = "".join(f"{e['path']}\t{e['sha256']}\t{e['size']}\n"
                         for e in sorted(manifest["files"], key=lambda e: e["path"]))
         self.assertEqual(hashlib.sha256(lines.encode("utf-8")).hexdigest(), manifest["package_digest"])

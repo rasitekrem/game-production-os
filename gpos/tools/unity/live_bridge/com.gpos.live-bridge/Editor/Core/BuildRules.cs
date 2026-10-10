@@ -44,6 +44,9 @@ namespace Gpos.LiveBridge
 
     internal sealed class BuildFacts
     {
+#if UNITY_EDITOR_WIN
+        public bool WindowsOutputReadable, CopyPdb, CreateSolution;
+#endif
         public string UnityVersion, ActiveTarget, StandaloneSubtarget, Backend, ApplicationIdentifier;
         public bool TargetSupported, MacModuleInstalled, Development, Compiling, Updating, Building, ScriptsFailed;
         // classic Editor build state (the active profile's own values are used instead when a profile is active)
@@ -64,16 +67,26 @@ namespace Gpos.LiveBridge
     internal static class BuildRules
     {
         public const string RequestSchema = "gpos.unity.build-request/1";
+#if UNITY_EDITOR_WIN
+        public const string StartedSchema = "gpos.unity.build-started/1";
+        public const string ResponseSchema = "gpos.unity.build-response/2";
+        public const string ConfigSchema = "gpos.unity.build-config/2";
+        public const string PayloadName = "Player";
+        public const string Target = "StandaloneWindows64";
+#else
         public const string ResponseSchema = "gpos.unity.build-response/1";
         public const string StartedSchema = "gpos.unity.build-started/1";
         public const string ConfigSchema = "gpos.unity.build-config/1";
+#endif
         public const string RequestFlag = "-gposBuildRequest";
         public const string RequestName = "build-request.json";
         public const string ResponseName = "build-response.json";
         public const string StartedName = "build-started.json";
         public const string StagingName = "staging";
+#if !UNITY_EDITOR_WIN
         public const string PayloadName = "Player.app";
         public const string Target = "StandaloneOSX";
+#endif
         public const string Player = "Player";
         public const string Mono = "Mono2x";
         public const string MacModuleGuid = "0d2129357eac403d8b359c2dcbf82502";   // the macOS Standalone platform module
@@ -153,6 +166,9 @@ namespace Gpos.LiveBridge
 
         public static List<BuildProblem> Assess(BuildFacts f)
         {
+#if UNITY_EDITOR_WIN
+            return AssessWindows(f);
+#else
             var p = new List<BuildProblem>();
             if (!f.TargetSupported || !f.MacModuleInstalled)
                 Add(p, TargetModuleMissing, "the macOS Standalone build module is not installed or not supported by this Editor");
@@ -210,7 +226,36 @@ namespace Gpos.LiveBridge
                     s.ResolvedGuid != s.Guid || s.Sha256 == null || s.Sha256 == Absent || s.Sha256.StartsWith("UNREADABLE", StringComparison.Ordinal))
                     Add(p, SceneInvalid, "the build scene " + (s.Path ?? "(null)") + " is not an existing, known .unity asset below Assets/ with its recorded GUID");
             return p;
+#endif
         }
+#if UNITY_EDITOR_WIN
+
+        static List<BuildProblem> AssessWindows(BuildFacts f)
+        {
+            var p = new List<BuildProblem>();
+            if (f.UnityVersion != "6000.6.4f1") Add(p, "WINDOWS_VERSION_UNSUPPORTED", "Windows build qualified for Unity 6000.6.4f1 only");
+            if (!f.TargetSupported) Add(p, TargetModuleMissing, "Windows x64 Standalone module unavailable");
+            if (f.ActiveTarget != Target) Add(p, TargetNotActive, "already active Windows x64 target required; never switched");
+            if (f.Profile != null) Add(p, "WINDOWS_PROFILE_UNSUPPORTED", "Windows builds CLASSIC only; active custom profiles refused");
+            if (f.Compiling || f.Updating || f.Building) Add(p, EditorNotSettled, "Editor not settled");
+            if (f.ScriptsFailed) Add(p, ScriptsFailed, "script compilation failed");
+            if (f.StandaloneSubtarget != Player) Add(p, SubtargetNotPlayer, "Standalone Player required");
+            if (f.Backend != Mono) Add(p, BackendNotMono, "Mono2x required");
+            if (f.Development || f.ConnectProfiler || f.AllowDebugging || f.DeepProfiling || f.WaitForManagedDebugger || f.CodeCoverage || f.WaitForPlayerConnection)
+                Add(p, DebugState, "nondevelopment build without debugger/profiler required");
+            if (!f.WindowsOutputReadable) Add(p, "WINDOWS_OUTPUT_UNREADABLE", "Windows CLASSIC output fields unavailable");
+            if (f.CopyPdb || f.CreateSolution || f.InstallInBuildFolder) Add(p, OutputKind, "Player output required; solution/PDB/install options refused");
+            foreach (var kv in f.Files.Where(x => x.Value == null || x.Value.StartsWith("UNREADABLE", StringComparison.Ordinal)))
+                Add(p, FileUnreadable, kv.Key + " is unreadable");
+            if (f.SceneCount > MaxScenes) Add(p, TooManyScenes, "scene bound exceeded");
+            else if (f.Scenes.Count == 0) Add(p, NoScenes, "no enabled scene");
+            foreach (var s in f.Scenes)
+                if (!IsScenePath(s.Path) || !s.Exists || s.IsLink || s.Guid == null || !Hex32.IsMatch(s.Guid) || s.ResolvedGuid != s.Guid ||
+                    s.Sha256 == null || s.Sha256 == Absent || s.Sha256.StartsWith("UNREADABLE", StringComparison.Ordinal))
+                    Add(p, SceneInvalid, "scene identity or bytes unavailable");
+            return p;
+        }
+#endif
 
         // The configuration the token binds: only what the alpha.21 build contract depends on. D-A/D-B states are
         // bound too (so they are visible), never normalised away.
@@ -248,6 +293,11 @@ namespace Gpos.LiveBridge
                 { "override_global_scenes", pr.OverrideGlobalScenes },
                 { "scripting_defines", pr.Defines.Take(MaxDefines).Select(x => (object)Clip(x, MaxProblemChars)).ToList() },
                 { "player_settings_overrides", pr.PlayerSettingsOverrides }, { "development", pr.Development } };
+#if UNITY_EDITOR_WIN
+            c["output"] = new Dictionary<string, object> {
+                { "architecture", "x64" }, { "create_solution", f.CreateSolution }, { "copy_pdb", f.CopyPdb },
+                { "readable", f.WindowsOutputReadable }, { "install_in_build_folder", f.InstallInBuildFolder } };
+#endif
             return c;
         }
 

@@ -32,7 +32,7 @@ namespace Gpos.LiveBridge
         public const string Name = "gpos.unity.live/5";
         public const string RequestSchema = "gpos.unity.live.request/5";
         public const string ResponseSchema = "gpos.unity.live.response/5";
-        public const string BridgeVersion = "1.6.0";   // 1.6.0 adds Windows; the live protocol is unchanged
+        public const string BridgeVersion = "1.7.0";   // 1.7.0 adds Windows; the live protocol is unchanged
         public const string PackageId = "com.gpos.live-bridge";
         public const int MaxRequestBytes = 64 * 1024;
         public const int MaxResponseBytes = 256 * 1024;
@@ -154,7 +154,7 @@ namespace Gpos.LiveBridge
         static readonly string[] AssetMutations = { "create-material", "set-material-property", "create-scriptable-object", "set-asset-property" };
 #if UNITY_EDITOR_WIN
 
-        // bridge 1.6.0: the commands a Windows Editor serves — the session (status, attach approval and binding,
+        // bridge 1.7.0: the commands a Windows Editor serves — the session (status, attach approval and binding,
         // stale-session recovery grants, unbind, inspect) and the Scene-authoring slice qualified on Windows. Every
         // other command is UNKNOWN_COMMAND here before it is admitted, journaled or dispatched.
         public static readonly string[] WindowsCommands = { "status", "propose-attach", "attach-status", "abandon-proposal", "bind",

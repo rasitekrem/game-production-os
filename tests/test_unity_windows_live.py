@@ -1269,7 +1269,20 @@ class WLR4_SessionIntegrity(RealCase):
         self.assertEqual(details["bridge_code"], "BRIDGE_INTERNAL_ERROR")
         self.assertIsNone(self.holder())                                # known unbound: released, nothing ambiguous
         self.assertEqual(self.editor.bridge()["session_id"], "")
-        self.assertIn("bind-undone:", self.events())
+        undone = re.findall(r"bind-undone:([0-9a-f]{32})", self.events())
+        self.assertTrue(undone)
+        self.assertEditorUnbound(undone[-1], lease_mod.session_owner(APPROVER))
+
+    def assertEditorUnbound(self, sid, owner):
+        """The Editor itself holds no binding: a fresh heartbeat (published from the Editor's session state, not from
+        session.json or bridge.json) names no session, and a session command with `sid` is SESSION_NOT_BOUND."""
+        seq = self.editor.heartbeat().get("seq")
+        end = time.monotonic() + 10
+        while time.monotonic() < end and self.editor.heartbeat().get("seq") == seq:
+            time.sleep(0.1)
+        self.assertEqual(self.editor.heartbeat().get("session_id"), "")
+        r = self.raw("inspect", {}, owner, sid)
+        self.assertEqual((r.status, r.code), ("REFUSED", "SESSION_NOT_BOUND"))
 
     def ensure_session_file(self):
         """session.json exists once any session was bound (and so can be held); bind and unbind one if needed."""
@@ -1301,9 +1314,10 @@ class WLR4_SessionIntegrity(RealCase):
                 first = self.raw("bind", {"proposal_id": proposal, "session_id": sid}, owner, wait=30)
             self.assertEqual((first.status, first.code), ("FAILED", "BRIDGE_INTERNAL_ERROR"))
             self.assertEqual(self.editor.bridge()["session_id"], "")
+            self.assertEditorUnbound(sid, owner)
             again = self.raw("bind", {"proposal_id": proposal, "session_id": sid}, owner, wait=30)
             self.assertEqual((again.status, again.code), ("REFUSED", "GRANT_CONSUMED"))
-            self.assertEqual(self.editor.bridge()["session_id"], "")
+            self.assertEditorUnbound(sid, owner)
         finally:
             lease_mod.release(self.p, lease)
 

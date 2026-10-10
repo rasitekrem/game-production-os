@@ -4,9 +4,9 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
-## [1.0.0-alpha.27] — Phase 2C-9.4: Windows CLASSIC x64 Mono Build Core (review candidate)
+## [1.0.0-alpha.27] — Phase 2C-9.4: Windows CLASSIC x64 Mono Build Core
 
-Adds a bounded Windows-only Build Core, ADS inspection and NTFS manifest-last publication. Windows production build capabilities remain unavailable pending D-G1; qualification uses a test-only adapter and caller-supplied revision. Bridge 1.7.0 retains protocol /5 and pins the exact 1.6.0 history. macOS compiled Build Core and manifest/1 semantics are preserved; macOS runtime NOT_RUN. No Player runtime, merge, tag or freeze.
+Adds a bounded Windows-only Build Core, ADS inspection and NTFS manifest-last publication. Windows production build capabilities remain unavailable pending D-G1; qualification uses a test-only adapter and caller-supplied revision. Bridge 1.7.0 retains protocol /5 and pins the exact 1.6.0 history. macOS compiled Build Core and manifest/1 semantics are preserved; macOS runtime NOT_RUN. Windows Player Runtime NOT_RUN.
 
 ## [1.0.0-alpha.26] — Phase 2C-9.3b: Windows live bridge and Scene authoring
 

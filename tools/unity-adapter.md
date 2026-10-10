@@ -4,14 +4,15 @@ This page describes the batch plane. The same `unity` adapter also has a live Ed
 
 Code: [`gpos/tools/unity/`](../gpos/tools/unity/__init__.py) · adapter id `unity` · status: the first production engine adapter. It is built on the frozen [tool adapter foundation](adapter-foundation.md), extended only by the `TOOL_INHERENT` network semantic (see [Network](#network)).
 
-The adapter answers two questions about one Unity project inside a GPOS project:
+The batch plane answers three questions about one Unity project inside a GPOS project:
 
 1. is it a supported Unity project, and which exact Editor does it require (static inspection);
-2. what do its EditMode or PlayMode tests report when the Unity Test Framework runs them in a fresh batch-mode Editor.
+2. what do its EditMode or PlayMode tests report when the Unity Test Framework runs them in a fresh batch-mode Editor;
+3. is its existing build configuration supported, and what does the fixed Build Core produce from that inspected configuration.
 
-**The batch plane.** It has no live Editor session; that is the [live plane](unity-live-bridge.md). The batch plane has no authoring at all; the live plane authors the open Scene, creates or edits Materials and ScriptableObjects, and creates, instantiates and edits regular prefabs through [fixed](unity-live-authoring.md) [commands](unity-live-assets.md) [only](unity-live-prefabs.md). Neither plane has capture, build, deployment, profiling, video or audio; prefab apply, revert, unpack, Variant, nested-prefab or Prefab Mode authoring, import settings or other asset authoring; `-executeMethod`, arbitrary C# or menu invocation; general package installation or API migration. Each needs its own Human Review.
+**The batch plane.** It has no live Editor session; that is the [live plane](unity-live-bridge.md). The batch plane has no authoring at all; the live plane authors the open Scene, creates or edits Materials and ScriptableObjects, and creates, instantiates and edits regular prefabs through [fixed](unity-live-authoring.md) [commands](unity-live-assets.md) [only](unity-live-prefabs.md). The batch plane includes the [Build Core](unity-build.md), which uses the fixed `Gpos.LiveBridge.Build.BuildEntry.Run` method. Neither plane provides capture, deployment, profiling, video or audio; prefab apply, revert, unpack, Variant, nested-prefab or Prefab Mode authoring, import settings or other asset authoring; caller-selected `-executeMethod`, arbitrary C# or menu invocation; general package installation or API migration. Each extension needs its own Human Review.
 
-**This is not a Unity automation interface.** The caller never supplies an executable, an Editor version, a method, C#, a test filter or category, a graphics mode, a network destination, a registry, a proxy, a credential or any Unity argument. The only input is `unity_project`.
+**This is not a Unity automation interface.** The caller never supplies an executable, an Editor version, a method, C#, a test filter or category, a graphics mode, a network destination, a registry, a proxy, a credential or arbitrary Unity arguments. Project inspection and test execution take `unity_project`; a Build Core build also requires the inspection's `expected_configuration_token` and the contract-bound `request.build_revision`. The build contract defines their exact formats and provenance limitations.
 
 ## Identity
 
@@ -22,11 +23,11 @@ The adapter answers two questions about one Unity project inside a GPOS project:
 | `tool_family` | `ENGINE` |
 | `adapter_kind` | `CLI` |
 | `state_model` | `STATEFUL` (the adapter manages the live plane's long-lived session; each batch capability is `STATELESS`) |
-| platforms | `MACOS`; `WINDOWS` for the batch plane only (alpha.25; see [Windows](#windows-alpha25)) |
+| platforms | `MACOS`; `WINDOWS` for the batch plane (alpha.25) and bounded Live/Scene-authoring support (alpha.26; see [Windows](#windows-alpha25) and [Windows live bridge](#windows-live-bridge-alpha26)); production Windows Build Core remains gated in alpha.27 |
 | network | `TOOL_INHERENT`, with a disclosure |
 | TEST_ONLY | no |
 
-`default_registry()` now contains exactly `adb`, `blender`, `ffmpeg`, `ffprobe`, `git` and `unity`. The adapter is not an agent adapter and is not in the registry's `adapter_ids`.
+`default_registry()` now contains exactly `adb`, `blender`, `ffmpeg`, `ffprobe`, `git`, `player` and `unity`. The adapter is not an agent adapter and is not in the registry's `adapter_ids`.
 
 ## Capabilities
 
@@ -39,6 +40,8 @@ The adapter answers two questions about one Unity project inside a GPOS project:
 | `unity.build-player` | `BUILD` / `MUTATING` | `EDITOR` | as above | build-manifest (`REPORT`), editor-log (`LOG`) | none |
 
 The two build capabilities (Phase 2C-7) are described in [unity-build.md](unity-build.md): the same batch plane, Editor discovery, version rule, package-source preflight, Package Manager isolation and project-lock proof, with one fixed build command instead of the test command.
+
+**Alpha.27 clarification:** Windows CLASSIC x64 Mono Build Core mechanics are implemented and test-only qualified with Bridge 1.7.0. Production `unity.build-player` and `unity.inspect-build-configuration` remain `PLATFORM_UNSUPPORTED` pending the separately authorized D-G1 security remediation; Windows Git provenance remains unavailable. The Windows contract is documented in [adapters/windows-build-core.md](../adapters/windows-build-core.md). The alpha.25 and alpha.26 qualification facts below retain their original scope.
 
 Input `unity_project` (all five): a path relative to the GPOS project root, default `.`. It is resolved (symbolic links followed) and must stay inside the root: no absolute path, no `..`, no escaping link. The directory must contain `Assets/`, `Packages/`, `ProjectSettings/` and a regular file `ProjectSettings/ProjectVersion.txt`.
 
@@ -155,7 +158,7 @@ A dry run validates the project path and layout, the version file, the exact Edi
 
 | Concern | Finding |
 |---|---|
-| caller executable, argument, method, C#, filter, graphics or network setting | none: one input, `unity_project`; tested at the descriptor, source and runtime-argv level |
+| caller executable, argument, method, C#, filter, graphics or network setting | none: contract-bound inputs only, with a fixed executable, argv and Build Core method; tested at the descriptor, source and runtime-argv level |
 | PATH or a non-Editor `unity` tool | never used: Hub root discovery with exact names |
 | silent Editor substitution or project upgrade | refused: exact version or `ENGINE_EDITOR_VERSION_UNAVAILABLE`; never `-accept-apiupdate` |
 | project-controlled network sources | refused before launch: scoped registries, registry overrides, Git and URL dependencies, Git lock sources |
@@ -168,7 +171,7 @@ A dry run validates the project path and layout, the version file, the exact Edi
 
 ## Limitations
 
-- macOS, validated with Unity 6000.5.8f1; Windows (batch plane only), validated with Unity 6000.6.4f1; exactly one Hub-installed Editor.
+- macOS, validated with Unity 6000.5.8f1; Windows batch plane and bounded Live/Scene slice, qualified with Unity 6000.6.4f1; exactly one Hub-installed Editor. Alpha.27 Windows Build Core qualification is test-only and production-gated pending D-G1.
 - The log signatures used for classification are version-specific; an unknown failure is reported as unclassified.
 - A run that stops on a compile error, or is killed by its timeout, leaves `Temp/UnityLockfile` behind; the next run proceeds only when the read-only proof shows it unheld with no Unity process for the project (macOS).
 - The results XML embeds local absolute paths; the Editor log contains machine and session identifiers.

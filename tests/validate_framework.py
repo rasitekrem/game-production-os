@@ -858,15 +858,17 @@ def phase_boundary_problems():
 
 
 # alpha.23: the Windows backend is a private part of the one process boundary, not a second facility. It is the
-# only module that may name CreateProcessW, only process.py may import it, and each Windows module binds exactly
-# its reviewed kernel32 functions. Nothing in gpos/ may start a process any other way.
+# batch module that may name CreateProcessW; only process.py and the fixed Player lifecycle amendment import it.
+# Each Windows module binds its reviewed API allowlist; no unrestricted detached executor is added.
 PROCESS_BACKEND = "gpos/tools/process_win32.py"
 WIN32_FS = "gpos/tools/paths_win32.py"
 # alpha.25: the Unity batch plane's read-only Windows host facts (process facts, the Restart Manager owner query and the
 # Program Files known folder). It starts, signals and terminates nothing and never opens Temp/UnityLockfile.
 UNITY_HOST = "gpos/tools/unity/host_win32.py"
 UNITY_BUILD_STREAMS = "gpos/tools/unity/build_win32.py"
+PLAYER_LIFECYCLE = "gpos/tools/player_process_win32.py"
 WIN32_ALLOWED = {
+    PLAYER_LIFECYCLE: {"OpenJobObjectW", "SetHandleInformation", "GenerateConsoleCtrlEvent"},
     UNITY_BUILD_STREAMS: {"FindFirstStreamW", "FindNextStreamW", "FindClose"},
     PROCESS_BACKEND: {"CreateProcessW", "InitializeProcThreadAttributeList", "UpdateProcThreadAttribute",
                       "DeleteProcThreadAttributeList", "CreateJobObjectW", "SetInformationJobObject",
@@ -881,13 +883,16 @@ WIN32_ALLOWED = {
                  "CommandLineToArgvW", "SHGetKnownFolderPath", "CLSIDFromString", "CoTaskMemFree", "RmStartSession",
                  "RmRegisterResources", "RmGetList", "RmEndSession"},
 }
-WIN32_IMPORTERS = {UNITY_BUILD_STREAMS: {"gpos/tools/unity/build.py", "gpos/tools/unity/build_windows.py"},
-                   PROCESS_BACKEND: {"gpos/tools/process.py"},
+WIN32_IMPORTERS = {UNITY_BUILD_STREAMS: {"gpos/tools/unity/build.py", "gpos/tools/unity/build_windows.py",
+                                       "gpos/tools/player/windows_records.py", "gpos/tools/player/windows_resolver.py", PLAYER_LIFECYCLE},
+                   PLAYER_LIFECYCLE: {"gpos/tools/process.py", "gpos/tools/player/windows.py", "gpos/tools/player/windows_supervisor.py"},
+                   PROCESS_BACKEND: {"gpos/tools/process.py", PLAYER_LIFECYCLE},
                    WIN32_FS: {"gpos/tools/paths.py", "gpos/tools/artifacts.py", "gpos/tools/leases.py",
                               "gpos/tools/execution.py", PROCESS_BACKEND,
                               # alpha.26 (D-L4): the live IPC reads and pins bridge files with the audited primitive
-                              "gpos/tools/unity/live_ipc.py", UNITY_BUILD_STREAMS},
-                   UNITY_HOST: {"gpos/tools/unity/adapter.py", "gpos/tools/unity/project_lock.py"}}
+                              "gpos/tools/unity/live_ipc.py", UNITY_BUILD_STREAMS, PLAYER_LIFECYCLE,
+                              "gpos/tools/player/windows_records.py", "gpos/tools/player/windows_resolver.py"},
+                   UNITY_HOST: {"gpos/tools/unity/adapter.py", "gpos/tools/unity/project_lock.py", PLAYER_LIFECYCLE}}
 WIN32_FORBIDDEN_NAMES = {"CreateProcessA", "CreateProcessAsUserW", "CreateProcessAsUserA", "CreateProcessWithLogonW",
                          "CreateProcessWithTokenW", "ShellExecuteW", "ShellExecuteA", "ShellExecuteExW",
                          "ShellExecuteExA", "WinExec", "CreateRemoteThread", "startfile", "GenerateConsoleCtrlEvent",
@@ -926,17 +931,21 @@ def windows_boundary_problems():
             problems.append(f"{rel} imports _winapi (CPython-internal); the foundation binds documented kernel32 only")
         for backend, importers in WIN32_IMPORTERS.items():
             module = backend.rsplit("/", 1)[1][:-3]
-            imported = any(isinstance(n, ast.ImportFrom) and n.level >= 1 and (n.module == module or any(
-                a.name == module for a in n.names)) for n in ast.walk(tree))
+            imported = any((isinstance(n, ast.ImportFrom) and
+                (n.module == module or (n.module or '').endswith('.'+module) or
+                 ((n.level >= 1 or (n.module or '').startswith('gpos.')) and any(a.name == module for a in n.names)))) or
+                (isinstance(n, ast.Import) and any(a.name.endswith('.'+module) and a.name.startswith('gpos.') for a in n.names))
+                for n in ast.walk(tree))
             if imported and rel not in importers:
                 problems.append(f"{rel} imports {module}: only {sorted(importers)} may")
         if rel not in WIN32_ALLOWED and any(n in text for n in ("WinDLL", "windll", "oledll")):
             problems.append(f"{rel} loads a Windows DLL; only {sorted(WIN32_ALLOWED)} may")
         constants = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
         attributes = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
-        for name in sorted((constants | attributes) & WIN32_FORBIDDEN_NAMES):
+        forbidden = WIN32_FORBIDDEN_NAMES - ({"GenerateConsoleCtrlEvent"} if rel == PLAYER_LIFECYCLE else set())
+        for name in sorted((constants | attributes) & forbidden):
             problems.append(f"{rel} names {name}: no Windows process API other than the reviewed one is used")
-        if rel != PROCESS_BACKEND and "CreateProcessW" in constants | attributes:
+        if rel not in (PROCESS_BACKEND, PLAYER_LIFECYCLE) and "CreateProcessW" in constants | attributes:
             problems.append(f"{rel} names CreateProcessW: only {PROCESS_BACKEND} may")
         if rel in WIN32_ALLOWED:
             extra = sorted(_win32_bindings(tree) - WIN32_ALLOWED[rel])

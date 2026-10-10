@@ -224,6 +224,24 @@ class ExecutionContext:
         """A path inside this execution's workspace. Nothing else is a legal artifact location."""
         return Path(self.workspace).joinpath(*parts)
 
+    def spawn_windows_player_supervisor(self):
+        """One fixed, lease-bound Player supervisor; no executable, argv, environment or detached spec input."""
+        windows = False
+        if sys.platform == 'win32':
+            windows = True
+        if (not windows or self.request.adapter_id != 'player' or self.capability.id != 'player.launch' or
+                not self.capability.detached_spawn or not self.detached_allowed or self.dry_run or self._detached or
+                self.sessions is None or self.sessions.opened is None):
+            raise AssertionError('this execution is not authorized for a Windows Player supervisor')
+        self._detached.append(None)
+        session = self.sessions.opened.session
+        if session.get('build_id') != self.request.build_id or session.get('launch_request_id') != self.request.request_id:
+            raise AssertionError('opened session differs from the launch request')
+        self.sessions.confirm()  # preserve the lease even if the initiating CLI is interrupted during handoff
+        handle = proc.spawn_windows_player_supervisor(self.project_root, self.workspace, session, self.scopes)
+        self._detached[0] = handle
+        return handle
+
 
 @dataclass(frozen=True)
 class AdapterOutcome:

@@ -34,8 +34,8 @@ for. A daemon thread reaps it, so a long-lived host never keeps a zombie. Only a
 is allowlisted for it can reach `spawn_detached` (see `ExecutionContext.spawn_detached`); no request field
 names an executable, an argument, a directory or an environment for it.
 
-Windows (alpha.23) uses the same boundary with a native backend, `process_win32.py`, which only this module
-imports: a `.exe` only (never a batch file, script or shell), created suspended inside its own Job Object through
+Windows batch execution (alpha.23) uses the same boundary with `process_win32.py`, imported only here and by the
+private fixed Player boundary: a `.exe` only (never a batch file, script or shell), created suspended in a Job through
 STARTUPINFOEX + PROC_THREAD_ATTRIBUTE_JOB_LIST, proven (job membership, image identity) before it runs, its whole
 tree terminated on a timeout and whatever it leaves behind terminated when it exits. A Windows outcome reports
 whether that containment and the output capture were actually observed (`tree_contained`, `capture_complete`);
@@ -463,3 +463,16 @@ def interpreter_path():
     """The running Python interpreter, resolved. Adapters that drive a Python helper use this rather
     than searching PATH, so the executed program is never chosen by a request."""
     return str(Path(sys.executable).resolve())
+
+
+def _player_command_line(argv):
+    """Private Windows quoting for the two fixed Player lifecycle vectors; never a public command input."""
+    return subprocess.list2cmdline(argv)
+
+
+def spawn_windows_player_supervisor(root, directory, session, scopes):
+    """The fixed Player-only lifecycle amendment. General Windows detached specs remain refused."""
+    if sys.platform == 'win32':
+        from . import player_process_win32
+        return player_process_win32.spawn_supervisor(root, directory, session, scopes)
+    raise ProcessSpecError('PLATFORM_UNSUPPORTED', 'Windows Player supervision is Windows-only')

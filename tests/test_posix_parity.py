@@ -179,7 +179,7 @@ class P01_FrozenFilesAreByteIdentical(unittest.TestCase):
                                                               "gpos")
                      for p in (ROOT / d).rglob("*") if p.is_file() and "__pycache__" not in p.parts
                      and p.relative_to(ROOT).as_posix() not in FIXTURE["frozen"])
-        self.assertEqual(new, sorted(["gpos/tools/git/inspection.py", "gpos/tools/unity/build_win32.py", "gpos/tools/unity/build_windows.py", "gpos/tools/unity/live_bridge/history/1.6.0.json","gpos/tools/executables.py", "gpos/tools/paths_win32.py", "gpos/tools/process_win32.py",
+        self.assertEqual(new, sorted(["gpos/tools/player/windows.py", "gpos/tools/player/windows_records.py", "gpos/tools/player/windows_resolver.py", "gpos/tools/player/windows_supervisor.py", "gpos/tools/player_process_win32.py", "gpos/tools/git/inspection.py", "gpos/tools/unity/build_win32.py", "gpos/tools/unity/build_windows.py", "gpos/tools/unity/live_bridge/history/1.6.0.json","gpos/tools/executables.py", "gpos/tools/paths_win32.py", "gpos/tools/process_win32.py",
                                "gpos/tools/unity/host_win32.py",
                                # alpha.26: the Windows core of bridge 1.6.0 and the pinned 1.5.0 release manifest
                                "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/WindowsFiles.cs", "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/WindowsFiles.cs.meta",

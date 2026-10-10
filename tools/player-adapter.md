@@ -1,5 +1,9 @@
 # Player runtime adapter (Phase 2C-8)
 
+The separate [Windows Runtime Core candidate](../adapters/windows-player-runtime.md) implements launch/status/stop
+for qualification only. It is TEST_ONLY; production Windows Player availability remains closed. The macOS contract
+and implementation below are preserved.
+
 Status: GPOS `1.0.0-alpha.26` · implementation in [`gpos/tools/player/`](../gpos/tools/player/__init__.py) · macOS only
 
 The `player` adapter runs exactly one already-built game on this host and observes it — launch, status, an exact-window

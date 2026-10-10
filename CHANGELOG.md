@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — Windows Player Runtime Core candidate (Phase 2C-9.5A)
+
+Adds a TEST_ONLY Windows launch/status/stop candidate with exact manifest/2 consumption, session-bound native
+supervision, atomic Job assignment, creation-time ownership checks, bounded stop and conservative recovery.
+The narrow foundation amendment does not open generic detached execution. See the
+[candidate contract](adapters/windows-player-runtime.md) and retained HUMAN_REVIEW qualification.
+Production remains seven adapters; Windows Unity fourteen capabilities, Git two, ADB unavailable and Player closed.
+Bridge 1.7.0, macOS Player behavior, authority rules and Git/Build limits are preserved. No capture, visual/playability
+evidence, merge, release tag, version bump or freeze is included.
+
 ## [1.0.0-alpha.29] — Windows Build Core production
 
 Human approval of the trusted Windows Git-to-Build workflow enables only the existing `unity.inspect-build-configuration` and `unity.build-player` capabilities on Windows. The production Unity allowlist grows from 12 to 14; all other restrictions remain unchanged. Unity 6000.6.4f1, Bridge 1.7.0, CLASSIC StandaloneWindows64 x64 Mono nondevelopment, fixed entry, leases, Job/capture, NTFS publication and consumer rules retain the accepted implementation. Alpha.29 release preparation preserves the accepted implementation; freeze completion is recorded only after the required commit, remote, tag and master verification.

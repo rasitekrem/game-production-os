@@ -1317,11 +1317,12 @@ class L01_Boundaries(TmpCase):
                                    "diagnostics.py", "errors.py", "evidence.py", "executables.py", "execution.py",
                                    "ffmpeg/__init__.py", "ffmpeg/adapter.py",
                                    "ffprobe/__init__.py", "ffprobe/adapter.py", "ffprobe/parser.py",
-                                   "git/__init__.py", "git/adapter.py", "git/status.py", "leases.py",
+                                   "git/__init__.py", "git/adapter.py", "git/inspection.py", "git/status.py", "leases.py",
                                    "media_common.py", "model.py", "paths.py", "paths_win32.py", "player/__init__.py", "player/adapter.py",
                                    "player/appkit.py", "player/capture.py", "player/contract.py", "player/helper.py",
                                    "player/invocation.py", "player/logs.py", "player/macos.py", "player/resolver.py",
-                                   "player/runtime.py", "process.py", "process_win32.py", "provenance.py",
+                                   "player/runtime.py", "player/windows.py", "player/windows_records.py", "player/windows_resolver.py",
+                                   "player/windows_supervisor.py", "player_process_win32.py", "process.py", "process_win32.py", "provenance.py",
                                    "redaction.py", "registry.py", "synthetic/__init__.py", "synthetic/adapter.py",
                                    "synthetic/helper.py", "unity/__init__.py", "unity/adapter.py", "unity/assets.py", "unity/authoring.py",
                                    "unity/bridge_install.py", "unity/build.py", "unity/build_win32.py", "unity/build_windows.py", "unity/host_win32.py",
@@ -3278,7 +3279,25 @@ class V02_WindowsBoundaryIsStatic(unittest.TestCase):
         import validate_framework as vf
         self.assertEqual(len(vf.WIN32_ALLOWED[vf.PROCESS_BACKEND]), 16)
         self.assertEqual(len(vf.WIN32_ALLOWED[vf.WIN32_FS]), 7)
-        self.assertEqual(vf.WIN32_IMPORTERS[vf.PROCESS_BACKEND], {"gpos/tools/process.py"})
+        self.assertEqual(vf.WIN32_IMPORTERS[vf.PROCESS_BACKEND], {"gpos/tools/process.py", vf.PLAYER_LIFECYCLE})
+        self.assertEqual(vf.WIN32_ALLOWED[vf.PLAYER_LIFECYCLE],
+                         {"OpenJobObjectW", "SetHandleInformation", "GenerateConsoleCtrlEvent"})
+        self.assertEqual(vf.WIN32_IMPORTERS[vf.PLAYER_LIFECYCLE],
+                         {"gpos/tools/process.py", "gpos/tools/player/windows.py", "gpos/tools/player/windows_supervisor.py"})
+
+    def test_absolute_import_cannot_hide_player_boundary_access(self):
+        sys.path.insert(0, str(ROOT / "tests"))
+        import validate_framework as vf
+        import ast
+        real_parse=ast.parse
+        def injected(source, *args, **kwargs):
+            tree=real_parse(source,*args,**kwargs)
+            if 'class ToolRegistry' in source:
+                tree.body[:0]=real_parse('from gpos.tools import player_process_win32').body
+            return tree
+        with mock.patch.object(ast,'parse',side_effect=injected):
+            problems=vf.windows_boundary_problems()
+        self.assertTrue(any('registry.py imports player_process_win32' in p for p in problems),problems)
 
 
 if __name__ == "__main__":

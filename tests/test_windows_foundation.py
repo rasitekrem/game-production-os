@@ -896,15 +896,15 @@ class W07_PlatformRefusals(Case):
         self.assertEqual(result.status, tdg.INCOMPATIBLE)
         self.assertIn("PLATFORM_UNSUPPORTED", {d.code for d in result.diagnostics})
 
-    def test_macos_only_adapters_are_never_probed_here(self):
+    def test_windows_production_capability_gates_remain_bounded(self):
         from gpos.tools.registry import default_registry
         reg = default_registry(FW)
-        for adapter_id in ("player",):
-            result = reg.probe(adapter_id)
-            self.assertEqual(result.status, "UNAVAILABLE")
-            self.assertIn("PLATFORM_UNSUPPORTED", {d.code for d in result.diagnostics})
+        player = reg.probe('player')
+        self.assertEqual(player.status, 'AVAILABLE')
+        self.assertEqual({cid for cid, ok, _ in player.capability_availability if ok},
+                         {'player.launch', 'player.status', 'player.stop'})
         # alpha.25: Unity declares WINDOWS for its batch plane; alpha.26 adds the live session and the Scene-authoring
-        # slice; alpha.29 adds the two approved Build Core capabilities. Player stays closed.
+        # slice; alpha.29 adds the two approved Build Core capabilities. Player capture stays closed.
         unity = reg.probe("unity")
         self.assertNotIn("PLATFORM_UNSUPPORTED", {d.code for d in unity.diagnostics})
         offered = {c for c, ok, _ in unity.capability_availability if ok}

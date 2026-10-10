@@ -23,6 +23,7 @@ application bundles) stay in the backend modules; `contract.py` is the portable 
 import json
 import os
 import platform as host_platform
+import sys
 import time
 import uuid
 from datetime import datetime, timezone
@@ -134,11 +135,13 @@ CAPABILITIES = (
 
 DESCRIPTOR = model.AdapterDescriptor(
     adapter_id=ADAPTER_ID, adapter_version=ADAPTER_VERSION, tool_family="DEVICE", target_tool="GPOS Player Helper",
-    adapter_kind="DEVICE", state_model="STATEFUL", supported_platforms=("MACOS",), capabilities=CAPABILITIES,
+    adapter_kind="DEVICE", state_model="STATEFUL", supported_platforms=("MACOS", "WINDOWS"), capabilities=CAPABILITIES,
     network="TOOL_INHERENT", network_disclosure=NETWORK_DISCLOSURE,
     availability="macOS 14 or later and this exact GPOS Player Helper release installed at "
                   "~/Applications/GPOS/GposPlayerHelper.app (player.install-capture-helper)",
     compatibility_notes=(
+        "Windows supports launch/status/stop only through the fixed owned-Job lifecycle and current compatible "
+        "manifest/2; helper installation and capture remain macOS-only. No Windows runtime evidence is produced.",
         "alpha.22 runs alpha.21 Unity macOS application-bundle builds of the same project on this macOS host only.",
         "The probe's tool path is the installed helper executable's real absolute path, which names the local home "
         "directory (and so the user name) in provenance.",
@@ -187,6 +190,14 @@ class PlayerAdapter(model.ToolAdapter):
         return hp.install_path(os.path.realpath(self._host()))
 
     def probe(self):
+        if sys.platform == "win32":
+            from .windows import WindowsLifecycle
+            result = WindowsLifecycle().probe()
+            from dataclasses import replace
+            return replace(result, capability_availability=tuple(
+                (cap.id, cap.id in (c.LAUNCH, c.STATUS, c.STOP),
+                 "" if cap.id in (c.LAUNCH, c.STATUS, c.STOP) else "macOS-only helper installation or capture")
+                for cap in CAPABILITIES))
         platform = model.current_platform()
         unusable = lambda reason: tuple((cap.id, cap.id in (c.INSTALL, c.STATUS, c.STOP), reason)
                                         for cap in CAPABILITIES)
@@ -216,6 +227,12 @@ class PlayerAdapter(model.ToolAdapter):
     # ------------------------------------------------------------ dispatch
 
     def execute(self, request, context):
+        if sys.platform == "win32":
+            if request.capability_id not in (c.LAUNCH, c.STATUS, c.STOP):
+                return _refuse(request.capability_id, "PLATFORM_UNSUPPORTED",
+                               "Windows Player supports lifecycle only; helper installation and capture are macOS-only")
+            from .windows import WindowsLifecycle
+            return WindowsLifecycle().execute(request, context)
         handler = {c.INSTALL: self._install, c.LAUNCH: self._launch, c.STATUS: self._status,
                    c.SCREENSHOT: self._capture, c.VIDEO: self._capture, c.STOP: self._stop}.get(request.capability_id)
         if handler is None:

@@ -1,8 +1,12 @@
-# Windows Player Runtime Core — Phase 2C-9.5A candidate
+# Windows Player Runtime Core — Phase 2C-9.5A production gate qualification candidate
 
-`WindowsPlayerAdapter` is TEST_ONLY and absent from `default_registry()`. Explicit qualification registration offers
-only `player.launch`, `player.status` and `player.stop`. Production remains seven adapters, Windows Unity fourteen
-capabilities, Git two and ADB unavailable. Windows Player production availability requires subsequent Human Review.
+On the implementation branch, the existing production `PlayerAdapter` in `default_registry()` declares Windows
+and dispatches `player.launch`, `player.status` and `player.stop` to the descriptor-free `WindowsLifecycle` backend.
+The historical `WindowsPlayerAdapter` TEST_ONLY wrapper remains only for candidate regression attribution; production
+does not register or substitute it. The actual production probe exposes exactly these three Windows capabilities;
+helper installation, screenshot and video remain macOS-only and Windows dispatch refuses them.
+The registry remains seven adapters, Windows Unity fourteen capabilities, Git two and ADB unavailable.
+Release production availability requires the next Human Review; this branch is a qualification candidate only.
 The frozen alpha.29 version, framework authority, Bridge 1.7.0 and macOS Player implementation are preserved.
 
 ## Payload and SESSION

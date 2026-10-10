@@ -27,12 +27,14 @@ class WindowsRuntimeGuards(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_default_production_stays_closed_and_inventory_fixed(self):
+    def test_default_production_lifecycle_and_inventory_fixed(self):
         registry = default_registry(load_framework())
         self.assertEqual(len(registry.adapter_ids()),7)
         self.assertFalse(registry.allow_test_only)
-        self.assertEqual(registry.probe('player').status,'UNAVAILABLE')
-        self.assertEqual(registry.get('player').descriptor.supported_platforms,('MACOS',))
+        self.assertEqual(registry.probe('player').status,'AVAILABLE')
+        self.assertEqual(registry.get('player').descriptor.supported_platforms,('MACOS','WINDOWS'))
+        self.assertEqual({cid for cid,available,_ in registry.probe('player').capability_availability if available},
+                         {c.LAUNCH,c.STATUS,c.STOP})
         self.assertEqual(sum(a for _,a,_ in registry.probe('unity').capability_availability),14)
         self.assertEqual(sum(a for _,a,_ in registry.probe('git').capability_availability),2)
         self.assertEqual(registry.probe('adb').status,'UNAVAILABLE')

@@ -1,4 +1,7 @@
-"""Phase 2C-9.5A Windows candidate. Intentionally absent from default_registry()."""
+"""Fixed Windows lifecycle backend; the production Player adapter owns discovery and dispatch.
+
+The legacy TEST_ONLY wrapper remains for attributable candidate regression tests only.
+"""
 import dataclasses
 import os
 import time
@@ -29,8 +32,8 @@ def outcome(code, message, cap, data=None, mutation=False, artifacts=(), command
                           mutation_performed=mutation, artifacts=artifacts, command=command, environment=environment)
 
 
-class WindowsPlayerAdapter(model.ToolAdapter):
-    descriptor = DESCRIPTOR
+class WindowsLifecycle:
+    """Backend only: no registry identity or descriptor substitution."""
 
     def __init__(self, *, _qualification_hook=None):
         # TEST_ONLY fault injection, never selected by a request or production registry.
@@ -271,3 +274,8 @@ class WindowsPlayerAdapter(model.ToolAdapter):
         records.write_once(Path(context.workspace)/'stop-result.json',data)
         return outcome('PLAYER_STOPPED','proven owned Windows runtime ended; SESSION released',c.STOP,data,True,
             artifacts=(ArtifactSpec('stop-result','JSON',str(Path(context.workspace)/'stop-result.json'),'application/json','Operational stop result; no gameplay evidence'),))
+
+
+class WindowsPlayerAdapter(WindowsLifecycle, model.ToolAdapter):
+    """Historical explicit candidate wrapper; never registered by production."""
+    descriptor = DESCRIPTOR

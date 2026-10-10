@@ -139,7 +139,7 @@ class A_Declarations(unittest.TestCase):
         d = pa.DESCRIPTOR
         self.assertEqual((d.adapter_id, d.adapter_version, d.tool_family, d.adapter_kind, d.state_model, d.target_tool),
                          ("player", "1.0.0", "DEVICE", "DEVICE", "STATEFUL", "GPOS Player Helper"))
-        self.assertEqual(d.supported_platforms, ("MACOS",))
+        self.assertEqual(d.supported_platforms, ("MACOS", "WINDOWS"))
         self.assertEqual(d.filesystem_scopes, ())
         self.assertEqual(tval.validate_descriptor(FW, d), [])
 

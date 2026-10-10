@@ -32,7 +32,7 @@ VERSION_FROZEN, VERSION_NOW = b"1.0.0-alpha.22", b"1.0.0-alpha.29"
 
 # The only frozen files alpha.23 and alpha.24 edit. Every other file under core/, schemas/, skills/, workflows/,
 # templates/ and gpos/ is byte-identical to alpha.22.
-EDITED = {"gpos/tools/unity/build.py",
+EDITED = {"gpos/tools/player/adapter.py", "gpos/tools/unity/build.py",
           "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Build/BuildEntry.cs",
           "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Build/BuildConfiguration.cs",
           "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/BuildRules.cs","gpos/tools/artifacts.py", "gpos/tools/cli.py", "gpos/tools/diagnostics.py", "gpos/tools/execution.py",
@@ -53,6 +53,10 @@ EDITED = {"gpos/tools/unity/build.py",
 # Every alpha.22 unit whose POSIX code changed beyond guarded `if sys.platform == "win32":` statements, and why. The
 # mechanical checks below narrow several of them further; the rest are the shared changes a macOS regression covers.
 DELIBERATE = {
+    ("gpos/tools/player/adapter.py", "assign DESCRIPTOR"):
+        "Windows lifecycle gate adds WINDOWS and one Windows compatibility note; macOS declaration and all "
+        "capability contracts remain unchanged. Production gate source tests prove the exact descriptor delta; "
+        "P02 checks the guarded dispatch.",
     ("gpos/tools/process.py", "def run_process"):
         "split: validate, choose the host backend, pass every outcome through the integrity observer; the alpha.22 "
         "body moved verbatim into _run_posix (P03 proves it)",

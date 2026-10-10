@@ -1,12 +1,15 @@
 # Changelog
 
-## Unreleased — Windows Player Runtime Core candidate (Phase 2C-9.5A)
+## Unreleased — Windows Player Runtime Core production gate candidate (Phase 2C-9.5A)
 
 Adds a TEST_ONLY Windows launch/status/stop candidate with exact manifest/2 consumption, session-bound native
 supervision, atomic Job assignment, creation-time ownership checks, bounded stop and conservative recovery.
 The narrow foundation amendment does not open generic detached execution. See the
 [candidate contract](adapters/windows-player-runtime.md) and retained HUMAN_REVIEW qualification.
-Production remains seven adapters; Windows Unity fourteen capabilities, Git two, ADB unavailable and Player closed.
+On the implementation branch the existing production Player adapter now dispatches only Windows launch/status/stop
+to the descriptor-free lifecycle backend, for dedicated production-path qualification. No TEST_ONLY adapter is
+substituted in production. Release availability awaits the next Human Review. Production remains seven adapters;
+Windows Unity fourteen capabilities, Git two and ADB unavailable; Windows capture/helper installation stay closed.
 Bridge 1.7.0, macOS Player behavior, authority rules and Git/Build limits are preserved. No capture, visual/playability
 evidence, merge, release tag, version bump or freeze is included.
 

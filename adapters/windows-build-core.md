@@ -1,8 +1,10 @@
-# Windows Build Core — alpha.27 implementation, production gate closed
+# Windows Build Core — bounded production candidate
 
 Phase 2C-9.4 implements one Windows build contract: Unity 6000.6.4f1, already active StandaloneWindows64, x64 Mono2x, Standalone Player, CLASSIC, nondevelopment. Active profiles, other targets/backends/subtargets, debug/profiler flags, solution/PDB/install outputs and other Editor versions fail closed. Production never switches targets, creates or activates profiles, changes settings or accepts arbitrary arguments.
 
-The Windows production build and build-inspection capabilities remain unavailable. Alpha.28 enables the two existing Windows Git capabilities within the Human-accepted bounded D-G1 subset. The broader cross-platform D-G1 finding remains OPEN; macOS/Linux runtime qualification is NOT_RUN. Trusted Windows Build Core still requires its own subsequent production qualification and Human approval. `build_revision` retains its exact 40/64 lowercase hexadecimal contract and is explicitly caller-supplied (manifest value CALLER_SUPPLIED). Neither GitHub nor test fixtures establish clean production provenance. The qualification adapter lives only in tests and is not registered by the production registry. The existing twelve Windows Unity capabilities remain the production allowlist.
+The Human-authorized candidate enables exactly `unity.inspect-build-configuration` and `unity.build-player`, increasing the Windows Unity production allowlist from 12 to 14. The accepted alpha.27 implementation and subsequent trusted-workflow qualification retain their original attribution. This candidate is not a release freeze; the release version remains alpha.28. The real production Unity adapter serves both capabilities without test-side availability authorization.
+
+Alpha.28 enables the two existing Windows Git capabilities within the Human-accepted bounded D-G1 subset. The broader cross-platform D-G1 finding remains OPEN; macOS/Linux runtime qualification is NOT_RUN. `build_revision` retains its exact 40/64 lowercase hexadecimal contract and is explicitly caller-supplied (manifest value CALLER_SUPPLIED). Unity Build Core does not invoke Git, infer HEAD or verify the revision. A qualified source/build relationship requires separate clean Git observations before inspection, between inspection and build, and after build, with the same revision, followed by complete manifest/payload revalidation. The operational manifest is not authenticated Git attestation; there is no git_verified field. The original qualification adapter remains test-only and is not registered by the production registry.
 
 ## Fixed execution
 
@@ -32,11 +34,11 @@ Bridge 1.7.0 retains `gpos.unity.live/5`. The exact 1.6.0 historical manifest is
 
 ## Qualification commands
 
-Run Windows suites with `python -B -X utf8`. The fresh authorized lab is `D:\gpos-unity-lab-alpha27-qualification`; earlier alpha.25/26 labs and unrelated projects are not used. The measurement lab is not reused. At most one Editor runs; no Player is launched.
+Run Windows suites with `python -B -X utf8`. Original alpha.27 evidence is retained at `D:\gpos-unity-lab-alpha27-qualification`; it is reused with its original implementation attribution. New production-gate qualification uses the fresh authorized `D:\gpos-windows-build-production-gate-20261010` lab. Earlier alpha.25/26 labs and unrelated projects are not used. At most one Editor runs; no Player is launched.
 
 - `tests/test_unity_windows_build.py`: bounded NTFS/ADS/report/publication/manifest fault tests and Build Core source checks.
 - Set `GPOS_WINDOWS_BUILD_REAL=1` for the real Build Core fixture: inspect, positive build, target/backend/profile refusals, compile/BuildReport failure, pre/post drift, timeout cleanup and real consumer drift.
 - `tests/mutate_unity_windows_build.py`: baseline-gated Windows payload/publication/configuration mutations; `--real` adds the sequential real Editor token-precheck mutation.
-- Existing affected framework, production validator, agent adapter, Tool Foundation, Windows Foundation, Windows Batch and Windows Live suites remain required. Point both Windows Unity lab environment variables to the qualification root.
+- Run affected framework, source-parity, production registry and capability-gate checks. Full unrelated Batch/Live/Player qualification is not required for this availability-only change. Point both Windows Unity lab environment variables to the fresh qualification root.
 
 Mutation timeouts are INCONCLUSIVE, never CAUGHT. Sharing/scanner-handle interference exercises the failure contract; it does not qualify any named antivirus product. Crash-point injections do not establish power-loss recovery. Live approval tests use explicitly synthetic testkit owners and produce no Human approval evidence. Final run counts, actual manifest digest, logs, remaining limitations and implementation commit belong in the Human Review report.

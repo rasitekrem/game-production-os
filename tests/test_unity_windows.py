@@ -315,17 +315,17 @@ class WA_Gating(UnityCase):
         d = ua.DESCRIPTOR
         self.assertEqual(tval.validate_descriptor(FW, d, allow_test_only=False), [])
         self.assertEqual(d.supported_platforms, ("MACOS", "WINDOWS"))
-        from gpos.tools.unity import authoring, live
-        self.assertEqual(ua.WINDOWS_CAPABILITIES, (ua.INSPECT, ua.EDITMODE, ua.PLAYMODE,     # alpha.26: + the live slice
+        from gpos.tools.unity import authoring, live, build
+        self.assertEqual(ua.WINDOWS_CAPABILITIES, (ua.INSPECT, ua.EDITMODE, ua.PLAYMODE,
                                                    live.INSTALL, live.STATUS, live.ATTACH, live.INSPECT, live.DETACH,
                                                    authoring.INSPECT_OBJECT, authoring.CREATE, authoring.SET_TRANSFORM,
-                                                   authoring.SAVE_SCENE))
+                                                   authoring.SAVE_SCENE, build.INSPECT_BUILD, build.BUILD))
         self.assertEqual(ua.WINDOWS_ENVIRONMENT, ("ProgramData", "LOCALAPPDATA"))
         self.assertEqual(len(d.capabilities), 47)
 
     def test_every_other_capability_is_refused_on_windows_before_anything_runs(self):
         others = [c.id for c in ua.DESCRIPTOR.capabilities if c.id not in ua.WINDOWS_CAPABILITIES]
-        self.assertEqual(len(others), 35)                 # alpha.26: 12 qualified on Windows
+        self.assertEqual(len(others), 33)                 # 14 qualified Windows capabilities
         with Recorder() as rec:
             for cap in others:
                 with self.subTest(capability=cap):
@@ -337,9 +337,9 @@ class WA_Gating(UnityCase):
     def test_a_refused_capability_reaches_no_tool_through_the_foundation(self):
         stand_in = StandIn(self.tmp)
         p = self.unity_project(deps=BUILTIN)
-        from gpos.tools.unity import build, live
+        from gpos.tools.unity import authoring, live
         with Recorder() as rec:
-            for cap in (live.STATUS, build.CAPABILITY_IDS[0]):
+            for cap in (live.STATUS, authoring.ADD_COMPONENT):
                 with self.subTest(capability=cap):
                     result = self.run_cap(cap, p, registry=stand_in.registry())
                     self.assertNotEqual(result.status, tdg.SUCCESS)
@@ -353,7 +353,7 @@ class WA_Gating(UnityCase):
         available = sorted(c for c, ok, _ in probe.capability_availability if ok)
         self.assertEqual(available, sorted(ua.WINDOWS_CAPABILITIES))
         refused = [why for c, ok, why in probe.capability_availability if not ok]
-        self.assertEqual(len(refused), 35)
+        self.assertEqual(len(refused), 33)
         self.assertTrue(all("not available on Windows in this release" in why for why in refused))
 
 

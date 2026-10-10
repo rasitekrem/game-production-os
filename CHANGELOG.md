@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased candidate — Windows Build Core production gate
+
+Human approval of the trusted Windows Git-to-Build workflow enables only the existing `unity.inspect-build-configuration` and `unity.build-player` capabilities on Windows. The production Unity allowlist grows from 12 to 14; all other restrictions remain unchanged. Unity 6000.6.4f1, Bridge 1.7.0, CLASSIC StandaloneWindows64 x64 Mono nondevelopment, fixed entry, leases, Job/capture, NTFS publication and consumer rules retain the accepted implementation. No release version, merge, tag or freeze is authorized by this candidate.
+
+Windows Git provenance is available in alpha.28 within its bounded qualified subset. Unity Build Core does not invoke Git or verify a revision; manifest `build_revision` remains CALLER_SUPPLIED. A qualified workflow requires matching separate pre/post clean Git observations and complete manifest/payload revalidation. New manifests carry corrected limitations; retained historical manifests and evidence are not rewritten. The strict current consumer requires the current limitation text; historical manifests retain their original pinned-consumer qualification. There is no authenticated Git attestation or atomic snapshot claim. Cross-platform D-G1 remains OPEN; macOS/Linux runtime and Windows Player Runtime remain NOT_RUN.
+
 All notable changes to Game Production OS. Format based on Keep a Changelog; versions follow Semantic Versioning as defined in [README.md § Versioning](README.md#versioning).
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.

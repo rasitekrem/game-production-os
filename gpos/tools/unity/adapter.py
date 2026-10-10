@@ -11,7 +11,7 @@ Batch plane, process-driven, each capability STATELESS:
 Build plane (Phase 2C-7, alpha.21, build.py), batch-mode and STATELESS as well, through the one fixed GPOS build
 entry of the audited bridge package; no evidence:
 
-    unity.inspect-build-configuration   the existing macOS build configuration, whether it is buildable, its token
+    unity.inspect-build-configuration   the existing qualified build configuration, whether it is buildable, its token
     unity.build-player                  build exactly that configuration into the execution workspace; manifest
 
 Live plane, driven by the fixed GPOS Editor bridge and one Human-approved session per GPOS project (see
@@ -101,13 +101,13 @@ HUB_ROOTS = {"darwin": ("/Applications/Unity/Hub/Editor",)}      # alpha.15: mac
 EDITOR_IN_VERSION_DIR = {"darwin": ("Unity.app", "Contents", "MacOS", "Unity")}
 if sys.platform == "win32":   # alpha.25: <Program Files>\Unity\Hub\Editor\<version>\Editor\Unity.exe; never PATH
     EDITOR_IN_VERSION_DIR["win32"] = ("Editor", "Unity.exe")
-# The only capabilities qualified on Windows: the batch plane (alpha.25) and, with bridge 1.6.0, the live session and
-# the Scene-authoring slice (alpha.26). Every other one is refused there with PLATFORM_UNSUPPORTED before anything
-# runs (the bridge separately serves only these commands on Windows): Play Mode, the other Scene edits, assets,
-# prefabs, sources and Build Core are not qualified on Windows.
+# Windows qualifies the batch plane (alpha.25), the live session and Scene-authoring slice (alpha.26),
+# and the two bounded Build Core capabilities with bridge 1.7.0. Other capabilities remain refused
+# before dispatch; the live bridge's separate command allowlist is unchanged.
 WINDOWS_CAPABILITIES = (INSPECT, EDITMODE, PLAYMODE,
                         live.INSTALL, live.STATUS, live.ATTACH, live.INSPECT, live.DETACH,
-                        authoring.INSPECT_OBJECT, authoring.CREATE, authoring.SET_TRANSFORM, authoring.SAVE_SCENE)
+                        authoring.INSPECT_OBJECT, authoring.CREATE, authoring.SET_TRANSFORM, authoring.SAVE_SCENE,
+                        ub.INSPECT_BUILD, ub.BUILD)
 # alpha.25 (lab-measured): the Package Manager server does not start without these two; nothing else is inherited
 WINDOWS_ENVIRONMENT = ("ProgramData", "LOCALAPPDATA")
 PROBE_TIMEOUT = 120.0
@@ -638,7 +638,7 @@ class UnityAdapter(model.ToolAdapter):
                                      capability_availability=unusable("Unity Editor version not established"))
         return model.ProbeResult(ADAPTER_ID, model.AVAILABLE, tool_path=executable, tool_version=version,
                                  platform=platform, detail=f"Unity Editor {version} at {executable} (Windows: batch "
-                                                           f"plane only)",
+                                                           f"plane, bounded live/Scene and Build Core)",
                                  capability_availability=tuple((c.id, windows(c), "" if windows(c) else WINDOWS_REFUSAL)
                                                                for c in CAPABILITIES))
 
@@ -646,7 +646,7 @@ class UnityAdapter(model.ToolAdapter):
 
     def execute(self, request, context):
         cap = request.capability_id
-        if sys.platform == "win32":   # alpha.25: Windows qualifies the batch plane only
+        if sys.platform == "win32":   # only the explicitly qualified Windows capabilities
             if cap not in WINDOWS_CAPABILITIES:
                 return AdapterOutcome(ok=True, diagnostics=(dg.make("PLATFORM_UNSUPPORTED", f"{cap}: {WINDOWS_REFUSAL}",
                                                                     ADAPTER_ID, cap),))
@@ -1002,7 +1002,8 @@ def upm_environment(workspace, cache):
 WINDOWS_REFUSAL = ("not available on Windows in this release (Windows qualifies the batch plane, alpha.25, and the live "
                    "session with the Scene-authoring slice, alpha.26: inspect-project, run-editmode-tests, "
                    "run-playmode-tests, live-install-bridge, live-status, live-attach, live-inspect, live-detach, "
-                   "live-object-inspect, live-create-gameobject, live-set-transform, live-save-scene)")
+                   "live-object-inspect, live-create-gameobject, live-set-transform, live-save-scene; "
+                   "bounded Build Core: inspect-build-configuration, build-player)")
 
 
 def _windows_reparse_on_way(executable):

@@ -158,11 +158,13 @@ Each game keeps its own authority in a `.game/` directory built from `templates/
 
 **Platforms.** Windows is the primary development and production platform. macOS keeps its existing behaviour and is used mainly for Apple-specific work (iOS builds, signing, Xcode). Only tested interpreter and operating-system combinations are qualified.
 
+**Production candidate after frozen alpha.28:** Human authorization adds only Windows `unity.inspect-build-configuration` and `unity.build-player`, bringing Unity to 14 Windows capabilities. The [bounded Windows contract](adapters/windows-build-core.md) retains caller-supplied revision attribution and requires separate clean Git observations plus complete manifest/payload revalidation for a qualified workflow. No new release version, tag or freeze is claimed; Windows Player Runtime remains unavailable.
+
 **Next critical path (Windows first):**
 
-1. Subsequent qualification and Human Review for Windows Trusted Build Core; macOS/Linux D-G1 runtime qualification and a Human decision on a GPOS-owned ADB server lifecycle remain outstanding.
+1. Human release preparation and freeze review for the bounded Windows Build Core production candidate; macOS/Linux D-G1 runtime qualification and a Human decision on a GPOS-owned ADB server lifecycle remain outstanding.
 2. Unity 6.6 on Windows: a Human-attended Scene-authoring demonstration, then the remaining live capabilities (Play Mode, components and properties, assets, prefabs, sources) one qualified slice at a time; the batch plane (2C-9.3a) and the live session with Scene authoring (2C-9.3b) are qualified.
-3. Windows Unity Build Core.
+3. Further Windows Unity Build Core configurations require separate qualification; the accepted candidate supports only Unity 6000.6.4f1 CLASSIC x64 Mono nondevelopment.
 4. Windows Player Runtime with exact-window capture (`TARGET_RUNTIME` reconsidered only when that runtime qualification justifies it).
 5. The first genuine autonomous game-production pilot, under Human Review and the Golden Gameplay Cell quality gates; pilot-driven hardening and skill maturity follow it.
 

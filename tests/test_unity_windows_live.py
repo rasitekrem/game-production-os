@@ -5,7 +5,7 @@
     GPOS_UNITY_TEST_FAST=1 python -X utf8 tests/test_unity_windows_live.py      (no Unity process)
 
 Fast groups (no Unity process):
-  WLA  gating: 12 Unity capabilities on Windows, 35 refused before anything runs, and the bridge's own allowlist
+  WLA  gating: 14 Unity capabilities on Windows, 33 refused before anything runs, and the bridge's own allowlist
   WLB  the bridge sources: the Unity-free core compiled and tested in both platform views with the Mono bundled with
        the Editor, the whole Editor assembly compiled in both views against the Editor's reference assemblies, and
        the native imports of each view (Windows: kernel32.dll!MoveFileExW only; macOS: the frozen libc set)
@@ -137,11 +137,13 @@ STD = lambda: [f"-r:{API / n}" for n in ("mscorlib.dll", "System.dll", "System.C
 
 @windows_only
 class WLA_Gating(unittest.TestCase):
-    def test_twelve_capabilities_are_qualified_on_windows(self):
+    def test_fourteen_capabilities_are_qualified_on_windows(self):
         caps = [c.id for c in ua.DESCRIPTOR.capabilities]
         self.assertEqual(len(caps), 47)
-        self.assertEqual(ua.WINDOWS_CAPABILITIES, (ua.INSPECT, ua.EDITMODE, ua.PLAYMODE) + WINDOWS_LIVE)
-        self.assertEqual(len([c for c in caps if c not in ua.WINDOWS_CAPABILITIES]), 35)
+        from gpos.tools.unity import build
+        self.assertEqual(ua.WINDOWS_CAPABILITIES, (ua.INSPECT, ua.EDITMODE, ua.PLAYMODE) + WINDOWS_LIVE
+                         + (build.INSPECT_BUILD, build.BUILD))
+        self.assertEqual(len([c for c in caps if c not in ua.WINDOWS_CAPABILITIES]), 33)
 
     def test_every_other_live_or_authoring_capability_is_refused_before_anything_runs(self):
         from gpos.tools.unity import assets, prefabs, sources

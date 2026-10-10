@@ -1,6 +1,6 @@
 """alpha.27 Windows Build Core qualification. All real Editors are sequential, Job-contained.
 
-GPOS_WINDOWS_BUILD_REAL=1 enables the real fixture groups. Production build remains unavailable.
+GPOS_WINDOWS_BUILD_REAL=1 enables the original alpha.27 real fixture groups.
 The only lab used is GPOS_WINDOWS_BUILD_LAB (default the authorized alpha.27 qualification root).
 Synthetic revisions are CALLER_SUPPLIED, never Git-verified. No Player is launched.
 """
@@ -306,10 +306,14 @@ class B_BuildBoundary(A_NtfsContract):
         self.assertIn('BUILD_OUTCOME_UNKNOWN',{d.code for d in r.diagnostics})
         self.assertNotIn('BUILD_PUBLISHED',{d.code for d in r.diagnostics})
 
-    def test_production_capabilities_are_gated(self):
+    def test_production_capabilities_reach_build_dispatch(self):
         for cap in ub.CAPABILITY_IDS:
-            r=ua.UnityAdapter().execute(types.SimpleNamespace(capability_id=cap),None)
-            self.assertEqual({d.code for d in r.diagnostics},{'PLATFORM_UNSUPPORTED'})
+            with patch.object(ua.up,'preflight',return_value=(self.work/'Game',{})), \
+                 patch.object(ua.UnityAdapter,'_run_build',return_value='production-build-dispatch') as dispatch:
+                request=types.SimpleNamespace(capability_id=cap,inputs={'unity_project':'Game'})
+                self.assertEqual(ua.UnityAdapter().execute(request,types.SimpleNamespace(project_root=str(self.work))),
+                                 'production-build-dispatch')
+                dispatch.assert_called_once()
 
 @unittest.skipUnless(REAL, 'real Unity NOT_RUN unless GPOS_WINDOWS_BUILD_REAL=1')
 class R_RealBuild(unittest.TestCase):

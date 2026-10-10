@@ -1,6 +1,4 @@
-"""Windows-only Build Core dispatch. Production BUILD remains gated pending D-G1.
-Qualification calls use the unchanged request/lease/process foundation through a test-only adapter.
-"""
+"""Bounded Windows production Build Core through the fixed request/lease/process foundation."""
 import os
 from pathlib import Path
 from .. import diagnostics as dg, paths as tp, process as proc
@@ -11,7 +9,10 @@ from .adapter import (ADAPTER_ID, _refuse, _locked, _command, _with_lock_state, 
                       upm_environment, UPM_CACHE, UPM_USER_NAME, UPM_GLOBAL_NAME, ADAPTER_VERSION)
 
 LIMITATIONS = (
-    "build_revision is CALLER_SUPPLIED; Windows Git provenance is unavailable pending D-G1. No git_verified claim.",
+    "Windows Git provenance is available in alpha.28 within its qualified bounded subset. "
+    "Unity Build Core does not invoke Git or verify a revision: build_revision remains CALLER_SUPPLIED. "
+    "A qualified source/build relationship requires separate pre/post Git observations. "
+    "This operational manifest is not authenticated Git attestation; no git_verified claim.",
     "Operational build facts only; no Player execution, runtime, visual, performance, test or Human evidence.",
     "Project Editor code and build callbacks ran. Configuration tokens are pre/post observations, not a repository lock.",
     "NTFS manifest-last no-overwrite publication; no power-loss durability or byte-reproducibility claim.",
@@ -34,7 +35,7 @@ def run(adapter, cap, request, context, root, project, summary):
                                 f"digits and inner hyphens only, at most 64 characters")
         if not (isinstance(request.build_revision, str) and ub.REVISION.fullmatch(request.build_revision)):
             return _refuse(cap, "a build requires request.build_revision: an exact caller-supplied 40- or 64-hex "
-                                "revision; HEAD is never inferred and Windows Git verification is unavailable")
+                                "revision; HEAD is never inferred and Unity Build Core does not invoke Git or verify it")
         if not (isinstance(token, str) and ub.TOKEN.fullmatch(token)):
             return _refuse(cap, "expected_configuration_token must be the 64-hex token an inspection returned")
     required, installed = summary["editor_version"], context.probe.tool_version

@@ -102,13 +102,14 @@ class WindowsProduction(gt.GitCase):
         self.assertEqual(result.status, gt.tdg.SUCCESS, result.to_dict())
         self.assertNotIn(secret, json.dumps(result.to_dict()))
 
-    def test_frozen_unity_and_adb_availability_is_unchanged(self):
+    def test_authorized_unity_build_gate_and_unchanged_adb_availability(self):
         registry = gt.default_registry(gt.FW)
         expected = {"unity.inspect-project", "unity.run-editmode-tests", "unity.run-playmode-tests",
                     "unity.live-install-bridge", "unity.live-status", "unity.live-attach", "unity.live-inspect",
                     "unity.live-detach", "unity.live-object-inspect", "unity.live-create-gameobject",
-                    "unity.live-set-transform", "unity.live-save-scene"}
-        self.assertEqual(len(unity.WINDOWS_CAPABILITIES), 12)
+                    "unity.live-set-transform", "unity.live-save-scene",
+                    "unity.inspect-build-configuration", "unity.build-player"}
+        self.assertEqual(len(unity.WINDOWS_CAPABILITIES), 14)
         self.assertEqual(set(unity.WINDOWS_CAPABILITIES), expected)
         self.assertIs(registry.get("adb").descriptor, adb.DESCRIPTOR)
         self.assertEqual(adb.DESCRIPTOR.supported_platforms, ("MACOS", "LINUX"))
@@ -116,7 +117,7 @@ class WindowsProduction(gt.GitCase):
             probe = registry.probe("adb")
             self.assertEqual(probe.status, gt.tmodel.UNAVAILABLE)
             self.assertIn("PLATFORM_UNSUPPORTED", {d.code for d in probe.diagnostics})
-            for cap in ("unity.build-player", "unity.inspect-build-configuration"):
+            for cap in ("unity.live-enter-playmode", "unity.live-add-component"):
                 request = gt.ExecutionRequest(adapter_id="unity", capability_id=cap,
                                               subject=gt.Subject("PROJECT", gt.PROJECT_ID))
                 result = registry.get("unity").execute(request, None)

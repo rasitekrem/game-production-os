@@ -1,7 +1,7 @@
 ---
 name: game-director
 maturity: DRAFT
-gpos_version: 1.0.0-alpha.28
+gpos_version: 1.0.0-alpha.29
 may_own_gates: []
 ---
 

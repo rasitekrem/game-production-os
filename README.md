@@ -1,8 +1,8 @@
 # Game Production OS
 
-Version `1.0.0-alpha.28` · Windows Git production provenance (bounded D-G1 subset) on Phase 2C-9.4 (Windows CLASSIC x64 Mono Build Core, test-only qualified, production gated; Bridge 1.7.0) on Phase 2C-9.3b (Windows live bridge: the live session and Scene authoring — inspect, create an empty GameObject, set its Transform, save — on Windows) on the frozen Phase-2C-9.3a Windows Unity batch plane, Phase-2C-9.2 Windows production tools, Phase-2C-9.1 Windows Foundation Core, Phase-2C-8 Runtime / Deploy / Capture Core (the macOS player runtime adapter), Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation, Phase-2C-1 Git provenance adapter, Phase-2C-2 media evidence adapters, Phase-2C-3 Android ADB adapter, Phase-2C-4 Blender DCC adapter, Phase-2C-5 Unity batch plane, Phase-2C-6A Unity live session foundation, Phase-2C-6B1 Unity live Scene authoring core, Phase-2C-6B2A Unity live asset authoring core, Phase-2C-6B2B Unity live prefab authoring core, Phase-2C-6C Unity source, compile and diagnostics core and Phase-2C-7 Unity Build Core · all skills `DRAFT`
+Version `1.0.0-alpha.29` · Windows Build Core production (bounded CLASSIC x64 Mono subset; Bridge 1.7.0) and Windows Git production provenance (bounded D-G1 subset) on Phase 2C-9.4 on Phase 2C-9.3b (Windows live bridge: the live session and Scene authoring — inspect, create an empty GameObject, set its Transform, save — on Windows) on the frozen Phase-2C-9.3a Windows Unity batch plane, Phase-2C-9.2 Windows production tools, Phase-2C-9.1 Windows Foundation Core, Phase-2C-8 Runtime / Deploy / Capture Core (the macOS player runtime adapter), Phase-1 core, Phase-2A validator, Phase-2B agent adapter layer, Phase-2C-0 tool adapter foundation, Phase-2C-1 Git provenance adapter, Phase-2C-2 media evidence adapters, Phase-2C-3 Android ADB adapter, Phase-2C-4 Blender DCC adapter, Phase-2C-5 Unity batch plane, Phase-2C-6A Unity live session foundation, Phase-2C-6B1 Unity live Scene authoring core, Phase-2C-6B2A Unity live asset authoring core, Phase-2C-6B2B Unity live prefab authoring core, Phase-2C-6C Unity source, compile and diagnostics core and Phase-2C-7 Unity Build Core · all skills `DRAFT`
 
-Alpha.28: Human authorization enables the existing Windows Git provenance capabilities for the [qualified bounded D-G1 subset](tools/git-adapter.md#windows-production-alpha28). The broader cross-platform finding stays open; macOS/Linux D-G1 runtime qualification is NOT_RUN. Windows Build Core mechanics remain test-only qualified, and production build/inspection require their own subsequent qualification and Human approval. The Windows payload uses NTFS identity, ADS refusal and a manifest/2 written last; the macOS manifest/1 and compiled Build Core stay unchanged. No Windows Player runtime, visual or playable claim is made. See [Windows Build Core contract](adapters/windows-build-core.md).
+Alpha.29 retains the alpha.28 authorization for the existing Windows Git provenance capabilities for the [qualified bounded D-G1 subset](tools/git-adapter.md#windows-production-alpha28). The broader cross-platform finding stays open; macOS/Linux D-G1 runtime qualification is NOT_RUN. Human approval now enables exactly Windows build inspection and build-player within the qualified Unity 6000.6.4f1 CLASSIC StandaloneWindows64 x64 Mono nondevelopment subset. Unity has 14 available Windows capabilities; the other 33 remain refused. Git retains two capabilities and Windows ADB remains unavailable. The Windows payload uses NTFS identity, ADS refusal and a manifest/2 written last; the macOS manifest/1 and compiled Build Core stay unchanged. No Windows Player runtime, visual or playable claim is made. See [Windows Build Core contract](adapters/windows-build-core.md).
 
 A model-independent production framework for AI-assisted professional game development. It makes AI agents work like a disciplined, multidisciplinary game studio — with clear creative authority, specialist ownership, independent quality gates and typed evidence — instead of like a generic software agent that calls a feature done once the tests pass.
 
@@ -158,13 +158,13 @@ Each game keeps its own authority in a `.game/` directory built from `templates/
 
 **Platforms.** Windows is the primary development and production platform. macOS keeps its existing behaviour and is used mainly for Apple-specific work (iOS builds, signing, Xcode). Only tested interpreter and operating-system combinations are qualified.
 
-**Production candidate after frozen alpha.28:** Human authorization adds only Windows `unity.inspect-build-configuration` and `unity.build-player`, bringing Unity to 14 Windows capabilities. The [bounded Windows contract](adapters/windows-build-core.md) retains caller-supplied revision attribution and requires separate clean Git observations plus complete manifest/payload revalidation for a qualified workflow. No new release version, tag or freeze is claimed; Windows Player Runtime remains unavailable.
+**Alpha.29 Windows production:** Human authorization adds only Windows `unity.inspect-build-configuration` and `unity.build-player`, bringing Unity to 14 Windows capabilities. The [bounded Windows contract](adapters/windows-build-core.md) retains caller-supplied revision attribution and requires separate clean Git observations plus complete manifest/payload revalidation for a qualified workflow. Windows Player Runtime remains unavailable; these production gates do not qualify playability, visuals or runtime evidence.
 
 **Next critical path (Windows first):**
 
-1. Human release preparation and freeze review for the bounded Windows Build Core production candidate; macOS/Linux D-G1 runtime qualification and a Human decision on a GPOS-owned ADB server lifecycle remain outstanding.
+1. macOS/Linux D-G1 runtime qualification and a Human decision on a GPOS-owned ADB server lifecycle remain outstanding. Cross-platform D-G1 stays OPEN.
 2. Unity 6.6 on Windows: a Human-attended Scene-authoring demonstration, then the remaining live capabilities (Play Mode, components and properties, assets, prefabs, sources) one qualified slice at a time; the batch plane (2C-9.3a) and the live session with Scene authoring (2C-9.3b) are qualified.
-3. Further Windows Unity Build Core configurations require separate qualification; the accepted candidate supports only Unity 6000.6.4f1 CLASSIC x64 Mono nondevelopment.
+3. Further Windows Unity Build Core configurations require separate qualification; the accepted alpha.29 contract supports only Unity 6000.6.4f1 CLASSIC x64 Mono nondevelopment.
 4. Windows Player Runtime with exact-window capture (`TARGET_RUNTIME` reconsidered only when that runtime qualification justifies it).
 5. The first genuine autonomous game-production pilot, under Human Review and the Golden Gameplay Cell quality gates; pilot-driven hardening and skill maturity follow it.
 
@@ -176,7 +176,7 @@ Adapter and tool boundaries: [adapters/README.md](adapters/README.md), [tools/RE
 
 ## Versioning
 
-Semantic Versioning, currently `1.0.0-alpha.28` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
+Semantic Versioning, currently `1.0.0-alpha.29` ([VERSION](VERSION), [CHANGELOG.md](CHANGELOG.md)).
 
 | Bump | When |
 |---|---|

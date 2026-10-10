@@ -4,6 +4,10 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
+## [Unreleased] — D-G1 filter-driver security remediation under Human Review
+
+Git provenance inspection uses a bounded private copy with frozen effective configuration, no executable filter definitions and selected-filter refusal. Initialized submodules and linked worktrees retain Git's clean/dirty semantics; hidden index flags and stale stat caches cannot establish an exact revision. Source configuration, process containment and production gates remain unchanged. The implementation requires Git 2.43.0 or later; Windows qualification uses a test-side descriptor, and POSIX runtime qualification is not claimed. D-G1 remains OPEN pending Human Review. No new release, tag or freeze is declared.
+
 ## [1.0.0-alpha.27] — Phase 2C-9.4: Windows CLASSIC x64 Mono Build Core
 
 Adds a bounded Windows-only Build Core, ADS inspection and NTFS manifest-last publication. Windows production build capabilities remain unavailable pending D-G1; qualification uses a test-only adapter and caller-supplied revision. Bridge 1.7.0 retains protocol /5 and pins the exact 1.6.0 history. macOS compiled Build Core and manifest/1 semantics are preserved; macOS runtime NOT_RUN. Windows Player Runtime NOT_RUN.

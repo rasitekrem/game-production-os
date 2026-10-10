@@ -4,7 +4,7 @@ Code: [`gpos/tools/git/`](../gpos/tools/git/__init__.py) · adapter id `git` · 
 
 The adapter reads a local Git repository and reports two things: what state it is in, and whether an exact, immutable revision describes it. It exists to prove that the foundation works with a real external command-line tool, and to give future tool executions a trustworthy repository revision, explicitly.
 
-It is not a Git command runner. The commands the adapter itself authorizes change nothing in a repository and perform no network operation. That is a statement about the adapter's fixed Git invocations, not about every program Git may start on their behalf: a repository-configured filter driver can still run (see [Repository filter drivers](#repository-filter-drivers-open-finding-every-host)), and what such a program does — including writing files or using the network — is outside what the adapter controls.
+It is not a Git command runner. The D-G1 implementation under Human Review runs content inspection only in a bounded disposable copy with frozen configuration and no executable filter definitions. A selected filter is refused, rather than treating an unfiltered comparison as a trustworthy revision. Source repositories and their configuration are never modified. The [original filter-driver finding](#repository-filter-drivers-open-finding-every-host) remains preserved below; Windows production availability is unchanged.
 
 ## Identity
 
@@ -16,8 +16,8 @@ It is not a Git command runner. The commands the adapter itself authorizes chang
 | `adapter_kind` | `CLI` |
 | `state_model` | `STATELESS` |
 | platforms | `MACOS`, `LINUX` (alpha.24: `WINDOWS` withdrawn; see [Windows](#windows-alpha24)) |
-| network | `FORBIDDEN` (GPOS originates no network operation; a repository-configured filter program is not constrained by this, see [Repository filter drivers](#repository-filter-drivers-open-finding-every-host)) |
-| minimum Git | 2.36.0 |
+| network | `FORBIDDEN`; no Git transport is authorized, executable filter definitions are excluded, partial/alternate object stores fail closed |
+| minimum Git | 2.43.0 |
 | TEST_ONLY | no — this is a production adapter |
 
 `python3 -m gpos.tools list` shows it, and `default_registry()` contains exactly `git`. It lives only in the tool adapter registry: it is not an agent adapter and is not in the registry's `adapter_ids`. The TEST_ONLY synthetic adapter never enters the production registry.
@@ -38,9 +38,9 @@ Every Git behaviour the adapter relies on was checked against first-party Git do
 | [git-fsmonitor--daemon](https://git-scm.com/docs/git-fsmonitor--daemon) | Its oldest manual is 2.36.0. With `core.fsmonitor` set to `true`, commands "such as `git status`, will ask the daemon for changes and automatically start it". |
 | Git release notes [2.31.0](https://raw.githubusercontent.com/git/git/master/Documentation/RelNotes/2.31.0.adoc), [2.35.2](https://raw.githubusercontent.com/git/git/master/Documentation/RelNotes/2.35.2.adoc) | 2.31 introduced configuration pairs through environment variables; 2.35.2 is a security-only release. |
 
-The real tests ran against **Git 2.52.0** (Homebrew, macOS).
+The original Phase-2C-1 real tests ran against **Git 2.52.0** (Homebrew, macOS). The D-G1 implementation is qualified separately on Windows; historical execution is not a new run.
 
-The minimum of **2.36.0** is not a guess. The options alone would need 2.18: porcelain v2 (2.11), optional locks (2.15), `status --find-renames` (2.18). Command-scope configuration needs 2.31. The binding constraint is fsmonitor: before 2.36, Git reads `core.fsmonitor=false` as the *name of a program to run*, so the override that disables it would itself start a process. 2.36.0 is the first Git in which `false` means "off".
+The original **2.36.0** floor was required for boolean fsmonitor: older Git can interpret `false` as a program name. The D-G1 implementation uses a conservative **2.43.0** floor to discover effective attribute paths with `git var`, including the NULL-safe global-path getter in [Git 2.43's source](https://github.com/git/git/blob/v2.43.0/builtin/var.c). These path variables already exist in 2.42; this is not a claim that 2.43 introduced them. Only the locally installed Git version is runtime-qualified here.
 
 ## Capabilities
 
@@ -104,21 +104,27 @@ From the CLI, step 4 is `--build-revision <repository_revision>` on `python3 -m 
 
 ## Authorized Git surface
 
-The adapter itself starts exactly three Git processes, each with a fixed argument vector. Nothing from a request, a configuration or a caller is ever appended. This is the adapter's command authorization; it is not a bound on the programs Git itself may start while running these commands (Git's own submodule children, and any repository-configured filter driver, below):
+The adapter authorizes nine fixed argument vectors plus one bounded attribute query whose path operands come only from Git's index. No request accepts arguments or environment values. Metadata queries run in the source; content queries and status run only in the isolated copy described below.
 
 | Purpose | Invocation |
 |---|---|
 | probe | `git --version` |
 | repository root | `git rev-parse --show-toplevel` |
 | state | `git status --porcelain=v2 --branch -z --untracked-files=all --find-renames --no-ahead-behind --ignore-submodules=none` |
+| effective configuration | `git config --null --list --includes` |
+| metadata layout | `git rev-parse --absolute-git-dir --git-common-dir` |
+| private index metadata | `git ls-files --stage -v -z` |
+| external attributes | `git var GIT_ATTR_SYSTEM`, `git var GIT_ATTR_GLOBAL` |
+| external ignore path | `git config --path --get core.excludesfile` |
+| selected filters | `git check-attr -z filter -- <bounded index-derived paths>` |
 
 - `--find-renames` makes rename detection independent of user configuration, so identical states give identical counts.
 - `--no-ahead-behind` skips upstream divergence counting, which the adapter never reports.
 - `--ignore-submodules=none` overrides any `submodule.<name>.ignore` in `.git/config` or `.gitmodules`. Without it, `ignore = all` hides a dirty submodule completely, and a tree that is not exactly its HEAD commit would be reported clean with an exact revision. A submodule is dirty if it has modified or untracked files, or if its checked-out commit differs from the one the superproject records.
-- To look inside each submodule, Git itself runs `git status` there. Those are Git's own child processes of the same executable, with the same environment (see below); the adapter adds no argument to them.
+- To look inside each submodule, Git itself runs `git status` in that submodule's isolated copy. Those are Git-owned child processes with the same environment and no executable filter definitions.
 - The adapter never passes `-c`, and the frozen process boundary would refuse it anyway.
 
-There is no staging, committing, reset, restore, checkout, switch, branch, tag, merge, rebase, cherry-pick, stash, clean, worktree or configuration change. There is no fetch, pull, push, clone or remote listing. The adapter reads no remote names, URLs or credentials: a remote URL can itself contain a credential and is irrelevant to provenance.
+There is no staging, committing, reset, restore, checkout, switch, branch, tag, merge, rebase, cherry-pick, stash, clean, worktree or source configuration change. There is no fetch, pull, push, clone or remote listing. The private configuration capture may contain remote settings or credentials; neither captured values nor configuration contents enter results, diagnostics, evidence or public provenance. Temporary configuration copies are removed before returning.
 
 ## Execution environment
 
@@ -134,7 +140,7 @@ The environment is the foundation's allowlist plus fixed values the adapter owns
 |---|---|---|
 | `GIT_TERMINAL_PROMPT` | `0` | never prompt on a terminal |
 | `GIT_OPTIONAL_LOCKS` | `0` | `status` must not refresh and rewrite the index |
-| `GIT_PAGER` | `cat` | never launch a pager |
+| `GIT_PAGER` | empty | disable pagers, including configured forced pagers |
 | `LC_ALL` | `C` | deterministic wording in the Git messages the adapter quotes |
 | `GIT_CONFIG_COUNT` | `1` | one command-scope configuration pair follows |
 | `GIT_CONFIG_KEY_0` | `core.fsmonitor` | … which is the filesystem monitor |
@@ -142,7 +148,7 @@ The environment is the foundation's allowlist plus fixed values the adapter owns
 
 ### Why fsmonitor is switched off
 
-Repository and user Git configuration still applies in general: the adapter runs the user's Git on the user's repository. `core.fsmonitor` is the exception. A repository can set it to the path of a hook program, which `git status` then runs, or to `true`, which makes `git status` start Git's fsmonitor daemon. Either way a READ_ONLY capability whose source authorizes three fixed Git invocations would start another process that nobody authorized. `GIT_OPTIONAL_LOCKS=0` does not prevent it.
+Effective repository and user configuration is resolved before the private copy is isolated. A repository can set `core.fsmonitor` to a hook program or daemon; the fixed command-scope override applies to metadata queries and private status, including submodule children. `GIT_OPTIONAL_LOCKS=0` alone does not prevent fsmonitor execution. Other executable filter definitions and includes are excluded from the private configuration, and private hooks point to an adapter-owned empty directory.
 
 The adapter therefore disables fsmonitor at command scope, which overrides every configuration file:
 
@@ -156,7 +162,7 @@ Real tests show all three cases:
 - `core.fsmonitor=true` starts no daemon and leaves no `.git/fsmonitor--daemon*` state, though a plain `git status` does both;
 - a submodule's own hook does not run.
 
-The override requires the 2.36.0 minimum explained above.
+Boolean fsmonitor requires Git 2.36.0; the current inspection-path floor is 2.43.0 as explained above.
 
 Because the foundation inherits only an allowlist, a caller's environment cannot redirect or reconfigure Git: GIT_DIR, GIT_WORK_TREE, GIT_ASKPASS, GIT_EXTERNAL_DIFF and injected configuration variables never reach it. Only the variable **names** appear in provenance, never their values.
 
@@ -222,15 +228,29 @@ The three repository codes are generic to version control, not specific to Git.
 | interactive prompts | disabled; stdin is closed by the boundary |
 | **indirect process execution through `core.fsmonitor`** | **none: disabled at command scope, for the repository and for Git's own submodule children; hook and daemon both verified not to start** |
 | **submodule ignore settings hiding dirtiness** | **none: `--ignore-submodules=none` overrides config and `.gitmodules`** |
-| **indirect process execution through repository-configured filter drivers** | **not neutralized (open, D-G1): `git status` can run a driver's `clean` or `process` program, in the superproject and in submodules, on every host; see [Repository filter drivers](#repository-filter-drivers-open-finding-every-host)** |
+| **indirect process execution through repository-configured filter drivers** | **D-G1 implementation under review: status uses frozen private configuration without filter definitions; selected filter attributes fail closed in superprojects and initialized submodules. Production Windows gate remains closed.** |
 | partial or truncated output treated as complete | refused: truncation and parse checks, including a cut exactly on a record boundary |
 | raw process output crossing the public result boundary | none: the raw capture never reaches a result, provenance, diagnostic, CLI output or evidence |
 | repository-root escape | refused: equality with the project root, compared on Git's exact bytes |
 | revision fabrication on dirty or unborn trees | none: `exact_revision` is `null` |
 
-No OS sandboxing is claimed. The foundation's external-tool trust boundary is otherwise unchanged. Git runs with the repository's and the user's own configuration under Git's own trust model, and refuses to use the configuration of a repository owned by another user (`safe.directory`). Two settings that would break this adapter's contract are overridden: fsmonitor, which runs another process, and submodule ignore, which hides dirtiness. A third, repository-configured filter drivers, also runs another process and is **not** overridden (D-G1, below).
+No OS sandboxing is claimed. Git's `safe.directory` check precedes inspection. The process boundary, Job Object containment, output integrity observer, capture bounds and redaction remain unchanged. Only the lifetime of the adapter-created temporary directory is added to the process working-directory scope. Ordinary Git-owned submodule status children remain authorized; repository-selected programs do not.
+
+## D-G1 inspection mechanism under Human Review
+
+The source queries are fixed read-only Git rev-parse, config, ls-files and var invocations listed above. They load effective system/global/local/include/conditional/worktree configuration without content conversion. No configuration write is authorized. `check-attr -z filter --` receives only bounded paths read privately from Git's index; it never receives caller argv, and these paths never enter public provenance.
+
+Work-tree and Git metadata bytes are copied into a fresh temporary directory. Linked worktrees use Git-reported common metadata and their own HEAD/index. Each initialized submodule receives its own isolated metadata; uninitialized submodules fail closed. Configuration is flattened from Git's parsed values; includes, filter definitions and the original worktree pointer are removed. System/global configuration is disabled only for private content commands. System/global attributes are copied and retain precedence beneath work-tree/index/info attributes. External ignore paths are expanded in their original location and copied, preventing a relative path from changing meaning in the private worktree. Built-in Git normalization remains available; no substitute normalization engine is introduced.
+
+Every tracked path is checked for a filter attribute before private status. Named drivers, boolean filters and even undefined optional drivers are unproven and refused; unspecified or explicitly unset filters are allowed. Unused filter definitions, including ordinary Git LFS installation defaults, do not block unrelated clean files. Assume-unchanged and skip-worktree flags fail closed. Private tracked file mtimes are deliberately chosen to differ from every cached index timestamp, forcing content comparisons even when ctime is ignored or source mtime was restored.
+
+The copy is bounded to 256 MiB, 20,000 entries and 32 initialized repositories; private metadata captures/indexes are limited to 1 MiB and attribute argv batches to 12,000 bytes of UTF-16 encoding plus overhead. Source identities, contents, directory membership and effective configuration are rechecked before reporting. A changing source, unsupported extension, partial clone, alternate object store, reparse point or exceeded bound yields no state and no exact revision. This is a bounded observation, not a repository transaction: arbitrary concurrent ABA writes or another same-user process tampering with private temporary files are outside the trust boundary.
+
+The security path is shared on Windows and POSIX. Windows qualification uses a test-side descriptor only. POSIX source parity lists the deliberate shared changes; macOS/Linux runtime qualification is still required, and source parity is never a runtime PASS. D-G1 remains OPEN pending Human Review; Windows Git, production Windows Build Core capabilities and caller-supplied build revision semantics remain unchanged.
 
 ## Repository filter drivers (open finding, every host)
+
+**Preserved historical finding and evidence, as of alpha.24 through frozen alpha.27.** The following account describes those releases. The separately reviewed implementation above does not retroactively alter their findings or qualification.
 
 Found in alpha.24 (2C-9.2). **Human decision D-G1: option (c) for alpha.24** — the Git adapter is unavailable on Windows. This is a temporary security restriction, not the final architecture. The security fix itself is **pending**: it needs a focused, separately reviewed solution before Git's Windows production capability is restored, and no production change has been made for it in alpha.24. Configuration discovery is not authorized in this release, and repository-selected filter execution is not an authorized behaviour of the adapter — yet on macOS and Linux Git can still perform it (see the operational risk below).
 
@@ -259,7 +279,7 @@ What was measured on Windows 11 with Git 2.56.0.windows.2, through a test-side d
 
 - `MONOREPO_NESTED_PROJECT_NOT_YET_SUPPORTED`: the project root must be the repository top level.
 - A branch name that is not valid UTF-8 is reported with backslash escapes (`\xff`).
-- Git's own configuration applies, except `core.fsmonitor` and submodule ignore settings, which are overridden. Repository filter drivers are not overridden, on any host: see [Repository filter drivers](#repository-filter-drivers-open-finding-every-host).
+- The current implementation uses the bounded inspection copy described above. The original releases' filter behaviour is preserved in the historical finding, without retroactive qualification claims.
 - Git's own child `git status` runs inside submodules are part of how Git reads a superproject; they receive the same environment.
 - Real-runtime tests ran on macOS with Git 2.52.0 (alpha.22) and on Windows 11 with Git 2.56.0.windows.2 through a test-side declaration (alpha.24); Windows is not declared in production. Linux is declared but was not exercised. On macOS a real filename that is not valid UTF-8 cannot be created (APFS refuses it), so those bytes are covered at the parser level and by a Linux-only integration test.
 - There is no mutation capability. Any version-control mutation needs a separate Human Review.

@@ -85,8 +85,21 @@ DELIBERATE = {
         "unchanged",
     # alpha.24 (2C-9.2); P08 proves each is exactly the change named
     ("gpos/tools/git/adapter.py", "assign DESCRIPTOR"):
-        "D-W1: WINDOWS withdrawn from supported_platforms pending the D-G1 repository-filter decision; MACOS and LINUX "
-        "are declared exactly as before",
+        "D-W1 remains: WINDOWS withdrawn; MACOS and LINUX unchanged. D-G1 implementation under review changes the "
+        "configuration compatibility note to describe the bounded, filter-free private inspection copy",
+    ("gpos/tools/git/adapter.py", "assign MINIMUM_VERSION"):
+        "D-G1: 2.43.0 floor for effective attribute paths with the NULL-safe global attribute getter; older Git refused",
+    ("gpos/tools/git/adapter.py", "assign AUTHORIZED_COMMANDS"):
+        "D-G1: fixed read-only config/layout/index/attribute-path queries added; check-attr additionally takes bounded "
+        "index-derived paths after --; no caller argv",
+    ("gpos/tools/git/adapter.py", "assign ENVIRONMENT"):
+        "D-G1: empty pager disables forced pagers; content commands additionally isolate system/global config and attrs",
+    ("gpos/tools/git/adapter.py", "def GitAdapter._run"):
+        "D-G1: validates the narrow vectors and permits only the adapter-created private copy for content inspection; "
+        "the existing process boundary and containment remain unchanged",
+    ("gpos/tools/git/adapter.py", "def GitAdapter._repository_state"):
+        "D-G1: status runs only in the private inspection copy; source/config stability is checked before reporting. "
+        "Selected filters and unsupported/unproven source states fail closed on all hosts; POSIX runtime NOT_RUN",
     ("gpos/tools/adb/adapter.py", "assign DESCRIPTOR"):
         "D-W1: WINDOWS withdrawn from supported_platforms (no physical target or ADB server lifecycle is qualified "
         "there); MACOS and LINUX are declared exactly as before",
@@ -166,7 +179,7 @@ class P01_FrozenFilesAreByteIdentical(unittest.TestCase):
                                                               "gpos")
                      for p in (ROOT / d).rglob("*") if p.is_file() and "__pycache__" not in p.parts
                      and p.relative_to(ROOT).as_posix() not in FIXTURE["frozen"])
-        self.assertEqual(new, sorted(["gpos/tools/unity/build_win32.py", "gpos/tools/unity/build_windows.py", "gpos/tools/unity/live_bridge/history/1.6.0.json","gpos/tools/executables.py", "gpos/tools/paths_win32.py", "gpos/tools/process_win32.py",
+        self.assertEqual(new, sorted(["gpos/tools/git/inspection.py", "gpos/tools/unity/build_win32.py", "gpos/tools/unity/build_windows.py", "gpos/tools/unity/live_bridge/history/1.6.0.json","gpos/tools/executables.py", "gpos/tools/paths_win32.py", "gpos/tools/process_win32.py",
                                "gpos/tools/unity/host_win32.py",
                                # alpha.26: the Windows core of bridge 1.6.0 and the pinned 1.5.0 release manifest
                                "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/WindowsFiles.cs", "gpos/tools/unity/live_bridge/com.gpos.live-bridge/Editor/Core/WindowsFiles.cs.meta",
@@ -294,6 +307,18 @@ class P08_Alpha24SharedChanges(unittest.TestCase):
                 keyword = next(k for k in node.value.keywords if k.arg == "supported_platforms")
                 self.assertEqual(ast.literal_eval(keyword.value), ("MACOS", "LINUX"))
                 keyword.value = ast.parse('("WINDOWS", "MACOS", "LINUX")', mode="eval").body
+                if rel == "gpos/tools/git/adapter.py":
+                    compatibility = next(k for k in node.value.keywords if k.arg == "compatibility_notes")
+                    text = ast.unparse(compatibility.value)
+                    self.assertIn("private inspection copy", text)
+                    text = text.replace(
+                        "Git's safe.directory trust check precedes a bounded private inspection copy. Effective configuration "
+                        "is frozen without includes or executable filter definitions; selected filters and unproven trees "
+                        "are refused. Fsmonitor, hooks and submodule ignore settings cannot authorize side effects or hide dirtiness.",
+                        "Git runs with the repository's and the user's own configuration under Git's own trust model "
+                        "(safe.directory), except that core.fsmonitor is disabled at command scope and submodule ignore "
+                        "settings are overridden, so no hook or daemon runs and no dirty submodule is hidden.")
+                    compatibility.value = ast.parse(text, mode="eval").body
                 self.assertAlpha22(rel, "assign DESCRIPTOR", node)
 
     def test_adb_readiness_only_adds_the_server_failure_check(self):

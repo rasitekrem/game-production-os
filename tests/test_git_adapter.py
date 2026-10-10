@@ -54,6 +54,7 @@ from gpos.tools import validation as tval  # noqa: E402
 from gpos.tools.execution import ExecutionRequest, execute  # noqa: E402
 from gpos.tools.git import adapter as ga  # noqa: E402
 from gpos.tools.git import status as gs  # noqa: E402
+from gpos.tools.git import inspection as gi  # noqa: E402
 from gpos.tools.git import GitAdapter  # noqa: E402
 from gpos.tools.model import Subject  # noqa: E402
 from gpos.tools.registry import ToolRegistry, default_registry  # noqa: E402
@@ -673,7 +674,7 @@ class M_Environment(GitCase):
         env = dict(ga.ENVIRONMENT)
         self.assertEqual(env["GIT_OPTIONAL_LOCKS"], "0")
         self.assertEqual(env["GIT_TERMINAL_PROMPT"], "0")
-        self.assertEqual(env["GIT_PAGER"], "cat")
+        self.assertEqual(env["GIT_PAGER"], "")
 
     def test_every_git_process_uses_that_environment(self):
         p = self.repo()
@@ -682,7 +683,10 @@ class M_Environment(GitCase):
             self.resolve(p)
         self.assertGreaterEqual(len(rec.specs), 5)  # probes, top level and status for both
         for spec in rec.specs:
-            self.assertEqual(dict(spec.env.overrides), dict(ga.ENVIRONMENT))
+            expected = dict(ga.ENVIRONMENT)
+            if "GIT_CONFIG_NOSYSTEM" in dict(spec.env.overrides):
+                expected.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_ATTR_NOSYSTEM="1")
+            self.assertEqual(dict(spec.env.overrides), expected)
             built = spec.env.build({"PATH": "/bin", "GIT_DIR": "/elsewhere", "GIT_ASKPASS": "/x",
                                     "GIT_EXTERNAL_DIFF": "/x", "GIT_CONFIG_PARAMETERS": "'core.x=y'"})
             for inherited in ("GIT_DIR", "GIT_ASKPASS", "GIT_EXTERNAL_DIFF", "GIT_CONFIG_PARAMETERS"):
@@ -843,14 +847,20 @@ class Q_Surface(GitCase):
 
     def test_no_mutating_subcommand_is_authorized(self):
         for argv in ga.AUTHORIZED_COMMANDS:
+            if argv in (("config", "--null", "--list", "--includes"), ("config", "--path", "--get", "core.excludesfile")):
+                continue  # exact read-only vector only; config writes remain forbidden
             self.assertEqual(set(argv) & MUTATING_SUBCOMMANDS, set(), argv)
 
-    def test_the_authorized_surface_is_exactly_three_fixed_vectors(self):
+    def test_the_authorized_surface_is_fixed_metadata_reads_and_status(self):
         self.assertEqual(ga.AUTHORIZED_COMMANDS, (
             ("--version",),
             ("rev-parse", "--show-toplevel"),
             ("status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--find-renames",
-             "--no-ahead-behind", "--ignore-submodules=none")))
+             "--no-ahead-behind", "--ignore-submodules=none"),
+            ("config", "--null", "--list", "--includes"),
+            ("rev-parse", "--absolute-git-dir", "--git-common-dir"),
+            ("ls-files", "--stage", "-v", "-z"), ("var", "GIT_ATTR_SYSTEM"), ("var", "GIT_ATTR_GLOBAL"),
+            ("config", "--path", "--get", "core.excludesfile")))
 
     def test_every_process_started_uses_an_authorized_vector_unmodified(self):
         p = self.repo()
@@ -861,7 +871,8 @@ class Q_Surface(GitCase):
             self.inspect(self.project("not-a-repo"))
         self.assertTrue(rec.specs)
         for spec in rec.specs:
-            self.assertIn(tuple(spec.argv), ga.AUTHORIZED_COMMANDS)
+            self.assertTrue(tuple(spec.argv) in ga.AUTHORIZED_COMMANDS or
+                            tuple(spec.argv[:4]) == gi.ATTRIBUTES_ARGV)
 
     def test_every_process_spec_in_the_source_names_a_fixed_vector(self):
         tree = ast.parse((ROOT / "gpos" / "tools" / "git" / "adapter.py").read_text())
@@ -876,7 +887,7 @@ class Q_Surface(GitCase):
         runs = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "_run"]
         for call in runs:  # the only helper that takes an argv is only ever given a fixed vector
             self.assertIsInstance(call.args[1], ast.Name)
-            self.assertIn(call.args[1].id, allowed - {"argv"})
+            self.assertIn(call.args[1].id, allowed)  # private metadata helper also forwards a validated vector
 
     def test_no_caller_input_reaches_git(self):
         p = self.repo()
@@ -1187,11 +1198,12 @@ class V_RawOutput(GitCase):
         walk(result)
         self.assertEqual(result.stdout, "")
 
-    def test_the_minimum_version_is_the_first_that_understands_a_boolean_fsmonitor(self):
-        self.assertEqual(ga.MINIMUM_VERSION, (2, 36, 0))
+    def test_the_minimum_version_exposes_effective_attribute_sources(self):
+        self.assertEqual(ga.MINIMUM_VERSION, (2, 43, 0))
         exe = None
         for version, expected in (("2.35.1", tmodel.VERSION_UNSUPPORTED), ("2.31.0", tmodel.VERSION_UNSUPPORTED),
-                                  ("2.36.0", tmodel.AVAILABLE)):
+                                  ("2.36.0", tmodel.VERSION_UNSUPPORTED), ("2.42.0", tmodel.VERSION_UNSUPPORTED),
+                                  ("2.43.0", tmodel.AVAILABLE)):
             body = f"print('git version {version}')\n"
             exe = windows_standin.write_tool(self.tmp / "bin" / "git", body) if exe is None else \
                 windows_standin.rewrite(exe, body)

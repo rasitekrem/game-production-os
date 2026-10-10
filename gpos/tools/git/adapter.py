@@ -6,12 +6,12 @@ questions about the local repository a GPOS project lives in, and nothing else:
     git.inspect             what state is the repository in?
     git.resolve-provenance  is there an exact, immutable revision that describes it?
 
-It is deliberately not a Git command runner. The complete set of Git invocations it can make is
-the three fixed argument vectors in `AUTHORIZED_COMMANDS`; no request input, no configuration and
-no caller-supplied argument is ever appended to them. It has no capability that changes a
+It is deliberately not a Git command runner. `AUTHORIZED_COMMANDS` declares fixed metadata reads
+and status. Only check-attr additionally receives bounded index-derived paths after `--`, privately;
+no caller-supplied arguments are accepted. It has no capability that changes a
 repository (no staging, committing, checkout, reset, branch or tag management, configuration
 writes or anything equivalent) and no capability that reaches a network (no fetch, pull, push,
-clone, remote listing, remote names, URLs or credentials).
+clone or remote listing). Effective configuration values stay private, including any remote settings.
 
 Execution goes through the audited process boundary like every other adapter: this module never
 starts a process itself and never imports the subprocess module. Git runs with a fixed
@@ -35,7 +35,11 @@ Git wrote — never from the public redacted text, which a credential-shaped pat
 the capture bound truncated is refused rather than parsed. The public result carries counts, never a
 path, and anything the adapter reports still passes the foundation's redaction boundary.
 
-Two repository settings are overridden because they would otherwise break this adapter's contract:
+Content inspection uses a bounded disposable copy with frozen effective configuration and no
+executable filter definitions. A selected filter attribute is unproven and refused before status.
+Includes, worktree configuration, submodules and external attributes are resolved before isolation;
+status never runs in the source repository. Source stability is checked before reporting a state.
+Two further repository settings are overridden because they would otherwise break this contract:
 `core.fsmonitor` (it can make `git status` run a hook program or start a daemon) and
 `submodule.<name>.ignore` (it can hide a dirty submodule, and with it the fact that the tree is not
 exactly its HEAD commit). Both overrides are fixed, command-scope and write nothing.
@@ -56,25 +60,26 @@ from .. import process as proc
 from ..capabilities import Capability, TimeoutPolicy
 from ..execution import AdapterOutcome
 from . import status as git_status
+from . import inspection as gi
 
 ADAPTER_ID = "git"
 ADAPTER_VERSION = "1.0.0"
 EXECUTABLE_NAME = "git"
 # The oldest Git that honours everything below. Porcelain v2 with branch headers first appears in the
 # 2.11 manual, GIT_OPTIONAL_LOCKS in 2.15 and `status --find-renames` in 2.18; command-scope
-# configuration through GIT_CONFIG_COUNT arrives in 2.31. The binding constraint is fsmonitor: Git's
+# configuration through GIT_CONFIG_COUNT arrives in 2.31. The original constraint was fsmonitor: Git's
 # own manual warns that "Git versions 2.35.1 and prior will not understand the boolean values and will
 # consider the 'true' or 'false' values as hook pathnames to be invoked", and boolean core.fsmonitor
 # arrives with the fsmonitor daemon in 2.36.0. On an older Git, core.fsmonitor=false would itself try to
 # run a program named `false`, so the override below is only safe from 2.36.0 on.
-MINIMUM_VERSION = (2, 36, 0)
+MINIMUM_VERSION = (2, 43, 0)  # effective attribute paths, including the NULL-safe global getter in 2.43
 VERSION_OUTPUT = re.compile(r"^git version (\d+)\.(\d+)\.(\d+)(?:[.\s(].*)?$")
 
 INSPECT = f"{ADAPTER_ID}.inspect"
 RESOLVE_PROVENANCE = f"{ADAPTER_ID}.resolve-provenance"
 
-# The complete authorized Git surface. Every process this adapter starts uses exactly one of these
-# vectors, unmodified. `--find-renames` makes rename detection independent of user configuration;
+# Fixed authorized Git surface; only check-attr additionally receives bounded index-derived paths.
+# `--find-renames` makes rename detection independent of user configuration;
 # `--no-ahead-behind` skips upstream divergence counting, which this adapter never reports;
 # `--ignore-submodules=none` overrides any `submodule.<name>.ignore` in configuration or .gitmodules,
 # which could otherwise hide a dirty submodule and let a dirty tree look like an exact revision.
@@ -82,7 +87,7 @@ VERSION_ARGV = ("--version",)
 TOPLEVEL_ARGV = ("rev-parse", "--show-toplevel")
 STATUS_ARGV = ("status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all",
                "--find-renames", "--no-ahead-behind", "--ignore-submodules=none")
-AUTHORIZED_COMMANDS = (VERSION_ARGV, TOPLEVEL_ARGV, STATUS_ARGV)
+AUTHORIZED_COMMANDS = (VERSION_ARGV, TOPLEVEL_ARGV, STATUS_ARGV) + gi.COMMANDS
 
 # Non-interactive, side-effect-free Git. Names and values are fixed here, owned by the adapter and never
 # influenced by a caller; only the names are ever recorded (EnvironmentPolicy.metadata).
@@ -92,7 +97,7 @@ AUTHORIZED_COMMANDS = (VERSION_ARGV, TOPLEVEL_ARGV, STATUS_ARGV)
 # daemon or run a configured hook program — a second process this READ_ONLY capability never authorized.
 # Command-scope configuration also reaches the `git status` Git itself runs inside each submodule, so a
 # submodule's own hook is neutralized too. Nothing is written to any configuration file, and `-c` is
-# never used. Every other repository and user setting still applies.
+# never used. Content-reading commands use the private frozen configuration in inspection.py.
 FSMONITOR_OVERRIDE = (
     ("GIT_CONFIG_COUNT", "1"),
     ("GIT_CONFIG_KEY_0", "core.fsmonitor"),
@@ -101,7 +106,7 @@ FSMONITOR_OVERRIDE = (
 ENVIRONMENT = (
     ("GIT_TERMINAL_PROMPT", "0"),  # never prompt on a terminal
     ("GIT_OPTIONAL_LOCKS", "0"),   # status must not refresh and rewrite the index
-    ("GIT_PAGER", "cat"),          # never launch a pager
+    ("GIT_PAGER", ""),             # disable pagers, including forced config pagers
     ("LC_ALL", "C"),               # deterministic wording in the messages this adapter quotes
 ) + FSMONITOR_OVERRIDE
 ENVIRONMENT_POLICY = proc.EnvironmentPolicy(overrides=ENVIRONMENT)
@@ -149,9 +154,9 @@ DESCRIPTOR = model.AdapterDescriptor(
         f"a project nested inside a larger repository is refused.",
         "Git's machine output is parsed from the exact captured bytes; truncated output is refused rather "
         "than parsed, and public output stays redacted.",
-        "Git runs with the repository's and the user's own configuration under Git's own trust model "
-        "(safe.directory), except that core.fsmonitor is disabled at command scope and submodule ignore "
-        "settings are overridden, so no hook or daemon runs and no dirty submodule is hidden.",
+        "Git's safe.directory trust check precedes a bounded private inspection copy. Effective configuration "
+        "is frozen without includes or executable filter definitions; selected filters and unproven trees "
+        "are refused. Fsmonitor, hooks and submodule ignore settings cannot authorize side effects or hide dirtiness.",
     ))
 
 
@@ -230,10 +235,80 @@ class GitAdapter(model.ToolAdapter):
             return refused
         return self._reply(reading) if request.capability_id == INSPECT else self._resolve(reading)
 
-    def _run(self, context, argv, capture_bytes):
-        spec = proc.ToolProcessSpec(executable=context.probe.tool_path, argv=argv, cwd=context.project_root,
-                                    timeout=context.timeout, env=ENVIRONMENT_POLICY, capture_bytes=capture_bytes)
-        return spec, context.run(spec)
+    def _run(self, context, argv, capture_bytes, root=None, inspection=None):
+        if argv not in AUTHORIZED_COMMANDS and not (
+                tuple(argv[:4]) == gi.ATTRIBUTES_ARGV and 4 < len(argv) and
+                sum(len(a.encode("utf-16-le", "surrogatepass")) + 8 for a in argv[4:]) <= gi.ATTRIBUTE_ARG_BYTES):
+            raise AssertionError("unauthorized Git inspection vector")
+        policy = ENVIRONMENT_POLICY
+        scoped = context
+        if inspection is not None:
+            policy = proc.EnvironmentPolicy(overrides=ENVIRONMENT + (
+                ("GIT_CONFIG_NOSYSTEM", "1"), ("GIT_CONFIG_GLOBAL", os.devnull), ("GIT_ATTR_NOSYSTEM", "1")))
+            # Only this adapter-created temporary directory is added, for this invocation's lifetime.
+            scoped = replace(context, scopes=context.scopes + (str(inspection.base),))
+        spec = proc.ToolProcessSpec(executable=context.probe.tool_path, argv=argv, cwd=str(root or context.project_root),
+                                    timeout=min(context.timeout, inspection.seconds()) if inspection else context.timeout,
+                                    env=policy, capture_bytes=capture_bytes)
+        return spec, scoped.run(spec)
+
+    def _private_read(self, context, argv, root, inspection=None):
+        spec, outcome = self._run(context, argv, gi.CAPTURE_BYTES, root, inspection)
+        if (argv in (gi.EXCLUDES_ARGV, gi.SYSTEM_ATTRIBUTES_ARGV, gi.GLOBAL_ATTRIBUTES_ARGV) and
+                outcome.exit_code == 1 and not outcome.raw_stdout and not outcome.raw_stderr and
+                not outcome.timed_out and not outcome.truncated and outcome.integrity_ok):
+            return b""  # documented absence, never a failed config parse
+        if outcome.exit_code != 0 or outcome.timed_out or outcome.truncated or not outcome.integrity_ok:
+            raise gi.UnsafeInspection("incomplete or failed private Git metadata read")
+        return outcome.raw_stdout
+
+    def _inspection_copy(self, context, copy):
+        repositories = []
+
+        def read(argv, root):
+            return self._private_read(replace(context, timeout=min(context.timeout, copy.seconds())), argv, root)
+
+        def discover(root):
+            if len(repositories) >= gi.MAX_REPOSITORIES or any(root == item[0] for item in repositories):
+                raise gi.UnsafeInspection("repeated or excessive submodule layout")
+            layout_raw = read(gi.LAYOUT_ARGV, root)
+            layout = tuple((root / os.fsdecode(line)).resolve() for line in gi.path_lines(layout_raw, 2))
+            config = read(gi.CONFIG_ARGV, root)
+            entries = gi.config_entries(config)
+            paths, children = gi.index_paths(read(gi.INDEX_ARGV, root))
+            attrs = []
+            for argv in (gi.SYSTEM_ATTRIBUTES_ARGV, gi.GLOBAL_ATTRIBUTES_ARGV):
+                raw = read(argv, root)
+                attrs.append((root / os.fsdecode(gi.path_lines(raw, 1)[0])).resolve() if raw else None)
+            raw_excludes = read(gi.EXCLUDES_ARGV, root)
+            if raw_excludes:
+                excludes = (root / os.fsdecode(gi.path_lines(raw_excludes, 1)[0])).resolve()
+            else:
+                environment = ENVIRONMENT_POLICY.build()
+                home = environment.get("HOME") or environment.get("USERPROFILE")
+                excludes = Path(home) / ".config" / "git" / "ignore" if home else None
+            repositories.append((root, layout, config, entries, paths, children, attrs, excludes))
+            for name in children:
+                child = root / name
+                if not (child / ".git").exists():
+                    raise gi.UnsafeInspection("uninitialized submodule cannot establish a complete revision")
+                if child.is_symlink() or not child.resolve().is_relative_to(Path(context.project_root).resolve()):
+                    raise gi.UnsafeInspection("submodule outside the project scope")
+                discover(child)
+
+        source = Path(context.project_root).resolve()
+        discover(source)
+        skip = tuple((item[0].relative_to(source) / ".git").as_posix() for item in repositories)
+        copy.tree(source, copy.root, skip=skip)
+        for root, layout, raw, entries, paths, children, attrs, excludes in repositories:
+            target = copy.root / root.relative_to(source)
+            copy.add_repository(root, target, layout, entries, paths, children)
+            copy.attributes(target, *attrs)
+            copy.excludes(target, excludes)
+            for argv in gi.attribute_batches(paths):
+                gi.refuse_filters(self._private_read(context, argv, target, copy), len(argv) - len(gi.ATTRIBUTES_ARGV))
+        copy.invalidate_stats()
+        return repositories
 
     def _repository_state(self, context):
         """(reading, None), where reading holds the state, the status spec and its outcome, or
@@ -261,7 +336,23 @@ class GitAdapter(model.ToolAdapter):
                                   f"{context.project_root}. A project nested inside a larger repository is not "
                                   f"supported yet ({MONOREPO_NESTED_PROJECT_NOT_YET_SUPPORTED}); nothing in the "
                                   f"enclosing repository was inspected")
-        spec, status = self._run(context, STATUS_ARGV, self._status_capture_bytes)
+        copy = gi.InspectionCopy(context.timeout)
+        try:
+            repositories = self._inspection_copy(context, copy)
+            spec, status = self._run(context, STATUS_ARGV, self._status_capture_bytes, copy.root, copy)
+            copy.verify()
+            for root, layout, raw, entries, paths, children, attrs, excludes in repositories:
+                bounded = replace(context, timeout=min(context.timeout, copy.seconds()))
+                if self._private_read(bounded, gi.CONFIG_ARGV, root) != raw:
+                    raise gi.UnsafeInspection("repository configuration changed during inspection")
+                current = gi.path_lines(self._private_read(bounded, gi.LAYOUT_ARGV, root), 2)
+                if tuple((root / os.fsdecode(line)).resolve() for line in current) != layout:
+                    raise gi.UnsafeInspection("repository layout changed during inspection")
+        except (gi.UnsafeInspection, OSError, ValueError):
+            return None, _failed(top, spec, "safe Git inspection could not be established; no repository state or "
+                                           "exact revision is reported (filter, layout, source stability or copy bound)")
+        finally:
+            copy.close()
         refused = _unusable(status, "status", spec)
         if refused is not None:
             return None, refused

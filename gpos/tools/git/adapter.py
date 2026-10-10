@@ -142,9 +142,9 @@ CAPABILITIES = (
 DESCRIPTOR = model.AdapterDescriptor(
     adapter_id=ADAPTER_ID, adapter_version=ADAPTER_VERSION, tool_family="VERSION_CONTROL",
     target_tool="Git", adapter_kind="CLI", state_model="STATELESS",
-    # alpha.24 (D-W1): WINDOWS is withdrawn until the repository-filter finding (D-G1) has a Human-approved fix; the
-    # foundation refuses the adapter on Windows (PLATFORM_UNSUPPORTED) instead of running it unqualified.
-    supported_platforms=("MACOS", "LINUX"), capabilities=CAPABILITIES,
+    # Human-approved D-G1 bounded Windows subset; runtime-qualified on Git 2.56.0.windows.2 only.
+    # POSIX declarations are preserved; macOS/Linux D-G1 runtime qualification remains NOT_RUN.
+    supported_platforms=("MACOS", "LINUX", "WINDOWS"), capabilities=CAPABILITIES,
     availability="a Git executable on PATH (absolute PATH entries only), version "
                  + ".".join(str(n) for n in MINIMUM_VERSION) + " or later",
     minimum_tool_version=".".join(str(n) for n in MINIMUM_VERSION),

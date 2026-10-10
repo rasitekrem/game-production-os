@@ -66,12 +66,6 @@ REG = FW.registry
 FIXTURE = ROOT / "tests" / "fixtures" / "adapter-project"
 PROJECT_ID = "synthetic-adapter-project"
 GIT = shutil.which("git")
-PRODUCTION_DESCRIPTOR = ga.DESCRIPTOR
-if sys.platform == "win32":
-    # alpha.24 (D-W1): production withdraws WINDOWS until the repository-filter finding (D-G1) is decided. This suite
-    # still measures the adapter's Windows behaviour, through a TEST-SIDE descriptor that declares it; the production
-    # descriptor's refusal on Windows is proven separately (A_Registration).
-    GitAdapter.descriptor = dataclasses.replace(ga.DESCRIPTOR, supported_platforms=("WINDOWS", "MACOS", "LINUX"))
 SHA = re.compile(r"^[0-9a-f]{40}$")
 CONTRACT_KEYS = {"repository_root", "head_sha", "branch", "detached", "unborn", "clean", "exact_revision",
                  "staged_count", "unstaged_count", "untracked_count", "conflicted_count"}
@@ -199,23 +193,19 @@ class A_Registration(GitCase):
         d = ga.DESCRIPTOR
         self.assertEqual((d.adapter_id, d.tool_family, d.target_tool, d.adapter_kind, d.state_model, d.network),
                          ("git", "VERSION_CONTROL", "Git", "CLI", "STATELESS", "FORBIDDEN"))
-        self.assertEqual(d.supported_platforms, ("MACOS", "LINUX"))   # alpha.24 (D-W1): WINDOWS withdrawn
+        self.assertEqual(d.supported_platforms, ("MACOS", "LINUX", "WINDOWS"))
         self.assertFalse(d.test_only)
         self.assertEqual(d.filesystem_scopes, ())
 
-    def test_the_production_descriptor_is_refused_on_windows(self):
-        adapter = GitAdapter()
-        adapter.descriptor = PRODUCTION_DESCRIPTOR
-        registry = ToolRegistry(FW, allow_test_only=False)
-        registry.register(adapter)
+    def test_the_unmodified_production_registry_resolves_a_revision(self):
+        registry = default_registry(FW)
+        self.assertIs(registry.get("git").descriptor, ga.DESCRIPTOR)
         probe = registry.probe("git")
-        if sys.platform == "win32":
-            self.assertEqual(probe.status, tmodel.UNAVAILABLE)
-            self.assertIn("PLATFORM_UNSUPPORTED", {d.code for d in probe.diagnostics})
-            result = self.run_cap("git.inspect", self.repo(), registry=registry)
-            self.assertIn("PLATFORM_UNSUPPORTED", {d.code for d in result.diagnostics})
-        else:
-            self.assertEqual(probe.status, tmodel.AVAILABLE, probe.detail)
+        self.assertEqual(probe.status, tmodel.AVAILABLE, probe.detail)
+        p = self.repo()
+        result = self.run_cap(ga.RESOLVE_PROVENANCE, p, registry=registry)
+        self.assertEqual(result.status, tdg.SUCCESS, result.to_dict())
+        self.assertEqual(result.data["repository_revision"], self.head(p))
 
     def test_exactly_two_read_only_capabilities(self):
         caps = {c.id: c for c in ga.DESCRIPTOR.capabilities}

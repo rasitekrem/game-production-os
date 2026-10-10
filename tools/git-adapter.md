@@ -4,7 +4,7 @@ Code: [`gpos/tools/git/`](../gpos/tools/git/__init__.py) · adapter id `git` · 
 
 The adapter reads a local Git repository and reports two things: what state it is in, and whether an exact, immutable revision describes it. It exists to prove that the foundation works with a real external command-line tool, and to give future tool executions a trustworthy repository revision, explicitly.
 
-It is not a Git command runner. The D-G1 implementation under Human Review runs content inspection only in a bounded disposable copy with frozen configuration and no executable filter definitions. A selected filter is refused, rather than treating an unfiltered comparison as a trustworthy revision. Source repositories and their configuration are never modified. The [original filter-driver finding](#repository-filter-drivers-open-finding-every-host) remains preserved below; Windows production availability is unchanged.
+It is not a Git command runner. The Human-accepted D-G1 implementation runs content inspection only in a bounded disposable copy with frozen configuration and no executable filter definitions. A selected filter is refused, rather than treating an unfiltered comparison as a trustworthy revision. Source repositories and their configuration are never modified. The [original filter-driver finding](#repository-filter-drivers-open-finding-every-host) remains preserved below. Windows production availability is authorized for this bounded subset; the broader cross-platform finding remains open.
 
 ## Identity
 
@@ -15,12 +15,12 @@ It is not a Git command runner. The D-G1 implementation under Human Review runs 
 | `target_tool` | Git |
 | `adapter_kind` | `CLI` |
 | `state_model` | `STATELESS` |
-| platforms | `MACOS`, `LINUX` (alpha.24: `WINDOWS` withdrawn; see [Windows](#windows-alpha24)) |
+| platforms | `MACOS`, `LINUX`, `WINDOWS` (Human-authorized bounded Windows subset; see [current Windows scope](#windows-production-current-candidate)) |
 | network | `FORBIDDEN`; no Git transport is authorized, executable filter definitions are excluded, partial/alternate object stores fail closed |
 | minimum Git | 2.43.0 |
 | TEST_ONLY | no — this is a production adapter |
 
-`python3 -m gpos.tools list` shows it, and `default_registry()` contains exactly `git`. It lives only in the tool adapter registry: it is not an agent adapter and is not in the registry's `adapter_ids`. The TEST_ONLY synthetic adapter never enters the production registry.
+`python3 -m gpos.tools list` shows it, and `default_registry()` contains `git` among the explicitly registered production tools. It lives only in the tool adapter registry: it is not an agent adapter and is not in the registry's `adapter_ids`. The TEST_ONLY synthetic adapter never enters the production registry.
 
 ## Verified Git behaviour
 
@@ -228,7 +228,7 @@ The three repository codes are generic to version control, not specific to Git.
 | interactive prompts | disabled; stdin is closed by the boundary |
 | **indirect process execution through `core.fsmonitor`** | **none: disabled at command scope, for the repository and for Git's own submodule children; hook and daemon both verified not to start** |
 | **submodule ignore settings hiding dirtiness** | **none: `--ignore-submodules=none` overrides config and `.gitmodules`** |
-| **indirect process execution through repository-configured filter drivers** | **D-G1 implementation under review: status uses frozen private configuration without filter definitions; selected filter attributes fail closed in superprojects and initialized submodules. Production Windows gate remains closed.** |
+| **indirect process execution through repository-configured filter drivers** | **Windows bounded subset accepted: status uses frozen private configuration without filter definitions; selected filter attributes fail closed in superprojects and initialized submodules. Broader cross-platform D-G1 remains open; POSIX runtime NOT_RUN.** |
 | partial or truncated output treated as complete | refused: truncation and parse checks, including a cut exactly on a record boundary |
 | raw process output crossing the public result boundary | none: the raw capture never reaches a result, provenance, diagnostic, CLI output or evidence |
 | repository-root escape | refused: equality with the project root, compared on Git's exact bytes |
@@ -236,7 +236,7 @@ The three repository codes are generic to version control, not specific to Git.
 
 No OS sandboxing is claimed. Git's `safe.directory` check precedes inspection. The process boundary, Job Object containment, output integrity observer, capture bounds and redaction remain unchanged. Only the lifetime of the adapter-created temporary directory is added to the process working-directory scope. Ordinary Git-owned submodule status children remain authorized; repository-selected programs do not.
 
-## D-G1 inspection mechanism under Human Review
+## D-G1 accepted Windows inspection mechanism
 
 The source queries are fixed read-only Git rev-parse, config, ls-files and var invocations listed above. They load effective system/global/local/include/conditional/worktree configuration without content conversion. No configuration write is authorized. `check-attr -z filter --` receives only bounded paths read privately from Git's index; it never receives caller argv, and these paths never enter public provenance.
 
@@ -246,7 +246,11 @@ Every tracked path is checked for a filter attribute before private status. Name
 
 The copy is bounded to 256 MiB, 20,000 entries and 32 initialized repositories; private metadata captures/indexes are limited to 1 MiB and attribute argv batches to 12,000 bytes of UTF-16 encoding plus overhead. Source identities, contents, directory membership and effective configuration are rechecked before reporting. A changing source, unsupported extension, partial clone, alternate object store, reparse point or exceeded bound yields no state and no exact revision. This is a bounded observation, not a repository transaction: arbitrary concurrent ABA writes or another same-user process tampering with private temporary files are outside the trust boundary.
 
-The security path is shared on Windows and POSIX. Windows qualification uses a test-side descriptor only. POSIX source parity lists the deliberate shared changes; macOS/Linux runtime qualification is still required, and source parity is never a runtime PASS. D-G1 remains OPEN pending Human Review; Windows Git, production Windows Build Core capabilities and caller-supplied build revision semantics remain unchanged.
+The security path is shared on Windows and POSIX. The accepted implementation candidate `2b51732dcd482951a7b3f0b6915ef23fb59e18dd` was qualified with test-side Windows authorization; the current gate candidate uses the actual unmodified production registry. Windows D-G1 remediation is Human-accepted for the qualified bounded subset. POSIX source parity records the deliberate shared changes; macOS/Linux runtime qualification remains NOT_RUN, and source parity is never a runtime PASS. The broader cross-platform D-G1 finding stays OPEN. Windows Unity Build Core gates remain closed and caller-supplied build revisions never become Git-verified provenance implicitly.
+
+## Windows production (current candidate)
+
+Human authorization enables only the existing `git.inspect` and `git.resolve-provenance` capabilities. The declared minimum is still Git 2.43.0; actual Windows runtime qualification covers Windows 11 build 26200, Python 3.14.8 and Git 2.56.0.windows.2 only, not every Git version above the floor. Copy bounds, unsupported-feature refusal and process containment are unchanged. Windows Unity still offers exactly 12 capabilities; `unity.build-player`, `unity.inspect-build-configuration`, Windows ADB and Player Runtime remain unavailable. Trusted Windows Build Core requires its own subsequent qualification and Human approval. No new release or freeze is implied.
 
 ## Repository filter drivers (open finding, every host)
 
@@ -281,13 +285,15 @@ What was measured on Windows 11 with Git 2.56.0.windows.2, through a test-side d
 - A branch name that is not valid UTF-8 is reported with backslash escapes (`\xff`).
 - The current implementation uses the bounded inspection copy described above. The original releases' filter behaviour is preserved in the historical finding, without retroactive qualification claims.
 - Git's own child `git status` runs inside submodules are part of how Git reads a superproject; they receive the same environment.
-- Real-runtime tests ran on macOS with Git 2.52.0 (alpha.22) and on Windows 11 with Git 2.56.0.windows.2 through a test-side declaration (alpha.24); Windows is not declared in production. Linux is declared but was not exercised. On macOS a real filename that is not valid UTF-8 cannot be created (APFS refuses it), so those bytes are covered at the parser level and by a Linux-only integration test.
+- Historical real-runtime tests ran on macOS with Git 2.52.0 (alpha.22) and on Windows 11 with Git 2.56.0.windows.2 through a test-side declaration (alpha.24). Current Windows production is authorized only for the separately accepted bounded D-G1 subset. Current macOS/Linux D-G1 runtime qualification is NOT_RUN. On macOS a real filename that is not valid UTF-8 cannot be created (APFS refuses it), so those bytes are covered at the parser level and by a Linux-only integration test.
 - There is no mutation capability. Any version-control mutation needs a separate Human Review.
 
 ## Tests
 
 ```bash
 python3 tests/test_git_adapter.py
+python3 tests/test_git_windows_production.py
+python3 tests/mutate_git_windows_gate.py
 python3 tests/mutate_git_adapter.py
 ```
 

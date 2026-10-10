@@ -301,8 +301,8 @@ MUTATIONS = [
      '"TOOL_INHERENT": [\n        "unity",\n        "player"\n      ]', '"TOOL_INHERENT": [\n        "unity",\n        "player",\n        "git"\n      ]'),
     ('a FORBIDDEN adapter silently becomes TOOL_INHERENT', [
         ('core/registry.json', '"TOOL_INHERENT": [\n        "unity",\n        "player"\n      ]', '"TOOL_INHERENT": [\n        "unity",\n        "player",\n        "git"\n      ]'),
-        ('gpos/tools/git/adapter.py', 'supported_platforms=("MACOS", "LINUX"), capabilities=CAPABILITIES,',
-         'supported_platforms=("MACOS", "LINUX"), capabilities=CAPABILITIES, network="TOOL_INHERENT", '
+        ('gpos/tools/git/adapter.py', 'supported_platforms=("MACOS", "LINUX", "WINDOWS"), capabilities=CAPABILITIES,',
+         'supported_platforms=("MACOS", "LINUX", "WINDOWS"), capabilities=CAPABILITIES, network="TOOL_INHERENT", '
          'network_disclosure=("git may fetch",),')]),
     ('an execution request carries a network destination', 'gpos/tools/execution.py',
      '    request_id: str = None\n    session_id: str = None', '    request_id: str = None\n    registry_url: str = None\n    session_id: str = None'),

@@ -452,8 +452,9 @@ class FilterSecurity(gt.GitCase):
         self.assertEqual(result.status, gt.tdg.CONFLICT, result.to_dict())
         self.assertIsNone(result.data["repository_revision"])
 
-    def test_production_gates_are_unchanged(self):
-        self.assertEqual(gt.ga.DESCRIPTOR.supported_platforms, ("MACOS", "LINUX"))
+    def test_production_git_platform_gate_is_authorized(self):
+        self.assertEqual(gt.ga.DESCRIPTOR.supported_platforms, ("MACOS", "LINUX", "WINDOWS"))
+        self.assertIs(gt.GitAdapter.descriptor, gt.ga.DESCRIPTOR)
 
 
 if __name__ == "__main__":

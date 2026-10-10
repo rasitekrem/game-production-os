@@ -85,7 +85,7 @@ DELIBERATE = {
         "unchanged",
     # alpha.24 (2C-9.2); P08 proves each is exactly the change named
     ("gpos/tools/git/adapter.py", "assign DESCRIPTOR"):
-        "D-W1 remains: WINDOWS withdrawn; MACOS and LINUX unchanged. D-G1 implementation under review changes the "
+        "D-G1 Human authorizes WINDOWS production; MACOS and LINUX preserved, runtime NOT_RUN. Remediation changes the "
         "configuration compatibility note to describe the bounded, filter-free private inspection copy",
     ("gpos/tools/git/adapter.py", "assign MINIMUM_VERSION"):
         "D-G1: 2.43.0 floor for effective attribute paths with the NULL-safe global attribute getter; older Git refused",
@@ -300,12 +300,13 @@ class P08_Alpha24SharedChanges(unittest.TestCase):
         old = FIXTURE["units"][rel][unit]
         self.assertEqual(pp._function(node) if isinstance(node, ast.FunctionDef) else {"stmt": pp._h(node)}, old)
 
-    def test_the_descriptors_only_withdraw_windows(self):
+    def test_only_git_restores_windows_after_human_authorization(self):
         for rel in ("gpos/tools/git/adapter.py", "gpos/tools/adb/adapter.py"):
             with self.subTest(file=rel):
                 node = self.node(rel, "assign DESCRIPTOR")
                 keyword = next(k for k in node.value.keywords if k.arg == "supported_platforms")
-                self.assertEqual(ast.literal_eval(keyword.value), ("MACOS", "LINUX"))
+                expected = ("MACOS", "LINUX", "WINDOWS") if rel == "gpos/tools/git/adapter.py" else ("MACOS", "LINUX")
+                self.assertEqual(ast.literal_eval(keyword.value), expected)
                 keyword.value = ast.parse('("WINDOWS", "MACOS", "LINUX")', mode="eval").body
                 if rel == "gpos/tools/git/adapter.py":
                     compatibility = next(k for k in node.value.keywords if k.arg == "compatibility_notes")

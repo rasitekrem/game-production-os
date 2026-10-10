@@ -1426,9 +1426,18 @@ class WLR5_ApprovalAndRecovery(RealCase):
             with self.subTest(command=command):
                 r = self.raw(command, {}, owner, "s" * 32)
                 self.assertEqual((r.status, r.code), ("REFUSED", "UNKNOWN_COMMAND"))
-        refused = self.run_cap(au.ADD_COMPONENT, session_id="5e55" * 8, object="x", type_id="x",
-                               expected_object_token="0" * 32, expected_catalog_digest="0" * 64)
-        self.assertIn("PLATFORM_UNSUPPORTED", codes(refused), text(refused))
+        # through GPOS, even with an attached session, an unqualified capability never reaches the Editor
+        sid = self.attach()
+        try:
+            for cap, inputs in ((au.ADD_COMPONENT, dict(object="x", type_id="x", expected_object_token="0" * 32,
+                                                        expected_catalog_digest="0" * 64)),
+                                (live.ENTER, {})):
+                with self.subTest(capability=cap):
+                    refused = self.run_cap(cap, session_id=sid, **inputs)
+                    self.assertIn("PLATFORM_UNSUPPORTED", codes(refused), text(refused))
+                    self.assertFalse(refused.mutation_performed)
+        finally:
+            self.detach(sid)
 
     def test_04_a_clean_close_releases_without_recovery(self):
         sid = self.attach()

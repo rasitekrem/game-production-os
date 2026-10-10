@@ -1260,8 +1260,7 @@ class WLR4_SessionIntegrity(RealCase):
         cls.editor.stop()
 
     def test_01_a_bind_whose_session_file_cannot_be_published_is_undone_and_releases_the_lease(self):
-        sid = self.attach()                                             # session.json exists from here on
-        self.detach(sid)
+        self.ensure_session_file()
         with Held(self.editor.live / "session.json"):
             r = self.run_cap(live.ATTACH, timeout=120)
         self.assertNotEqual(r.status, tdg.SUCCESS)
@@ -1272,7 +1271,13 @@ class WLR4_SessionIntegrity(RealCase):
         self.assertEqual(self.editor.bridge()["session_id"], "")
         self.assertIn("bind-undone:", self.events())
 
+    def ensure_session_file(self):
+        """session.json exists once any session was bound (and so can be held); bind and unbind one if needed."""
+        if not (self.editor.live / "session.json").exists():
+            self.detach(self.attach())
+
     def test_02_a_consumed_approval_can_never_bind_twice(self):
+        self.ensure_session_file()
         owner = "AGENT:testkit-approve-2"
         proposal, sid = uuid.uuid4().hex, uuid.uuid4().hex
         b = self.editor.bridge()

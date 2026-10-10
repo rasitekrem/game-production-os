@@ -4,9 +4,9 @@ All notable changes to Game Production OS. Format based on Keep a Changelog; ver
 
 Maturity promotions of skills are recorded here, each with the Human Decision and evidence references that authorized it.
 
-## [Unreleased] — Human-authorized bounded Windows Git production gate
+## [1.0.0-alpha.28] — Windows Git production provenance
 
-Git provenance inspection uses the accepted D-G1 bounded private copy with frozen effective configuration, no executable filter definitions and selected-filter refusal. Windows production now declares only the existing `git.inspect` and `git.resolve-provenance` capabilities. The accepted security mechanism, clean-revision contract, process boundary and limits are unchanged. The declared Git floor remains 2.43.0; Windows runtime qualification covers Git 2.56.0.windows.2 only. Windows D-G1 remediation is accepted for the qualified bounded subset; the broader cross-platform finding stays OPEN because macOS/Linux runtime qualification is NOT_RUN. Unity's 12 Windows capabilities, both closed Windows Build Core gates and ADB's Windows refusal remain unchanged. No new release, tag or freeze is declared.
+Git provenance inspection uses the accepted D-G1 bounded private copy with frozen effective configuration, no executable filter definitions and selected-filter refusal. Windows production now declares only the existing `git.inspect` and `git.resolve-provenance` capabilities. The accepted security mechanism, clean-revision contract, process boundary and limits are unchanged. The declared Git floor remains 2.43.0; Windows runtime qualification covers Git 2.56.0.windows.2 only. Windows D-G1 remediation is accepted for the qualified bounded subset; the broader cross-platform finding stays OPEN because macOS/Linux runtime qualification is NOT_RUN. Unity's 12 Windows capabilities, both closed Windows Build Core gates and ADB's Windows refusal remain unchanged. This release enables only the two existing Windows Git capabilities; no Windows Unity Build Core, Player Runtime or ADB capability is enabled.
 
 ## [1.0.0-alpha.27] — Phase 2C-9.4: Windows CLASSIC x64 Mono Build Core
 

@@ -23,7 +23,7 @@ The batch plane answers three questions about one Unity project inside a GPOS pr
 | `tool_family` | `ENGINE` |
 | `adapter_kind` | `CLI` |
 | `state_model` | `STATEFUL` (the adapter manages the live plane's long-lived session; each batch capability is `STATELESS`) |
-| platforms | `MACOS`; `WINDOWS` for the batch plane (alpha.25) and bounded Live/Scene-authoring support (alpha.26; see [Windows](#windows-alpha25) and [Windows live bridge](#windows-live-bridge-alpha26)); production Windows Build Core remains gated in alpha.27 |
+| platforms | `MACOS`; `WINDOWS` for the batch plane (alpha.25) and bounded Live/Scene-authoring support (alpha.26; see [Windows](#windows-alpha25) and [Windows live bridge](#windows-live-bridge-alpha26)); production Windows Build Core remains gated in alpha.28 |
 | network | `TOOL_INHERENT`, with a disclosure |
 | TEST_ONLY | no |
 
@@ -43,7 +43,7 @@ The two build capabilities (Phase 2C-7) are described in [unity-build.md](unity-
 
 **Alpha.27 clarification:** Windows CLASSIC x64 Mono Build Core mechanics are implemented and test-only qualified with Bridge 1.7.0. Production `unity.build-player` and `unity.inspect-build-configuration` remain `PLATFORM_UNSUPPORTED` pending the separately authorized D-G1 security remediation; Windows Git provenance remains unavailable. The Windows contract is documented in [adapters/windows-build-core.md](../adapters/windows-build-core.md). The alpha.25 and alpha.26 qualification facts below retain their original scope.
 
-**Current unreleased Git gate:** Human authorization enables Windows Git provenance for its bounded qualified subset. Unity production availability stays unchanged: exactly 12 Windows capabilities; both Build Core capabilities still return `PLATFORM_UNSUPPORTED` pending their own subsequent qualification and approval. Caller-supplied revisions remain caller-supplied. Windows Git-unavailable statements in the alpha.25–alpha.27 descriptions below are historical release facts, not the current Git gate.
+**Alpha.28 Windows Git gate:** Human authorization enables Windows Git provenance for its bounded qualified subset. Unity production availability stays unchanged: exactly 12 Windows capabilities; both Build Core capabilities still return `PLATFORM_UNSUPPORTED` pending their own subsequent qualification and approval. Caller-supplied revisions remain caller-supplied. Windows Git-unavailable statements in the alpha.25–alpha.27 descriptions below are historical release facts, not the current Git gate.
 
 Input `unity_project` (all five): a path relative to the GPOS project root, default `.`. It is resolved (symbolic links followed) and must stay inside the root: no absolute path, no `..`, no escaping link. The directory must contain `Assets/`, `Packages/`, `ProjectSettings/` and a regular file `ProjectSettings/ProjectVersion.txt`.
 
@@ -173,7 +173,7 @@ A dry run validates the project path and layout, the version file, the exact Edi
 
 ## Limitations
 
-- macOS, validated with Unity 6000.5.8f1; Windows batch plane and bounded Live/Scene slice, qualified with Unity 6000.6.4f1; exactly one Hub-installed Editor. Alpha.27 Windows Build Core qualification is test-only and production-gated pending D-G1.
+- macOS, validated with Unity 6000.5.8f1; Windows batch plane and bounded Live/Scene slice, qualified with Unity 6000.6.4f1; exactly one Hub-installed Editor. Alpha.27 Windows Build Core qualification remains test-only; alpha.28 production Build Core still requires its own subsequent qualification and Human approval.
 - The log signatures used for classification are version-specific; an unknown failure is reported as unclassified.
 - A run that stops on a compile error, or is killed by its timeout, leaves `Temp/UnityLockfile` behind; the next run proceeds only when the read-only proof shows it unheld with no Unity process for the project (macOS).
 - The results XML embeds local absolute paths; the Editor log contains machine and session identifiers.

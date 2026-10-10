@@ -28,7 +28,7 @@ import posix_parity as pp  # noqa: E402
 
 FIXTURE = json.loads((ROOT / "tests" / "fixtures" / "posix-parity-alpha22.json").read_bytes().decode("utf-8"))
 BRIDGE_DIGEST = "b7f4775d4f1e807136df0978d27218eac20dbe5e163fe23618fd84a17a62ea16"
-VERSION_FROZEN, VERSION_NOW = b"1.0.0-alpha.22", b"1.0.0-alpha.27"
+VERSION_FROZEN, VERSION_NOW = b"1.0.0-alpha.22", b"1.0.0-alpha.28"
 
 # The only frozen files alpha.23 and alpha.24 edit. Every other file under core/, schemas/, skills/, workflows/,
 # templates/ and gpos/ is byte-identical to alpha.22.

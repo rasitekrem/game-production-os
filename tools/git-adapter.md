@@ -15,7 +15,7 @@ It is not a Git command runner. The Human-accepted D-G1 implementation runs cont
 | `target_tool` | Git |
 | `adapter_kind` | `CLI` |
 | `state_model` | `STATELESS` |
-| platforms | `MACOS`, `LINUX`, `WINDOWS` (Human-authorized bounded Windows subset; see [current Windows scope](#windows-production-current-candidate)) |
+| platforms | `MACOS`, `LINUX`, `WINDOWS` (Human-authorized bounded Windows subset; see [current Windows scope](#windows-production-alpha28)) |
 | network | `FORBIDDEN`; no Git transport is authorized, executable filter definitions are excluded, partial/alternate object stores fail closed |
 | minimum Git | 2.43.0 |
 | TEST_ONLY | no — this is a production adapter |
@@ -246,11 +246,11 @@ Every tracked path is checked for a filter attribute before private status. Name
 
 The copy is bounded to 256 MiB, 20,000 entries and 32 initialized repositories; private metadata captures/indexes are limited to 1 MiB and attribute argv batches to 12,000 bytes of UTF-16 encoding plus overhead. Source identities, contents, directory membership and effective configuration are rechecked before reporting. A changing source, unsupported extension, partial clone, alternate object store, reparse point or exceeded bound yields no state and no exact revision. This is a bounded observation, not a repository transaction: arbitrary concurrent ABA writes or another same-user process tampering with private temporary files are outside the trust boundary.
 
-The security path is shared on Windows and POSIX. The accepted implementation candidate `2b51732dcd482951a7b3f0b6915ef23fb59e18dd` was qualified with test-side Windows authorization; the current gate candidate uses the actual unmodified production registry. Windows D-G1 remediation is Human-accepted for the qualified bounded subset. POSIX source parity records the deliberate shared changes; macOS/Linux runtime qualification remains NOT_RUN, and source parity is never a runtime PASS. The broader cross-platform D-G1 finding stays OPEN. Windows Unity Build Core gates remain closed and caller-supplied build revisions never become Git-verified provenance implicitly.
+The security path is shared on Windows and POSIX. The accepted implementation candidate `2b51732dcd482951a7b3f0b6915ef23fb59e18dd` was qualified with test-side Windows authorization; the accepted production gate uses the actual unmodified production registry. Windows D-G1 remediation is Human-accepted for the qualified bounded subset. POSIX source parity records the deliberate shared changes; macOS/Linux runtime qualification remains NOT_RUN, and source parity is never a runtime PASS. The broader cross-platform D-G1 finding stays OPEN. Windows Unity Build Core gates remain closed and caller-supplied build revisions never become Git-verified provenance implicitly.
 
-## Windows production (current candidate)
+## Windows production (alpha.28)
 
-Human authorization enables only the existing `git.inspect` and `git.resolve-provenance` capabilities. The declared minimum is still Git 2.43.0; actual Windows runtime qualification covers Windows 11 build 26200, Python 3.14.8 and Git 2.56.0.windows.2 only, not every Git version above the floor. Copy bounds, unsupported-feature refusal and process containment are unchanged. Windows Unity still offers exactly 12 capabilities; `unity.build-player`, `unity.inspect-build-configuration`, Windows ADB and Player Runtime remain unavailable. Trusted Windows Build Core requires its own subsequent qualification and Human approval. No new release or freeze is implied.
+Human authorization enables only the existing `git.inspect` and `git.resolve-provenance` capabilities. The declared minimum is still Git 2.43.0; actual Windows runtime qualification covers Windows 11 build 26200, Python 3.14.8 and Git 2.56.0.windows.2 only, not every Git version above the floor. Copy bounds, unsupported-feature refusal and process containment are unchanged. Windows Unity still offers exactly 12 capabilities; `unity.build-player`, `unity.inspect-build-configuration`, Windows ADB and Player Runtime remain unavailable. Trusted Windows Build Core requires its own subsequent qualification and Human approval. Alpha.28 release metadata does not expand this qualified scope.
 
 ## Repository filter drivers (open finding, every host)
 

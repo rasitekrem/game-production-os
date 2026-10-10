@@ -1,8 +1,8 @@
-# Windows Build Core — alpha.27 review candidate
+# Windows Build Core — alpha.27 implementation, production gate closed
 
 Phase 2C-9.4 implements one Windows build contract: Unity 6000.6.4f1, already active StandaloneWindows64, x64 Mono2x, Standalone Player, CLASSIC, nondevelopment. Active profiles, other targets/backends/subtargets, debug/profiler flags, solution/PDB/install outputs and other Editor versions fail closed. Production never switches targets, creates or activates profiles, changes settings or accepts arbitrary arguments.
 
-The Windows production build and build-inspection capabilities remain unavailable. D-G1 is open: the Windows Git adapter is disabled and repository filter-driver execution is unresolved. `build_revision` retains its exact 40/64 lowercase hexadecimal contract and is explicitly caller-supplied (manifest value CALLER_SUPPLIED). Neither GitHub nor test fixtures establish clean production provenance. The qualification adapter lives only in tests and is not registered by the production registry. The existing twelve Windows Unity capabilities remain the production allowlist.
+The Windows production build and build-inspection capabilities remain unavailable. Alpha.28 enables the two existing Windows Git capabilities within the Human-accepted bounded D-G1 subset. The broader cross-platform D-G1 finding remains OPEN; macOS/Linux runtime qualification is NOT_RUN. Trusted Windows Build Core still requires its own subsequent production qualification and Human approval. `build_revision` retains its exact 40/64 lowercase hexadecimal contract and is explicitly caller-supplied (manifest value CALLER_SUPPLIED). Neither GitHub nor test fixtures establish clean production provenance. The qualification adapter lives only in tests and is not registered by the production registry. The existing twelve Windows Unity capabilities remain the production allowlist.
 
 ## Fixed execution
 

@@ -1,6 +1,6 @@
 # Pillars
 
-> **GPOS template** · `1.0.0-alpha.27` · copy to `.game/PILLARS.md` · see [templates/README.md](README.md)
+> **GPOS template** · `1.0.0-alpha.28` · copy to `.game/PILLARS.md` · see [templates/README.md](README.md)
 >
 > Document authority status: `PROPOSED` <!-- becomes LOCKED only by Human Decision; cite the DECISIONS.md entry -->
 > Locked by decision: `UNDECIDED`

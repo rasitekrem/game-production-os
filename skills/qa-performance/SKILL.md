@@ -1,7 +1,7 @@
 ---
 name: qa-performance
 maturity: DRAFT
-gpos_version: 1.0.0-alpha.27
+gpos_version: 1.0.0-alpha.28
 may_own_gates: [TECHNICAL, PERFORMANCE, DEVICE]
 ---
 

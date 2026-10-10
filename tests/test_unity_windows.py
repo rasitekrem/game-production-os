@@ -5,7 +5,7 @@
     GPOS_UNITY_TEST_FAST=1 python -X utf8 tests/test_unity_windows.py     (no real Unity process)
 
 The real groups (WG, WH, WI) need exactly one Unity Hub Editor and the disposable lab root GPOS_UNITY_WINDOWS_LAB
-(default D:\\gpos-unity-lab-alpha25), which must already exist. Every Unity project they open is created under that
+(default D:\\gpos-unity-lab-alpha26 since alpha.26), which must already exist. Every Unity project they open is created under that
 root and removed afterwards; no other project is ever opened, and at most one Unity Editor runs at a time. They use
 the production authority model unchanged: default_registry, ExecutionRequest and the fixed batch command.
 
@@ -59,7 +59,7 @@ if WINDOWS:
 FW = load_framework()
 FIXTURE = ROOT / "tests" / "fixtures" / "adapter-project"
 FAST = os.environ.get("GPOS_UNITY_TEST_FAST") == "1"
-LAB = Path(os.environ.get("GPOS_UNITY_WINDOWS_LAB", r"D:\gpos-unity-lab-alpha25"))
+LAB = Path(os.environ.get("GPOS_UNITY_WINDOWS_LAB", r"D:\gpos-unity-lab-alpha26"))   # alpha.26: this phase's lab
 EDITORS = UnityAdapter().discover() if WINDOWS else []
 EDITOR_VERSION, EDITOR = EDITORS[0] if len(EDITORS) == 1 else (None, None)
 STANDIN_VERSION = "6000.6.4f1"
